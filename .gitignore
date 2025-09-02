@@ -1,0 +1,53 @@
+# Data
+data/
+reports/
+*.db
+*.db-journal
+
+# Environment
+.envrc
+.env
+
+# Python
+.coverage
+htmlcov/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+*_token.json
+google_credentials.json
+
+# Configuration (use config.example.yaml as template)
+config/config.yaml
+
+# Logs
+*.log
+logs/
+
+# Chat exports
+chatgptchats/
+claudechats/
