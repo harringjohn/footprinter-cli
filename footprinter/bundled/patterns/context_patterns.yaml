@@ -1,0 +1,18 @@
+# Context and identity path patterns
+
+# Primary context detection by path
+# Keys must match Context enum names
+context_path_patterns:
+  CLIENT:
+    - '/Work/clients/'
+  INTERNAL: []  # Populated from config folder_classifications.internal_data
+  PERSONAL:
+    - '/Personal/'
+  CAREER:
+    - '/Work/admin/'
+    - '/Work/archive/'
+
+# Path patterns for identity document detection (matched against lowercased paths)
+identity_path_patterns:
+  - '/personal/identity/'
+  - '/identity/'

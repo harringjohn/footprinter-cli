@@ -1,0 +1,61 @@
+# Filename and path patterns for content type detection
+
+# TRANSIENT file patterns (safe to delete)
+transient_patterns:
+  - '\.DS_Store$'
+  - 'Thumbs\.db$'
+  - '\.tmp$'
+  - '\.temp$'
+  - '~$'
+  - '\.swp$'
+  - '\.swo$'
+  - '\.log$'
+  - '\.cache'
+  - '__pycache__'
+  - 'node_modules'
+  - '\.npm'
+  - '\.yarn'
+  - 'venv'
+  - '\.venv'
+  - 'env/'
+  - '\.env/'
+  - '\.pyc$'
+  - '\.pyo$'
+  - '\.class$'
+  - '\.o$'
+  - '\.obj$'
+  - '\.exe$'
+  - 'dist/'
+  - 'build/'
+  - '\.next/'
+  - '\.git/objects'
+  - '\.git/lfs'
+
+transient_path_patterns:
+  - '/Downloads/'
+  - '/Trash/'
+  - '/tmp/'
+  - '/temp/'
+  - '/cache/'
+  - '/\.cache/'
+  - '/Caches/'
+
+# REFERENCE file patterns (third-party docs, tutorials)
+reference_patterns:
+  - 'tutorial'
+  - 'manual'
+  - 'handbook'
+  - 'reference'
+  - 'documentation'
+  - 'getting[_-]?started'
+  - 'cheat[_-]?sheet'
+  - 'quick[_-]?start'
+  - 'user[_-]?guide'
+  - 'api[_-]?docs?'
+
+reference_path_patterns:
+  - '/tutorials?/'
+  - '/docs?/'
+  - '/reference/'
+  - '/manuals?/'
+  - '/guides?/'
