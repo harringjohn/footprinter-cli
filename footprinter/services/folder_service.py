@@ -1,0 +1,122 @@
+"""Folder read service — get/list with role-based visibility filtering."""
+
+import sqlite3
+from typing import Optional
+
+from footprinter.db import folders as db
+from footprinter.services.access_service import (
+    _read_visibility,
+    filter_result,
+    filter_results_list,
+)
+from footprinter.services.roles import Role
+
+
+def get(conn: sqlite3.Connection, folder_id: int, *, role: Role = Role.ADMIN) -> dict | None:
+    """Fetch a single folder by ID, filtered by role."""
+    result = db.get_folder(conn, folder_id)
+    if result is None:
+        return None
+    if role.sees_all:
+        return result
+    return filter_result("folder", result)
+
+
+def assign(
+    conn: sqlite3.Connection,
+    folder_id: int,
+    *,
+    role: Role = Role.ADMIN,
+    project_id: int | None = None,
+    client_id: int | None = None,
+) -> dict | None:
+    """Assign a folder to a project and/or client.
+
+    Returns result dict on success, None if not found.
+    Raises PermissionError if role cannot write, ValueError if project doesn't exist.
+    """
+    if not role.can_write:
+        raise PermissionError("Role does not permit write operations")
+    result = db.update_folder_relationships(
+        conn,
+        folder_id,
+        project_id=project_id,
+        client_id=client_id,
+    )
+    if result is None:
+        return None
+    resp: dict = {"id": folder_id}
+    if project_id is not None:
+        resp["project_id"] = project_id
+    if client_id is not None:
+        resp["client_id"] = client_id
+    return resp
+
+
+def list_(
+    conn: sqlite3.Connection,
+    *,
+    role: Role = Role.ADMIN,
+    project_id: Optional[int] = None,
+    depth: Optional[int] = 1,
+    include_hidden: bool = False,
+    sort_by: str = "size",
+    limit: int = 50,
+    page: int = 1,
+) -> dict:
+    """List folders with pagination, filtered by role."""
+    response = db.list_folders(
+        conn,
+        project_id=project_id,
+        depth=depth,
+        include_hidden=include_hidden,
+        sort_by=sort_by,
+        limit=limit,
+        page=page,
+    )
+    if role.sees_all:
+        return response
+    filtered, suppressed = filter_results_list("folder", response["folders"])
+    response["folders"] = filtered
+    response["suppressed"] = suppressed
+    return response
+
+
+def get_by_path(
+    conn: sqlite3.Connection,
+    path: str,
+    *,
+    role: Role = Role.ADMIN,
+) -> dict | None:
+    """Look up a folder by exact path with navigation data, filtered by role.
+
+    Returns None if folder doesn't exist or is hidden (for VIEWER).
+    Returns opaque dict (no children) for opaque folders (for VIEWER).
+    Returns full navigation dict for visible folders.
+    """
+    row = db.get_folder_by_path(conn, path)
+    if row is None:
+        return None
+
+    visibility = _read_visibility(row)
+
+    if not role.sees_all:
+        if visibility == "hidden":
+            return None
+        if visibility == "opaque":
+            return filter_result("folder", row)
+
+    # Fetch navigation data (files, subfolders, recursive count)
+    nav = db.get_folder_navigation(conn, row["id"], path)
+    result = {**row, **nav}
+
+    if role.sees_all:
+        return result
+
+    # Filter children by visibility
+    result["files"], file_sup = filter_results_list("file", result["files"])
+    result["subfolders"], sub_sup = filter_results_list("folder", result["subfolders"])
+    total_sup = file_sup + sub_sup
+    if total_sup:
+        result["suppressed"] = total_sup
+    return result
