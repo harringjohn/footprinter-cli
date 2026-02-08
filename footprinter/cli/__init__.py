@@ -1,0 +1,128 @@
+"""Footprinter CLI router."""
+
+import argparse
+import sys
+
+
+def _check_python_version() -> None:
+    """Exit with a clear message if Python is too old."""
+    if sys.version_info < (3, 11):
+        print(
+            f"Error: Footprinter requires Python 3.11 or later (found {sys.version_info[0]}.{sys.version_info[1]}).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _is_first_run() -> bool:
+    """Return True if neither config file nor database exists."""
+    from footprinter.paths import get_config_path, get_db_path
+
+    return not get_config_path().exists() and not get_db_path().exists()
+
+
+def main(argv=None) -> None:
+    """Entry point for the ``fp`` command."""
+    _check_python_version()
+
+    import sys as _sys
+
+    if argv is None:
+        argv = _sys.argv[1:]
+    from footprinter.source_registry import ConfigError as _ConfigError
+
+    from footprinter import __version__
+    from footprinter.cli._common import FORMATTER
+
+    parser = argparse.ArgumentParser(
+        prog="fp",
+        description=f"Footprinter v{__version__} — file archival and AI context CLI",
+        epilog=(
+            "getting started:\n"
+            "  fp setup                   Run the configuration wizard\n"
+            "  fp setup --check           Validate existing configuration\n"
+            "  fp connect list            Show available data source connectors\n"
+            "\n"
+            "data commands:\n"
+            "  fp ingest                  Run the data ingest pipeline (incremental)\n"
+            "  fp ingest --full           Re-process all data sources\n"
+            "  fp status                  Show data counts and system health\n"
+            "  fp search 'my query'       Semantic search across indexed content\n"
+            "\n"
+            "browse indexed data:\n"
+            "  fp view files               List indexed files\n"
+            "  fp view folders             List indexed folders\n"
+            "  fp view projects            List projects\n"
+            "  fp view clients             List clients\n"
+            "  fp view chats               List chats\n"
+            "  fp view emails              List indexed emails\n"
+            "  fp view visits              List browser history\n"
+            "\n"
+            "servers:\n"
+            "  fp mcp                     Start the MCP server\n"
+            "  fp api                     Start the HTTP API server\n"
+            "  fp mcp check ~/Work/file   Check access resolution for a path\n"
+            "\n"
+            "tip: use 'fp <command> --help' for details on any command."
+        ),
+        formatter_class=FORMATTER,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
+    subparsers = parser.add_subparsers(dest="subcommand", metavar="COMMAND")
+    subparsers.required = False
+
+    from footprinter.cli import (
+        api_cmd,
+        connect,
+        data,
+        delete,
+        ingest,
+        mcp_cmd,
+        search_cmd,
+        setup,
+        status_cmd,
+        upsert,
+        vectorize_cmd,
+        view,
+    )
+
+    for mod in [
+        ingest,
+        mcp_cmd,
+        api_cmd,
+        status_cmd,
+        search_cmd,
+        setup,
+        connect,
+        view,
+        upsert,
+        data,
+        delete,
+        vectorize_cmd,
+    ]:
+        mod.register(subparsers)
+
+    args = parser.parse_args(argv)
+    if args.subcommand is None:
+        if _is_first_run():
+            print(
+                "\033[33;1m\U0001f4a1 Looks like this is your first time running "
+                "Footprinter.\n   Run 'fp setup' to get started.\033[0m\n",
+                file=_sys.stderr,
+            )
+        parser.print_help()
+        return
+    from footprinter.cli._prompt import PromptCancelled
+
+    try:
+        args.func(args)
+    except _ConfigError as e:
+        print(str(e), file=_sys.stderr)
+        _sys.exit(1)
+    except (PromptCancelled, KeyboardInterrupt):
+        print("\nCancelled.", file=_sys.stderr)
+        _sys.exit(130)
