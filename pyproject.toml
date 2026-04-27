@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "footprinter-cli"
-version = "1.0.0"
+version = "1.0.1"
 description = "A local context layer for your files, browser history, chats, and email — searchable, user-owned, MCP-served."
 readme = "README.md"
 license = {text = "MIT"}
@@ -63,7 +63,6 @@ Homepage = "https://github.com/swellcitygroup/footprinter"
 Repository = "https://github.com/swellcitygroup/footprinter"
 Issues = "https://github.com/swellcitygroup/footprinter/issues"
 Documentation = "https://github.com/swellcitygroup/footprinter/blob/main/README.md"
-Changelog = "https://github.com/swellcitygroup/footprinter/blob/main/CHANGELOG.md"
 
 [project.scripts]
 fp = "footprinter.cli:main"
@@ -78,7 +77,7 @@ exclude = ["footprinter.fixture*", "footprinter.bundled.fixture*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = [".", "tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 

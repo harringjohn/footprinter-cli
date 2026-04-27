@@ -698,6 +698,13 @@ def _choose_preset() -> dict | None:
         if not dirs:
             console.print("  [yellow]No common directories found — switching to full setup[/yellow]")
             return None
+        # Surface what quick mode skips so the user isn't surprised later when
+        # browser/chat/CSV results are empty.
+        console.print(
+            "\n  [dim]Quick start skips: browser history, chat history import, "
+            "CSV import. Default content settings apply (snippets ON, semantic OFF). "
+            "You can add any of these later with fp setup or fp ingest.[/dim]"
+        )
         return {"directories": dirs, "browsers": []}
     return None
 
@@ -705,8 +712,12 @@ def _choose_preset() -> dict | None:
 def run_interactive_wizard():
     """Run the full interactive setup flow.
 
-    Structured as 6 phases: Welcome, Data Sources, Confirm & Write,
-    Populate, Connect, Summary.
+    Structured as 7 phases: Welcome, Data Sources, Content & Search,
+    Confirm & Write, Claude Desktop, Populate, Summary.
+
+    Access policies are seeded silently inside Confirm & Write (no
+    visible phase). Claude Desktop runs before Populate so the user can
+    restart Claude Desktop while indexing finishes.
 
     PromptCancelled and KeyboardInterrupt propagate to the caller
     (``_handle_setup``) which prints the cancellation message and
@@ -715,7 +726,7 @@ def run_interactive_wizard():
     existing = _load_existing_config()
 
     # Phase 1: Welcome
-    _print_phase(1, 6, "Welcome")
+    _print_phase(1, 7, "Welcome")
     welcome_extra = ""
     if existing is not None:
         welcome_extra = (
@@ -730,11 +741,12 @@ def run_interactive_wizard():
             "exports for AI-powered search and analysis.\n\n"
             "[bold]Phases:[/bold]\n"
             "  1. Welcome — what Footprinter does\n"
-            "  2. Data Sources — directories, browsers, chat exports\n"
-            "  3. Confirm & Write — preview and save configuration\n"
-            "  4. Populate — index your data\n"
-            "  5. Connect — access policies and Claude Desktop\n"
-            "  6. Summary — results and next steps"
+            "  2. Data Sources — directories, browsers, chat exports, CSV import\n"
+            "  3. Content & Search — snippets and semantic search\n"
+            "  4. Confirm & Write — preview and save configuration\n"
+            "  5. Claude Desktop — MCP integration\n"
+            "  6. Populate — index your data\n"
+            "  7. Summary — results and next steps"
             + (
                 "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
                 "  - Full Disk Access for Safari history (System Settings > Privacy & Security)"
@@ -747,7 +759,7 @@ def run_interactive_wizard():
     )
 
     # Phase 2: Data Sources
-    _print_phase(2, 6, "Data Sources")
+    _print_phase(2, 7, "Data Sources")
     if existing is not None:
         preset = None  # Skip preset choice in reconfigure mode
     else:
@@ -756,15 +768,20 @@ def run_interactive_wizard():
         answers = {"directories": preset["directories"], "browsers": preset["browsers"]}
         connector_results = {}
         chat_export_path = None
-        semantic_answers = collect_vectorization_answers(directories=preset["directories"], quick=True)
     else:
         answers = collect_answers(existing=existing)
         connector_results = {}
         chat_export_path = collect_chat_export_path()
+
+    # Phase 3: Content & Search
+    _print_phase(3, 7, "Content & Search")
+    if preset:
+        semantic_answers = collect_vectorization_answers(directories=preset["directories"], quick=True)
+    else:
         semantic_answers = collect_vectorization_answers(directories=answers["directories"], existing=existing)
 
-    # Phase 3: Confirm & Write
-    _print_phase(3, 6, "Confirm & Write")
+    # Phase 4: Confirm & Write
+    _print_phase(4, 7, "Confirm & Write")
     preview_config(
         answers,
         connectors=connector_results,
@@ -778,9 +795,17 @@ def run_interactive_wizard():
 
     config = generate_config(answers, connector_results=connector_results, semantic=semantic_answers, existing=existing)
     write_config(config)
+    # Seed default MCP access policies silently as part of writing config —
+    # not a visible phase. The "Restrict to metadata only?" prompt inside
+    # the helper is the only user-facing decision.
+    seed_access_policies()
 
-    # Phase 4: Populate
-    _print_phase(4, 6, "Populate")
+    # Phase 5: Claude Desktop
+    _print_phase(5, 7, "Claude Desktop")
+    mcp_configured = offer_setup_claude()
+
+    # Phase 6: Populate
+    _print_phase(6, 7, "Populate")
 
     # Truncate setup log before first orchestrator call
     setup_log = get_log_path()
@@ -794,6 +819,10 @@ def run_interactive_wizard():
     if chat_export_path:
         stages_desc.append("chat import")
     console.print(f"  This will run: {', '.join(stages_desc)}.")
+    if mcp_configured:
+        console.print(
+            "  [dim]Tip: restart Claude Desktop while indexing runs to load the MCP server.[/dim]"
+        )
 
     chat_result = {}
     if Confirm.ask("Index and analyze your data now?", default=True):
@@ -806,19 +835,15 @@ def run_interactive_wizard():
                 chat_result = import_chat_export(chat_export_path)
             except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
                 console.print(f"  [yellow]Chat import error: {e}[/yellow]")
+        # CSV import runs here — the orchestrator above creates the DB, so
+        # _offer_csv_import_wizard can open it and insert rows. Asking earlier
+        # (in Data Sources) would silently skip on fresh installs.
+        _offer_csv_import_wizard()
     else:
         console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
 
-    # CSV import step — between data indexing and access policies
-    _offer_csv_import_wizard()
-
-    # Phase 5: Connect
-    _print_phase(5, 6, "Connect")
-    seed_access_policies()
-    mcp_configured = offer_setup_claude()
-
-    # Phase 6: Summary
-    _print_phase(6, 6, "Summary")
+    # Phase 7: Summary
+    _print_phase(7, 7, "Summary")
     print_summary(
         chat_result=chat_result,
         mcp_configured=mcp_configured,
@@ -1032,17 +1057,71 @@ def _collect_directories_from_scratch() -> list[str]:
         console.print("  [red]At least one directory is required.[/red]")
 
 
+SAFARI_FDA_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+
+
+def _guide_safari_full_disk_access() -> None:
+    """Walk the user through granting Full Disk Access for Safari history.
+
+    Safari's History.db is protected by macOS's Full Disk Access permission.
+    Selecting Safari in the wizard does nothing on its own — the user must
+    add their terminal/app to Privacy & Security → Full Disk Access. The
+    caller fires this helper once after all browser selections are
+    collected, so the user finishes naming browsers before being walked
+    through the OS permission grant.
+    """
+    if sys.platform != "darwin":
+        return
+
+    console.print()
+    console.print(
+        "  [yellow]Safari history requires Full Disk Access.[/yellow] This is a one-time\n"
+        "  macOS permission grant. Without it, Safari history will return 0 rows."
+    )
+    console.print(
+        "  Open [bold]System Settings → Privacy & Security → Full Disk Access[/bold]\n"
+        "  and add the terminal or app you're running [bold]fp[/bold] from."
+    )
+
+    if Confirm.ask("  Open System Settings now?", default=True):
+        subprocess.run(["open", SAFARI_FDA_URL], check=False)
+        console.print(
+            "  [dim]Toggle Full Disk Access on for Terminal (or iTerm, VS Code, etc.).[/dim]"
+        )
+
+    if not Confirm.ask(
+        "  Press y once you've granted access (n to skip and continue without Safari history)",
+        default=False,
+    ):
+        console.print("  [dim]Skipping — Safari history will be empty until you grant access and re-run.[/dim]")
+        return
+
+    history_db = Path(os.path.expanduser("~/Library/Safari/History.db"))
+    try:
+        with history_db.open("rb") as f:
+            f.read(16)
+        console.print("  [green]✓[/green] Safari history is readable.")
+    except (PermissionError, FileNotFoundError, OSError, RuntimeError):
+        console.print(
+            "  [yellow]⚠[/yellow] Safari history still appears unreadable. Re-run [bold]fp setup[/bold]\n"
+            "  after granting Full Disk Access if browser results are empty."
+        )
+
+
 def _collect_browsers_from_scratch() -> list[str]:
-    """Collect browser selection interactively from scratch."""
-    browser_hints = {
-        "safari": "[dim](requires Full Disk Access)[/dim]",
-        "chrome": "[dim](no additional permissions needed)[/dim]",
-    }
+    """Collect browser selection, then fire FDA guidance once if Safari was chosen.
+
+    Firing FDA after the full per-browser loop keeps cause-and-effect grouped:
+    the user finishes naming all browsers they want, then deals with the
+    macOS permission grant once (rather than being interrupted between
+    browsers).
+    """
     browsers = []
     for b in get_available_browsers():
-        hint = browser_hints.get(b, "")
-        if Confirm.ask(f"  Include {b}? {hint}", default=True):
+        if Confirm.ask(f"  Include {b}?", default=True):
             browsers.append(b)
+    if "safari" in browsers:
+        _guide_safari_full_disk_access()
     return browsers
 
 
@@ -1091,24 +1170,35 @@ def collect_vectorization_answers(
     """
     existing_vec = (existing or {}).get("vectorization", {})
     existing_semantic = (existing or {}).get("semantic", {})
-    existing_snippets = (existing or {}).get("indexing", {}).get("content_snippets", False)
+    # Fresh installs default to ON so `fp search` returns content matches, not
+    # just filenames; reconfigure runs preserve the user's prior choice.
+    if existing is not None and "indexing" in existing and "content_snippets" in existing["indexing"]:
+        snippets_default = existing["indexing"]["content_snippets"]
+    else:
+        snippets_default = True
     file_types = existing_vec.get("file_types", list(DEFAULT_FILE_TYPES))
     existing_excludes = existing_vec.get("exclude_patterns", [])
 
     console.print("\n[bold]Content Indexing[/bold]")
     console.print(
-        "  By default, Footprinter indexes metadata only — filenames,\n"
-        "  timestamps, and structure. The options below let it read\n"
-        "  file content for richer search.\n"
+        "  By default (Tier 0), Footprinter indexes metadata only —\n"
+        "  filenames, paths, timestamps, structure. Nothing is read from\n"
+        "  inside your files. The options below opt in to reading and\n"
+        "  storing file content for richer search.\n"
     )
 
-    console.print("  [bold]Content snippets[/bold]")
+    console.print("  [bold]Content snippets (Tier 1)[/bold]")
     console.print(
-        "  Stores a short preview of file content for keyword search.\n"
-        "  Without this, search matches filenames and metadata only.\n"
-        "  [dim]Trade-off: Footprinter reads file content during indexing.[/dim]"
+        "  Reads each file during indexing and stores a short preview\n"
+        "  (~1000 chars) in Footprinter's local database, so keyword\n"
+        "  search matches file contents — not just filenames. Connector\n"
+        "  plugins (e.g. Gmail) use the same flag to store body previews.\n"
+        "  [bold]Local only[/bold]: previews are written to a local SQLite database\n"
+        "  on your machine. Nothing is uploaded or shared, and Claude only sees\n"
+        "  content when you grant explicit permission via fp mcp.\n"
+        "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]"
     )
-    content_snippets = Confirm.ask("  Enable file content snippets?", default=existing_snippets)
+    content_snippets = Confirm.ask("  Enable file content snippets?", default=snippets_default)
 
     console.print("\n  [bold]Semantic search[/bold]")
     console.print(
@@ -1185,15 +1275,42 @@ def _collect_vectorization_full(
     existing_excludes: list[str],
     existing_semantic: dict,
 ) -> dict:
-    """Full-mode vectorization: detailed file type editing and exclusion toggles."""
-    # Step 1: File type allowlist
+    """Full-mode vectorization: enable decision first, then file types and exclusions.
+
+    Asking the enable Confirm before file-type/exclusion configuration avoids
+    the cost-up-front-then-decline anti-pattern where the user configures an
+    allowlist, watches a directory scan, and reviews exclusions before being
+    asked whether they want semantic search at all.
+    """
+    file_default = existing_semantic.get("file_vectorization", False)
+    chat_default = existing_semantic.get("chat_vectorization", False)
+    file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
+    chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
+
+    if not file_vec and not chat_vec:
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": list(existing_excludes),
+        }
+
+    if not _check_semantic_deps():
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": list(existing_excludes),
+        }
+
+    # File type allowlist — only asked when semantic is being enabled
     console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
     keep_types = Confirm.ask("  Keep these file types?", default=True)
     if not keep_types:
         raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
         file_types = [t.strip() for t in raw.split(",") if t.strip()]
 
-    # Step 2: Scan and show results
+    # Scan and show results
     scan = _scan_directories_for_vectorization(directories, file_types)
 
     if scan["total"] > 0:
@@ -1223,31 +1340,9 @@ def _collect_vectorization_full(
                 if include and pattern not in exclude_patterns:
                     exclude_patterns.append(pattern)
 
-    # Step 3: Show before/after and enable decision
     if scan["total"] > 0:
         after = scan["total"] - sum(scan["junk_hits"].get(p, 0) for p in exclude_patterns)
         console.print(f"\n  Files to embed: [bold]{after}[/bold] (of {scan['total']} total)")
-
-    file_default = existing_semantic.get("file_vectorization", False)
-    chat_default = existing_semantic.get("chat_vectorization", False)
-    file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
-    chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
-
-    if not file_vec and not chat_vec:
-        return {
-            "file_vectorization": False,
-            "chat_vectorization": False,
-            "file_types": file_types,
-            "exclude_patterns": exclude_patterns,
-        }
-
-    if not _check_semantic_deps():
-        return {
-            "file_vectorization": False,
-            "chat_vectorization": False,
-            "file_types": file_types,
-            "exclude_patterns": exclude_patterns,
-        }
 
     return {
         "file_vectorization": file_vec,

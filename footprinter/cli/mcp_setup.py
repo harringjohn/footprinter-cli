@@ -275,6 +275,65 @@ def write_config(snippet: dict, config_path: Path = None, dry_run: bool = False)
     return True
 
 
+def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bool:
+    """Remove the footprinter entry from the Claude Desktop MCP config.
+
+    Mirrors :func:`write_config` — backs up the existing file before mutating.
+    Idempotent: missing file or missing entry both return True without error.
+
+    Args:
+        config_path: Override config path (default: auto-detected).
+        dry_run: If True, report intent without writing.
+
+    Returns:
+        True on success (including no-op cases — missing file, missing
+        ``mcpServers`` key, or no footprinter entry). False when the
+        platform is unsupported (no config path) or the config file
+        exists but cannot be parsed as JSON.
+    """
+    path = config_path or detect_config_path()
+
+    if path is None:
+        console.print("[yellow]Unsupported platform — cannot detect MCP config path.[/yellow]")
+        return False
+
+    if not path.exists():
+        console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
+        return True
+
+    try:
+        with open(path, "r") as f:
+            existing = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        console.print(f"[red]Cannot read existing config:[/red] {e}")
+        return False
+
+    # Hand-edited configs may have ``"mcpServers": null`` — coerce to {}.
+    servers = existing.get("mcpServers") or {}
+    if "footprinter" not in servers:
+        console.print(f"  [dim]No footprinter entry in {path}.[/dim]")
+        return True
+
+    if dry_run:
+        console.print(f"[dim]Would remove footprinter from:[/dim] {path}")
+        return True
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup = path.with_suffix(f".backup_{timestamp}.json")
+    shutil.copy2(path, backup)
+    console.print(f"  Backed up to [dim]{backup}[/dim]")
+
+    del servers["footprinter"]
+    existing["mcpServers"] = servers
+
+    with open(path, "w") as f:
+        json.dump(existing, f, indent=2)
+        f.write("\n")
+
+    console.print(f"  Removed footprinter from [bold]{path}[/bold]")
+    return True
+
+
 def print_client_paths():
     """Render a table of known MCP clients and their config locations."""
     table = Table(title="MCP Client Config Paths", show_header=True)

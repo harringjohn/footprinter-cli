@@ -216,11 +216,13 @@ ALL_CLI_MODULES = [
     "footprinter.cli.upsert",
     "footprinter.cli.delete",
     "footprinter.cli.connect",
+    "footprinter.cli.doctor",
     "footprinter.cli.ingest",
     "footprinter.cli.setup",
     "footprinter.cli.search_cmd",
     "footprinter.cli.status_cmd",
     "footprinter.cli.mcp_cmd",
+    "footprinter.cli.uninstall",
 ]
 
 

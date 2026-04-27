@@ -6,18 +6,62 @@
 
 Your work lives across a filesystem, a browser, an inbox, a chat history, and whatever other tools you reach for. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings *you* define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
 
+## Prerequisites
+
+- **Python 3.11 or newer.** Stock macOS ships with Python 3.9, which won't work — install a newer Python from [python.org](https://www.python.org/downloads/) (recommended) or via `brew install python@3.11`.
+- **macOS 13+** or **Linux**.
+- **Full Disk Access on macOS** for browser history indexing. Grant it to your terminal app under *System Settings → Privacy & Security → Full Disk Access*. `fp setup` will guide you through this when needed.
+
 ## Install
 
+The fastest path on a clean machine is the install script — it ensures Python 3.11+ is present and installs `footprinter-cli`:
+
 ```bash
-pip install footprinter-cli
+# Base install (CLI + MCP + HTTP API)
+curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install.sh | bash
+
+# Full install (adds semantic search + document parsing)
+curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install-full.sh | bash
 ```
 
-The base install includes the indexing pipeline, CLI, MCP server, HTTP API, and token encryption. Optional extras add more capabilities:
+If you prefer to manage the install yourself, use **pipx** (recommended) — modern macOS Python ships PEP 668 enabled, which blocks bare `pip install`:
 
 ```bash
-pip install footprinter-cli[full]       # All optional extras (semantic + parse)
-pip install footprinter-cli[semantic]   # Semantic search (ChromaDB + ONNX embeddings)
-pip install footprinter-cli[parse]      # PDF, Word, Excel, PowerPoint content extraction
+brew install pipx
+pipx ensurepath           # then restart your terminal
+pipx install footprinter-cli
+pipx install 'footprinter-cli[full]'   # with semantic + parse
+```
+
+Inside an existing venv, `pip` works as expected:
+
+```bash
+./venv/bin/pip install footprinter-cli
+./venv/bin/pip install 'footprinter-cli[full]'
+```
+
+The base install includes the indexing pipeline, CLI, MCP server, HTTP API, and token encryption. Optional extras add more:
+
+| Extra | What it adds |
+|-------|-------------|
+| `[semantic]` | Semantic search via ChromaDB + ONNX embeddings |
+| `[parse]` | PDF, Word, Excel, PowerPoint content extraction |
+| `[full]` | All optional extras (semantic + parse) |
+
+> **Privacy note:** The `[semantic]` extra installs ChromaDB. Footprinter initializes
+> the ChromaDB client with `anonymized_telemetry=False`, so no telemetry is sent
+> regardless of which version pip resolves. ChromaDB also removed product telemetry
+> entirely in version 1.5.4. See
+> [Chroma OSS overview](https://docs.trychroma.com/docs/overview/oss) for details.
+
+### Uninstall
+
+`fp uninstall` cleans up the MCP entry and user data first, then run the appropriate package uninstall:
+
+```bash
+fp uninstall                                    # remove MCP entry + user data
+pipx uninstall footprinter-cli                  # if you installed via pipx
+./venv/bin/pip uninstall footprinter-cli        # if you installed inside a venv
 ```
 
 ## Quick Start
@@ -29,15 +73,21 @@ fp status    # See what's indexed
 fp search "meeting notes"   # Find things
 ```
 
-**macOS note:** Browser history indexing requires Full Disk Access for your terminal app (System Settings > Privacy & Security > Full Disk Access).
+A few first-run notes:
+
+- The first ingest is implicitly full; subsequent runs are incremental. If you change exclusions or add directories after the first run, re-run with `fp ingest --full` so previously skipped files get picked up.
+- With `[semantic]` or `[full]`, the **first ingest downloads ~80MB** of ONNX embedding model weights. It's a one-time cost — subsequent ingests are fast.
+- Keep the directories you want indexed **outside `~/Downloads`** — the default exclusion list skips it.
 
 ## Connect to Claude Desktop
 
 Footprinter includes an MCP server that gives Claude Desktop (or any MCP client) structured access to your indexed data:
 
 ```bash
-fp setup mcp    # Configure MCP for Claude Desktop
+fp setup mcp --claude    # Configure MCP for Claude Desktop
 ```
+
+After running this, **fully quit Claude Desktop (Cmd+Q) and relaunch** before the Footprinter tools appear in the conversation tools list. A simple window close isn't enough — the app keeps running in the menu bar.
 
 Once configured, Claude can search your files, browse projects, and find related conversations — through natural language.
 
@@ -51,6 +101,8 @@ Once configured, Claude can search your files, browse projects, and find related
 | **Email** | Subject, sender, recipients, body, timestamps — ingested via [connector plugins](#connectors) |
 | **Documents** | PDF, Word, Excel, PowerPoint content (with `[parse]` extra) |
 | **Semantic embeddings** | Conceptual similarity across all sources (with `[semantic]` extra) |
+
+What lands in the database — and when — is controlled by the **content storage tier** you opt into. By default, Footprinter only indexes metadata; it does not read your file content until you explicitly enable it. See [Content Storage](https://github.com/swellcitygroup/footprinter/blob/main/reference/content-storage.md) for the full breakdown.
 
 Additional sources are available through [connector plugins](#connectors).
 
@@ -72,6 +124,8 @@ All commands use the `fp` entry point.
 | `fp data` | Export data, generate templates, or import metadata corrections |
 | `fp delete` | Soft-delete a record |
 | `fp vectorize` | Manage per-record vectorization control |
+| `fp doctor` | Post-install health check (Python version, install location, FDA, MCP wiring) |
+| `fp uninstall` | Remove Footprinter — MCP entry, user data, package |
 
 Run `fp <command> --help` for full usage.
 
@@ -93,23 +147,10 @@ Single-process CLI with optional MCP server. SQLite database. No containers, no 
 
 Sources are scanned into SQLite with bidirectional links connecting local files to remote backups via content hash matching. Embeddings are generated at ingest time for semantic search. The MCP server exposes indexed data with two-layer access control (visibility + permissions) — you decide what agents can see.
 
-## Optional Extras
-
-| Extra | What it adds |
-|-------|-------------|
-| `[semantic]` | Semantic search via ChromaDB + ONNX embeddings |
-| `[parse]` | PDF, Word, Excel, PowerPoint content extraction |
-| `[full]` | All optional extras (semantic + parse) |
-
-> **Privacy note:** The `[semantic]` extra installs ChromaDB, which bundles PostHog analytics.
-> ChromaDB collects anonymous usage telemetry by default. Set `ANONYMIZED_TELEMETRY=False`
-> in your environment to disable it. See
-> [ChromaDB telemetry docs](https://docs.trychroma.com/docs/overview/telemetry) for details.
-
 ## Requirements
 
 - Python 3.11+
-- macOS or Linux
+- macOS 13+ or Linux
 - Full Disk Access on macOS (for browser history)
 
 ## Documentation
@@ -117,6 +158,7 @@ Sources are scanned into SQLite with bidirectional links connecting local files 
 - [Interfaces](https://github.com/swellcitygroup/footprinter/blob/main/reference/interfaces.md) — CLI commands, MCP tools, Python API
 - [Data Model](https://github.com/swellcitygroup/footprinter/blob/main/reference/data-model.md) — database schema
 - [Pipeline](https://github.com/swellcitygroup/footprinter/blob/main/reference/pipeline.md) — indexing stages and configuration
+- [Content Storage](https://github.com/swellcitygroup/footprinter/blob/main/reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
 - [Access Control](https://github.com/swellcitygroup/footprinter/blob/main/reference/mcp-access-control.md) — MCP security model
 
 ## Contributing
@@ -137,7 +179,7 @@ python3 -m venv venv
 ### Running tests
 
 ```bash
-pytest tests/ -v --tb=short
+./venv/bin/pytest tests/ -v --tb=short
 ```
 
 ### Code style

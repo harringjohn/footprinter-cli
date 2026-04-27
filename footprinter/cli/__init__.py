@@ -63,6 +63,12 @@ def main(argv=None) -> None:
             "  fp api                     Start the HTTP API server\n"
             "  fp mcp check ~/Work/file   Check access resolution for a path\n"
             "\n"
+            "diagnostics:\n"
+            "  fp doctor                  Check installation health\n"
+            "\n"
+            "cleanup:\n"
+            "  fp uninstall               Remove Footprinter (MCP entry, data, package)\n"
+            "\n"
             "tip: use 'fp <command> --help' for details on any command."
         ),
         formatter_class=FORMATTER,
@@ -80,11 +86,13 @@ def main(argv=None) -> None:
         connect,
         data,
         delete,
+        doctor,
         ingest,
         mcp_cmd,
         search_cmd,
         setup,
         status_cmd,
+        uninstall,
         upsert,
         vectorize_cmd,
         view,
@@ -103,6 +111,8 @@ def main(argv=None) -> None:
         data,
         delete,
         vectorize_cmd,
+        uninstall,
+        doctor,
     ]:
         mod.register(subparsers)
 

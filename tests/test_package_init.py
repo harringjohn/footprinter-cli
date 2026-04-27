@@ -22,7 +22,10 @@ def test_version_matches_pyproject():
         pyproject = tomllib.load(f)
 
     expected = pyproject["project"]["version"]
-    assert footprinter.__version__ == expected
+    assert footprinter.__version__ == expected, (
+        f"Installed {footprinter.__version__!r} != pyproject {expected!r}. "
+        f"Run: ./venv/bin/pip install -e ."
+    )
 
 
 def test_version_is_nonempty():

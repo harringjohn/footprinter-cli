@@ -23,6 +23,7 @@ ALL_SUBCOMMANDS = [
     "data",
     "delete",
     "vectorize",
+    "uninstall",
 ]
 
 

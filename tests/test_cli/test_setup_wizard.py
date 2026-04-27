@@ -23,6 +23,7 @@ _requires_darwin = pytest.mark.skipif(
 )
 
 from footprinter.cli.setup import (
+    SAFARI_FDA_URL,
     _check_semantic_deps,
     check_existing_config,
     collect_answers,
@@ -850,21 +851,27 @@ class TestStepGuidance:
         assert "scan" in printed_lower or "index" in printed_lower
 
     @_requires_darwin
+    @patch("footprinter.cli.setup.subprocess.run")
     @patch("footprinter.cli.setup.os.path.isdir")
     @patch("footprinter.cli.setup.os.path.expanduser", side_effect=lambda p: p)
     @patch("footprinter.cli.setup.Prompt.ask")
     @patch("footprinter.cli.setup.Confirm.ask")
     @patch("footprinter.cli.setup.console")
     def test_browser_step_mentions_full_disk_access(
-        self, mock_console, mock_confirm, mock_prompt, mock_expanduser, mock_isdir
+        self, mock_console, mock_confirm, mock_prompt, mock_expanduser, mock_isdir, mock_subprocess
     ):
-        """Browser step should mention Full Disk Access in the Safari prompt (macOS-only)."""
+        """Selecting Safari should surface a Full Disk Access warning to the user (macOS-only).
+
+        FDA messaging moved from an inline prompt label to active guidance
+        that fires after Safari is selected.
+        """
         mock_isdir.side_effect = lambda p: p == "/tmp"
         mock_prompt.side_effect = ["/tmp", ""]
-        mock_confirm.side_effect = [False, False]
+        # safari=yes triggers helper (open=yes, granted=yes), chrome=no
+        mock_confirm.side_effect = [True, True, True, False]
         collect_answers()
-        confirm_calls = " ".join(str(c) for c in mock_confirm.call_args_list)
-        assert "Full Disk Access" in confirm_calls
+        printed = _extract_printed_text(mock_console)
+        assert "full disk access" in printed.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +885,8 @@ class TestBrowserTDAMessaging:
 
         confirm_responses: list of bools for Confirm.ask calls.
         First calls handle optional dirs (none triggered here), rest handle browsers.
+        When safari=True, the FDA helper consumes 2 additional
+        Confirm.ask calls (open settings, granted).
         """
         with (
             patch("footprinter.cli.setup.sys") as mock_sys,
@@ -886,6 +895,7 @@ class TestBrowserTDAMessaging:
             patch("footprinter.cli.setup.Prompt.ask") as mock_prompt,
             patch("footprinter.cli.setup.Confirm.ask") as mock_confirm,
             patch("footprinter.cli.setup.console") as mock_console,
+            patch("footprinter.cli.setup.subprocess.run"),
         ):
             mock_sys.platform = "darwin"
             mock_isdir.side_effect = lambda p: p == "/tmp"
@@ -897,16 +907,17 @@ class TestBrowserTDAMessaging:
             return printed, confirm_calls
 
     def test_safari_prompt_shows_tda_requirement(self):
-        """Safari's Confirm.ask prompt should mention Full Disk Access."""
-        _, confirm_calls = self._run_collect_answers([False, False])
-        safari_call = confirm_calls[0]  # safari is first in get_available_browsers()
-        assert "full disk access" in safari_call.lower()
+        """Selecting Safari should surface a Full Disk Access warning via active guidance."""
+        # safari=yes triggers helper (open=yes, granted=yes), chrome=no
+        printed, _ = self._run_collect_answers([True, True, True, False])
+        assert "full disk access" in printed.lower()
 
     def test_chrome_prompt_shows_no_tda(self):
-        """Chrome's Confirm.ask prompt should say no additional permissions needed."""
+        """Chrome's prompt should not carry permission noise (no FDA, no permissions hint)."""
         _, confirm_calls = self._run_collect_answers([False, False])
         chrome_call = confirm_calls[1]  # chrome is second in get_available_browsers()
-        assert "no additional permissions" in chrome_call.lower()
+        assert "full disk access" not in chrome_call.lower()
+        assert "permission" not in chrome_call.lower()
 
     def test_browser_header_no_blanket_tda(self):
         """Browser section header should NOT contain a blanket TDA requirement."""
@@ -922,11 +933,13 @@ class TestBrowserTDAMessaging:
             patch("footprinter.cli.setup.Prompt.ask") as mock_prompt,
             patch("footprinter.cli.setup.Confirm.ask") as mock_confirm,
             patch("footprinter.cli.setup.console"),
+            patch("footprinter.cli.setup.subprocess.run"),
         ):
             mock_sys.platform = "darwin"
             mock_isdir.side_effect = lambda p: p == "/tmp"
             mock_prompt.side_effect = ["/tmp", ""]
-            mock_confirm.side_effect = [True] * 2  # safari + chrome
+            # safari yes triggers helper (open=yes, granted=yes), then chrome yes
+            mock_confirm.side_effect = [True, True, True, True]
             answers = collect_answers()
             assert answers["browsers"] == ["safari", "chrome"]
 
@@ -1174,18 +1187,26 @@ from tests.conftest import run_wizard_mocked
 class TestPhaseProgression:
     """Verify step indicators appear at each phase transition."""
 
-    def test_all_six_phases_have_step_indicators(self):
-        """run_interactive_wizard() should print 'Step N of 6' for N=1..6."""
+    def test_all_seven_phases_have_step_indicators(self):
+        """run_interactive_wizard() should print 'Step N of 7' for N=1..7."""
         mocks = run_wizard_mocked()
         printed = _extract_printed_text(mocks["console"])
-        for n in range(1, 7):
-            assert f"Step {n} of 6" in printed, f"Missing 'Step {n} of 6'"
+        for n in range(1, 8):
+            assert f"Step {n} of 7" in printed, f"Missing 'Step {n} of 7'"
 
     def test_phase_names_appear(self):
         """Each phase indicator should include a descriptive name."""
         mocks = run_wizard_mocked()
         printed = _extract_printed_text(mocks["console"])
-        for name in ["Welcome", "Data Sources", "Confirm", "Populate", "Connect", "Summary"]:
+        for name in [
+            "Welcome",
+            "Data Sources",
+            "Content",
+            "Confirm",
+            "Claude Desktop",
+            "Populate",
+            "Summary",
+        ]:
             assert name in printed, f"Missing phase name '{name}'"
 
     def test_organization_phase_removed(self):
@@ -1193,6 +1214,79 @@ class TestPhaseProgression:
         mocks = run_wizard_mocked()
         printed = _extract_printed_text(mocks["console"])
         assert "Organization" not in printed, "Organization phase should be removed"
+
+    def test_visible_connect_phase_removed(self):
+        """No 'Step N of 7 — Connect' rule — access policies seed silently in Confirm & Write."""
+        mocks = run_wizard_mocked()
+        printed = _extract_printed_text(mocks["console"])
+        # The visible "Connect" phase rule should not be emitted.
+        # ("Claude Desktop" replaces it as a separate phase, so simple "Connect"
+        # in a Step rule is the marker.)
+        for n in range(1, 8):
+            assert f"Step {n} of 7 — [bold]Connect[/bold]" not in printed
+            assert f"Step {n} of 7 — Connect" not in printed
+
+
+# ---------------------------------------------------------------------------
+# TestPhaseOrdering — major calls happen in the right phase order
+# ---------------------------------------------------------------------------
+class TestPhaseOrdering:
+    """Verify the new 7-phase ordering: data sources -> content -> write ->
+    Claude Desktop -> populate."""
+
+    def test_claude_desktop_runs_before_populate(self):
+        """offer_setup_claude must be called before run_orchestrator so the user
+        can restart Claude Desktop while indexing finishes."""
+        order = []
+        offer_mock = MagicMock(side_effect=lambda *a, **kw: order.append("claude") or False)
+        orch_mock = MagicMock(side_effect=lambda *a, **kw: order.append("populate"))
+        run_wizard_mocked(offer_setup_claude=offer_mock, run_orchestrator=orch_mock)
+        assert order == ["claude", "populate"], (
+            f"Expected Claude Desktop before Populate, got: {order}"
+        )
+
+    def test_csv_import_runs_after_orchestrator(self):
+        """_offer_csv_import_wizard runs after run_orchestrator, when the DB exists.
+
+        Asking earlier (in Data Sources) would silently skip on fresh installs
+        because the SQLite DB isn't created until the orchestrator runs.
+        """
+        order = []
+        csv_mock = MagicMock(side_effect=lambda *a, **kw: order.append("csv"))
+        orch_mock = MagicMock(side_effect=lambda *a, **kw: order.append("populate"))
+        run_wizard_mocked(_offer_csv_import_wizard=csv_mock, run_orchestrator=orch_mock)
+        assert "csv" in order and "populate" in order
+        assert order.index("populate") < order.index("csv"), (
+            f"CSV import must run after run_orchestrator (DB must exist); got {order}"
+        )
+
+    def test_access_policies_seeded_silently_in_confirm_write(self):
+        """seed_access_policies runs after write_config and before offer_setup_claude
+        — silently inside Confirm & Write, not as a separate visible phase."""
+        order = []
+        write_mock = MagicMock(side_effect=lambda *a, **kw: order.append("write"))
+        seed_mock = MagicMock(side_effect=lambda *a, **kw: order.append("seed"))
+        claude_mock = MagicMock(side_effect=lambda *a, **kw: order.append("claude") or False)
+        run_wizard_mocked(
+            write_config=write_mock,
+            seed_access_policies=seed_mock,
+            offer_setup_claude=claude_mock,
+        )
+        assert order == ["write", "seed", "claude"], (
+            f"Expected write -> seed -> claude, got: {order}"
+        )
+
+    def test_content_phase_runs_after_data_sources(self):
+        """collect_vectorization_answers runs after collect_chat_export_path so the
+        Content & Search phase comes after Data Sources."""
+        order = []
+        chat_mock = MagicMock(side_effect=lambda *a, **kw: order.append("chat") or None)
+        vec_mock = MagicMock(
+            side_effect=lambda *a, **kw: order.append("vec")
+            or {"file_vectorization": False, "chat_vectorization": False, "content_snippets": False}
+        )
+        run_wizard_mocked(collect_chat_export_path=chat_mock, collect_vectorization_answers=vec_mock)
+        assert order == ["chat", "vec"], f"Expected chat -> vec, got: {order}"
 
 
 # ---------------------------------------------------------------------------
@@ -1430,6 +1524,24 @@ class TestPresetProfiles:
         assert result is None
         printed = " ".join(str(call.args[0]) for call in mock_console.print.call_args_list if call.args)
         assert "No common directories found" in printed
+
+    def test_quick_preset_announces_skipped_steps(self):
+        """Quick mode tells the user what it skips so they aren't surprised
+        later when browser/chat/CSV results are empty."""
+        from footprinter.cli.setup import _choose_preset
+
+        mock_console = MagicMock()
+        with (
+            patch("footprinter.cli.setup.Prompt.ask", return_value="quick"),
+            patch("footprinter.cli.setup.os.path.isdir", return_value=True),
+            patch("footprinter.cli.setup.console", mock_console),
+        ):
+            _choose_preset()
+        printed = _extract_printed_text(mock_console).lower()
+        # Each major skipped concern named explicitly
+        assert "browser" in printed, "Quick mode should name browsers as a skipped step"
+        assert "chat" in printed, "Quick mode should name chat history as a skipped step"
+        assert "csv" in printed, "Quick mode should name CSV import as a skipped step"
 
     def test_wizard_skips_collect_answers_for_quick_preset(self):
         """Full wizard run with quick preset should not call collect_answers."""
@@ -2537,10 +2649,11 @@ class TestCollectVectorizationFull:
         d.mkdir()
         (d / "code.py").write_text("print()")
 
-        # Confirm.ask calls: content snippets? No, keep defaults? No,
-        # accept exclusions? Yes, enable files? Yes, enable chats? Yes
+        # Confirm.ask order (enable-first):
+        # snippets? No, enable files? Yes, enable chats? Yes,
+        # keep defaults? No, accept exclusions? Yes
         # Prompt.ask: custom extensions
-        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, False, True, True, True]):
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, True, True, False, True]):
             with patch("footprinter.cli.setup.Prompt.ask", return_value=".py, .rs"):
                 result = collect_vectorization_answers(directories=[str(d)])
 
@@ -2561,18 +2674,185 @@ class TestCollectVectorizationFull:
         junk2.mkdir()
         (junk2 / "cache.txt").write_text("junk2")
 
-        # Confirm.ask: content snippets? No, keep defaults? Yes,
-        # accept bulk exclusions? No,
-        # then individual toggles (True for first, False for second),
-        # enable files? Yes, enable chats? Yes
+        # Confirm.ask order (enable-first):
+        # snippets? No, enable files? Yes, enable chats? Yes,
+        # keep defaults? Yes, accept bulk exclusions? No,
+        # then individual toggles (True for first, False for second)
         with patch(
             "footprinter.cli.setup.Confirm.ask",
-            side_effect=[False, True, False, True, False, True, True],
+            side_effect=[False, True, True, True, False, True, False],
         ):
             result = collect_vectorization_answers(directories=[str(d)])
 
         # Should have some exclusions but not all
         assert isinstance(result["exclude_patterns"], list)
+
+
+# ---------------------------------------------------------------------------
+# TestContentSnippetsDefault — flip default to ON with security language
+# ---------------------------------------------------------------------------
+class TestContentSnippetsDefault:
+    """Content snippets prompt should default to ON for fresh installs and
+    explain the local-only security posture."""
+
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    def test_content_snippets_default_on_fresh_install(self, mock_importable, mock_console, tmp_path):
+        """Fresh install: snippet Confirm.ask is invoked with default=True."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        seen_defaults = []
+
+        def capture(prompt, **kwargs):
+            if "snippet" in prompt.lower():
+                seen_defaults.append(kwargs.get("default"))
+            return False  # decline everything else to keep flow short
+
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=capture):
+            collect_vectorization_answers(directories=[str(d)])
+
+        assert seen_defaults == [True], (
+            f"Expected snippet prompt with default=True on fresh install; got {seen_defaults}"
+        )
+
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    def test_content_snippets_existing_choice_preserved(self, mock_importable, mock_console, tmp_path):
+        """Reconfigure: existing choice (False) is preserved as the default."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        seen_defaults = []
+        existing = {"indexing": {"content_snippets": False}}
+
+        def capture(prompt, **kwargs):
+            if "snippet" in prompt.lower():
+                seen_defaults.append(kwargs.get("default"))
+            return False
+
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=capture):
+            collect_vectorization_answers(directories=[str(d)], existing=existing)
+
+        assert seen_defaults == [False], (
+            f"Expected snippet prompt with default=False (existing choice); got {seen_defaults}"
+        )
+
+    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
+    def test_snippets_prompt_uses_local_only_security_language(self, mock_confirm, mock_importable, tmp_path):
+        """The snippet prompt should explain content stays local on the user's machine."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        mock_console = MagicMock()
+        with patch("footprinter.cli.setup.console", mock_console):
+            collect_vectorization_answers(directories=[str(d)])
+
+        printed = _extract_printed_text(mock_console).lower()
+        assert "local" in printed, "Snippets language should mention 'local'"
+        assert "your machine" in printed or "on your" in printed, (
+            "Snippets language should reassure the data stays on the user's machine"
+        )
+        # Reassurance that nothing escapes without permission
+        assert (
+            "never shared" in printed
+            or "never exposed" in printed
+            or "explicit permission" in printed
+            or "without your permission" in printed
+        ), "Snippets language should state nothing leaves without explicit permission"
+        assert "stores" in printed or "stored copy" in printed or "preview" in printed, (
+            "Snippets language should disclose that file content is stored"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestSemanticEnableFirst — full mode asks enable before file types/exclusions
+# ---------------------------------------------------------------------------
+class TestSemanticEnableFirst:
+    """Full-mode semantic search must ask the enable decision before any
+    file-type or exclusion configuration."""
+
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    def test_full_mode_asks_enable_before_file_types_when_declined(
+        self, mock_importable, mock_console, tmp_path
+    ):
+        """Decline path: only the enable Confirm runs — no file-type or exclusion prompts."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        (d / "doc.md").write_text("content")
+        # Add a junk hit so we can prove exclusion prompts are skipped on decline
+        junk = d / ".claude" / "debug"
+        junk.mkdir(parents=True)
+        (junk / "log.txt").write_text("junk")
+
+        prompts = []
+
+        def capture(prompt, **kwargs):
+            prompts.append(prompt)
+            # snippets=No, enable files=No, enable chats=No
+            return False
+
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=capture):
+            with patch("footprinter.cli.setup.Prompt.ask") as mock_prompt:
+                collect_vectorization_answers(directories=[str(d)])
+                mock_prompt.assert_not_called()
+
+        joined = " | ".join(prompts).lower()
+        # Snippets prompt + 2 enable prompts + nothing else.
+        # Most importantly, no file-type or exclusion prompts after decline.
+        assert "file types" not in joined, f"file-type prompt shown after decline: {prompts}"
+        assert "exclude" not in joined and "exclusions" not in joined, (
+            f"exclusion prompt shown after decline: {prompts}"
+        )
+
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    def test_full_mode_asks_details_when_enabled(
+        self, mock_importable, mock_console, tmp_path
+    ):
+        """Enable path: file-type and exclusion prompts DO appear."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        (d / "doc.md").write_text("content")
+        junk = d / ".claude" / "debug"
+        junk.mkdir(parents=True)
+        (junk / "log.txt").write_text("junk")
+
+        prompts = []
+
+        def capture(prompt, **kwargs):
+            prompts.append(prompt)
+            # snippets=No, enable files=Yes, enable chats=Yes,
+            # keep file types=Yes, accept bulk exclusions=Yes
+            return prompt.lower().startswith(("  enable", "  keep", "  accept"))
+
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=capture):
+            collect_vectorization_answers(directories=[str(d)])
+
+        joined = " | ".join(prompts).lower()
+        assert "enable semantic search for files" in joined
+        assert "enable semantic search for chats" in joined
+        assert "file types" in joined or "keep these file types" in joined
+        # Find positions to verify enable came first
+        first_enable = next(
+            (i for i, p in enumerate(prompts) if "enable semantic search for files" in p.lower()), -1
+        )
+        first_filetypes = next(
+            (i for i, p in enumerate(prompts) if "file types" in p.lower() or "keep these file types" in p.lower()),
+            -1,
+        )
+        assert first_enable < first_filetypes, (
+            f"enable prompt ({first_enable}) must come before file-types prompt ({first_filetypes}); got {prompts}"
+        )
 
 
 class TestCollectVectorizationExisting:
@@ -2911,6 +3191,209 @@ class TestOrchestratorContaminationGuard:
             assert hasattr(setup_module, key), (
                 f"Mock target '{key}' in run_wizard_mocked() does not exist "
                 f"in footprinter.cli.setup — stale patch target?"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestSafariFullDiskAccessGuidance
+# ---------------------------------------------------------------------------
+@_requires_darwin
+class TestFDATimingAfterAllBrowsers:
+    """FDA guidance must fire once after all browser selections are collected,
+    not mid-loop between Safari and Chrome confirmations."""
+
+    @patch("footprinter.cli.setup._guide_safari_full_disk_access")
+    @patch("footprinter.cli.setup.get_available_browsers", return_value=["safari", "chrome"])
+    def test_fda_fires_once_after_all_browsers_selected(self, mock_browsers, mock_guide):
+        """FDA helper runs after the final per-browser Confirm.ask, not between them."""
+        from footprinter.cli.setup import _collect_browsers_from_scratch
+
+        order = []
+
+        def confirm_recorder(prompt, **kwargs):
+            order.append(("confirm", prompt))
+            return True
+
+        def guide_recorder(*args, **kwargs):
+            order.append(("guide", "fda"))
+
+        mock_guide.side_effect = guide_recorder
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=confirm_recorder):
+            result = _collect_browsers_from_scratch()
+
+        assert "safari" in result and "chrome" in result
+        # Exactly one FDA invocation
+        guide_calls = [step for step in order if step[0] == "guide"]
+        assert len(guide_calls) == 1, f"FDA helper should fire exactly once; got {guide_calls}"
+        # FDA must come after the LAST browser confirm (no inline mid-loop call)
+        last_confirm_idx = max(i for i, step in enumerate(order) if step[0] == "confirm")
+        guide_idx = next(i for i, step in enumerate(order) if step[0] == "guide")
+        assert guide_idx > last_confirm_idx, (
+            f"FDA must fire after all browser confirms; got order {order}"
+        )
+
+    @patch("footprinter.cli.setup._guide_safari_full_disk_access")
+    @patch("footprinter.cli.setup.get_available_browsers", return_value=["safari", "chrome"])
+    @patch("footprinter.cli.setup.Confirm.ask")
+    def test_fda_not_called_when_safari_declined(self, mock_confirm, mock_browsers, mock_guide):
+        """Safari declined → FDA helper is not called even if other browsers selected."""
+        from footprinter.cli.setup import _collect_browsers_from_scratch
+
+        # safari? -> No, chrome? -> Yes
+        mock_confirm.side_effect = [False, True]
+        result = _collect_browsers_from_scratch()
+        assert "safari" not in result
+        assert "chrome" in result
+        mock_guide.assert_not_called()
+
+
+@_requires_darwin
+class TestSafariFullDiskAccessGuidance:
+    """Tests for _guide_safari_full_disk_access() and its integration into
+    _collect_browsers_from_scratch().
+
+    When the user says yes to Safari, the wizard must pause,
+    explain the macOS Full Disk Access requirement, offer to open System
+    Settings, and verify access — instead of just showing an inline hint.
+    """
+
+    @patch("footprinter.cli.setup._guide_safari_full_disk_access")
+    @patch("footprinter.cli.setup.get_available_browsers", return_value=["safari", "chrome"])
+    @patch("footprinter.cli.setup.Confirm.ask")
+    def test_safari_yes_triggers_guidance(self, mock_confirm, mock_browsers, mock_guide):
+        """Selecting Safari should invoke the FDA guidance helper exactly once."""
+        from footprinter.cli.setup import _collect_browsers_from_scratch
+
+        # Confirm.ask order: include safari? -> yes, include chrome? -> no
+        mock_confirm.side_effect = [True, False]
+        result = _collect_browsers_from_scratch()
+        assert "safari" in result
+        assert "chrome" not in result
+        mock_guide.assert_called_once()
+
+    @patch("footprinter.cli.setup._guide_safari_full_disk_access")
+    @patch("footprinter.cli.setup.get_available_browsers", return_value=["safari", "chrome"])
+    @patch("footprinter.cli.setup.Confirm.ask")
+    def test_safari_no_skips_guidance(self, mock_confirm, mock_browsers, mock_guide):
+        """Declining Safari must not call the FDA guidance helper."""
+        from footprinter.cli.setup import _collect_browsers_from_scratch
+
+        # Confirm.ask order: include safari? -> no, include chrome? -> yes
+        mock_confirm.side_effect = [False, True]
+        result = _collect_browsers_from_scratch()
+        assert "safari" not in result
+        assert "chrome" in result
+        mock_guide.assert_not_called()
+
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.sys.platform", "darwin")
+    def test_guidance_offers_to_open_system_settings(
+        self, mock_console, mock_confirm, mock_subprocess
+    ):
+        """When user opts in, helper must shell out to `open` with the FDA URL."""
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        # Open settings? -> yes; Granted? -> yes (skip verify branch via no file)
+        mock_confirm.side_effect = [True, True]
+        with patch("footprinter.cli.setup.Path") as mock_path:
+            # Make verification raise FileNotFoundError so we don't depend on real DB
+            mock_path.return_value.open.side_effect = FileNotFoundError()
+            _guide_safari_full_disk_access()
+
+        # subprocess.run called with `open` and the FDA URL
+        run_calls = mock_subprocess.call_args_list
+        assert any(
+            "open" in (call.args[0] if call.args else [])
+            and SAFARI_FDA_URL in (call.args[0] if call.args else [])
+            for call in run_calls
+        ), f"Expected subprocess.run with `open {SAFARI_FDA_URL}`, got {run_calls}"
+
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.sys.platform", "darwin")
+    def test_guidance_skip_open_settings(
+        self, mock_console, mock_confirm, mock_subprocess
+    ):
+        """Declining the open-settings prompt must not invoke `open`."""
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        # Open settings? -> no; Granted? -> no (user skips entirely)
+        mock_confirm.side_effect = [False, False]
+        _guide_safari_full_disk_access()
+
+        for call in mock_subprocess.call_args_list:
+            cmd = call.args[0] if call.args else []
+            assert SAFARI_FDA_URL not in cmd, (
+                f"subprocess.run should not have been called with `open {SAFARI_FDA_URL}`"
+            )
+
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.sys.platform", "darwin")
+    def test_guidance_verifies_safari_history_db_when_readable(
+        self, mock_console, mock_confirm, mock_subprocess, tmp_path
+    ):
+        """When History.db is readable, helper prints a success line."""
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        fake_db = tmp_path / "History.db"
+        fake_db.write_bytes(b"SQLite format 3\x00" + b"\x00" * 100)
+
+        # Open settings? -> no; Granted? -> yes (proceed to verify)
+        mock_confirm.side_effect = [False, True]
+        with patch("footprinter.cli.setup.Path") as mock_path_cls:
+            mock_path_cls.return_value = fake_db
+            _guide_safari_full_disk_access()
+
+        printed = _extract_printed_text(mock_console)
+        assert "readable" in printed.lower() or "✓" in printed or "success" in printed.lower(), (
+            f"Expected a readable/✓/success confirmation line, printed: {printed!r}"
+        )
+
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.sys.platform", "darwin")
+    def test_guidance_warns_when_safari_history_db_unreadable(
+        self, mock_console, mock_confirm, mock_subprocess
+    ):
+        """When read raises PermissionError, helper warns but does not raise."""
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        # Open settings? -> no; Granted? -> yes (proceed to verify)
+        mock_confirm.side_effect = [False, True]
+        with patch("footprinter.cli.setup.Path") as mock_path_cls:
+            fake_path = MagicMock()
+            fake_path.open.side_effect = PermissionError("Operation not permitted")
+            mock_path_cls.return_value = fake_path
+            _guide_safari_full_disk_access()  # must not raise
+
+        printed = _extract_printed_text(mock_console).lower()
+        assert any(token in printed for token in ("denied", "permission", "not readable", "still")), (
+            f"Expected a permission/denied/not-readable warning, printed: {printed!r}"
+        )
+
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.sys.platform", "linux")
+    def test_guidance_no_op_on_non_macos(
+        self, mock_console, mock_confirm, mock_subprocess
+    ):
+        """On non-macOS the helper must return immediately — no prompts, no `open`."""
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        _guide_safari_full_disk_access()
+
+        mock_confirm.assert_not_called()
+        for call in mock_subprocess.call_args_list:
+            cmd = call.args[0] if call.args else []
+            assert SAFARI_FDA_URL not in cmd, (
+                "subprocess.run should not be invoked with the FDA URL on non-macOS"
             )
 
 
