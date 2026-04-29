@@ -80,7 +80,7 @@ class FileScanner:
 
         return patterns
 
-    def should_exclude(self, file_path: str) -> bool:
+    def should_exclude(self, file_path: str, active_always: Optional[List[re.Pattern]] = None) -> bool:
         """
         Check if file should be excluded based on patterns.
 
@@ -91,12 +91,19 @@ class FileScanner:
         - always: Regeneratable dependencies (node_modules, venv, .git internals)
         - sensitive: Credentials and keys (.aws, .ssh, .kube)
 
-        REMOVED: client_hidden exclusions - hidden files are now indexed with
-        status='hidden' and filtered in the Web UI, not at scan time.
+        Args:
+            file_path: Absolute path to evaluate.
+            active_always: Optional override list of always-patterns. When the
+                caller is scanning an explicitly configured root, patterns whose
+                only purpose was to skip that area at home-scan time are filtered
+                out. Sensitive patterns are never overridable — credentials must
+                never be indexed regardless of how a directory was configured.
         """
+        always_patterns = self.always_exclusions if active_always is None else active_always
+
         # Check 'always' exclusions (node_modules, venv, .git internals, etc.)
         # These are regeneratable dependencies and system noise
-        for pattern in self.always_exclusions:
+        for pattern in always_patterns:
             if pattern.search(file_path):
                 logger.debug(f"Excluding {file_path} (always pattern)")
                 return True
@@ -172,6 +179,22 @@ class FileScanner:
             logger.error(f"Path is not a directory: {directory_path}")
             return
 
+        # Explicitly configuring a directory opts in: drop any always-patterns
+        # that would exclude every file under this root (e.g. `^~/Downloads/.*`
+        # should not silently zero out a configured `~/Downloads/sample-data/`).
+        # Probe with a synthetic descendant so we drop only patterns that match
+        # arbitrary contents — not patterns that happen to share a substring
+        # with the root path. Sensitive patterns are never dropped.
+        scan_root_str = str(directory_path)
+        probe_descendant = os.path.join(scan_root_str, "__probe__")
+        active_always = [p for p in self.always_exclusions if not p.search(probe_descendant)]
+        deactivated = len(self.always_exclusions) - len(active_always)
+        if deactivated:
+            logger.info(
+                f"Configured root {directory_path} opts in past {deactivated} "
+                f"always-exclusion pattern(s) for this scan"
+            )
+
         if self.since_datetime:
             logger.info(f"Scanning directory: {directory_path} (incremental since {self.since_datetime})")
         else:
@@ -188,13 +211,18 @@ class FileScanner:
                 # Check if current directory should be excluded
                 # Also check resolved path for directory symlinks
                 root_path = Path(root)
-                if self.should_exclude(root):
+                if self.should_exclude(root, active_always=active_always):
                     dirs[:] = []  # Don't recurse into this directory
                     excluded_count += len(files)
                     continue
                 if root_path.is_symlink():
                     resolved_root = str(root_path.resolve())
-                    if self.should_exclude(resolved_root) or resolved_root in seen_real_paths:
+                    # Resolved symlink target may live outside the configured
+                    # root — apply the full exclusion set, not the relaxed list.
+                    if (
+                        self.should_exclude(resolved_root)
+                        or resolved_root in seen_real_paths
+                    ):
                         dirs[:] = []
                         excluded_count += len(files)
                         continue
@@ -209,11 +237,13 @@ class FileScanner:
                         continue
 
                     # Skip excluded files (check symlink path)
-                    if self.should_exclude(str(file_path)):
+                    if self.should_exclude(str(file_path), active_always=active_always):
                         excluded_count += 1
                         continue
 
-                    # For symlinks, also check the resolved target against exclusions
+                    # For symlinks, also check the resolved target against exclusions.
+                    # The target may live outside the configured root, so apply the
+                    # full exclusion set rather than the per-scan relaxed list.
                     if file_path.is_symlink():
                         real_path = str(file_path.resolve())
                         if self.should_exclude(real_path):

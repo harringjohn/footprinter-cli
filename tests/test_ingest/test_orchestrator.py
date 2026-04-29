@@ -272,8 +272,9 @@ class TestOrchestratorStageExecution:
         assert any(r["stage"] == "access_resolution" for r in results)
 
     def test_run_refresh_dispatches_source_pipes_with_post_processing(self, temp_dir):
-        """run_refresh() executes data-source pipes AND access_resolution in order, bypassing the user-facing POST_PIPES guard."""
+        """run_refresh() executes data-source pipes AND POST_PIPES in order, bypassing the user-facing post-pipe guard."""
         from footprinter.ingest.orchestrator import DataPipelineOrchestrator
+        from footprinter.ingest.registry import POST_PIPES
 
         config_path = temp_dir / "config.yaml"
         config_path.write_text("directories: ['~/Work']")
@@ -289,11 +290,12 @@ class TestOrchestratorStageExecution:
         with patch.object(orchestrator, "_dispatch_pipes", side_effect=fake_dispatch):
             results = orchestrator.run_refresh("local")
 
-        # data-source pipes first, access_resolution last
+        # data-source pipes first, post-pipes (in registry order) last
         assert "local_folders" in dispatched
         assert "local_files" in dispatched
-        assert "access_resolution" in dispatched
-        assert dispatched[-1] == "access_resolution"
+        for post in POST_PIPES:
+            assert post in dispatched
+        assert dispatched[-len(POST_PIPES):] == POST_PIPES
         assert any(r["stage"] == "access_resolution" for r in results)
 
     def test_run_refresh_rejects_unknown_source(self, temp_dir):

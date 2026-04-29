@@ -39,6 +39,7 @@ FUTURE_PIPES = [
 # Post-processing pipes — appended to every pipeline, run after all data-source pipes
 POST_PIPES = [
     "access_resolution",  # Stamp visibility + permissions on ingested entities
+    "folder_stats",  # Refresh direct_file_count / total_size_bytes on folders
 ]
 
 # ── Core source registry (data-source adapters only) ─────────────────

@@ -66,15 +66,27 @@ class SafariParser(BrowserParser):
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
+            # Safari's history_items schema drifts between macOS releases (the `title`
+            # column was dropped in macOS Tahoe / 26.x). Introspect rather than hardcode.
+            item_columns = {row[1] for row in cursor.execute("PRAGMA table_info(history_items)")}
+            if "url" not in item_columns:
+                logger.error(
+                    "Safari schema incompatible: history_items is missing required `url` column "
+                    "(found: %s). Skipping Safari history.",
+                    sorted(item_columns) or "no columns",
+                )
+                return
+            title_select = "hi.title" if "title" in item_columns else "NULL AS title"
+
             # Safari stores visit time as seconds since 2001-01-01 UTC (Core Data timestamp)
             core_data_epoch = datetime(2001, 1, 1, tzinfo=timezone.utc)
             cutoff_timestamp = (self.cutoff_date - core_data_epoch).total_seconds()
 
-            query = """
+            query = f"""
                 SELECT
                     hv.visit_time,
                     hi.url,
-                    hi.title
+                    {title_select}
                 FROM history_visits hv
                 JOIN history_items hi ON hv.history_item = hi.id
                 WHERE hv.visit_time > ?

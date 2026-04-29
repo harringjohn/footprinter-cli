@@ -144,3 +144,143 @@ def test_chrome_sets_path_on_macos():
 
         assert parser.history_db_path is not None
         assert "Chrome" in str(parser.history_db_path)
+
+
+# ---------------------------------------------------------------------------
+# SafariParser: schema-compatibility across macOS versions
+# ---------------------------------------------------------------------------
+
+
+def _make_safari_db(path, *, include_title: bool, include_url: bool = True, rows=None):
+    """Build a synthetic Safari History.db at `path`.
+
+    Mirrors only the fields SafariParser.parse() reads. `rows` is a list of
+    (url, title, visit_time) tuples; visit_time is Core Data seconds since
+    2001-01-01 UTC.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+
+    item_cols = ["id INTEGER PRIMARY KEY"]
+    if include_url:
+        item_cols.append("url TEXT")
+    if include_title:
+        item_cols.append("title TEXT")
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(f"CREATE TABLE history_items ({', '.join(item_cols)})")
+        conn.execute(
+            "CREATE TABLE history_visits ("
+            "id INTEGER PRIMARY KEY, "
+            "history_item INTEGER, "
+            "visit_time REAL"
+            ")"
+        )
+
+        # Default to one recent row if caller didn't supply any
+        if rows is None:
+            now_core = (datetime.now(timezone.utc) - datetime(2001, 1, 1, tzinfo=timezone.utc)).total_seconds()
+            rows = [("https://example.com/a", "Example A", now_core)]
+
+        for idx, (url, title, vt) in enumerate(rows, start=1):
+            cols: list[str] = ["id"]
+            vals: list[str] = ["?"]
+            params: list = [idx]
+            if include_url:
+                cols.append("url")
+                vals.append("?")
+                params.append(url)
+            if include_title:
+                cols.append("title")
+                vals.append("?")
+                params.append(title)
+            conn.execute(
+                f"INSERT INTO history_items ({', '.join(cols)}) VALUES ({', '.join(vals)})",
+                params,
+            )
+            conn.execute(
+                "INSERT INTO history_visits (history_item, visit_time) VALUES (?, ?)",
+                (idx, vt),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_safari_parses_current_macos_schema_without_title(tmp_path):
+    """Current macOS Safari has no `title` column; parser must still yield rows."""
+    from footprinter.ingest.browser_indexer import SafariParser
+
+    db_path = tmp_path / "History.db"
+    _make_safari_db(db_path, include_title=False)
+
+    parser = SafariParser(lookback_days=30)
+    parser.history_db_path = db_path
+
+    results = list(parser.parse())
+
+    assert len(results) == 1
+    assert results[0]["url"] == "https://example.com/a"
+    assert results[0]["title"] is None
+    assert results[0]["browser"] == "safari"
+
+
+def test_safari_parses_legacy_schema_with_title(tmp_path):
+    """Legacy macOS Safari has a `title` column; parser must still read it."""
+    from footprinter.ingest.browser_indexer import SafariParser
+
+    db_path = tmp_path / "History.db"
+    _make_safari_db(db_path, include_title=True)
+
+    parser = SafariParser(lookback_days=30)
+    parser.history_db_path = db_path
+
+    results = list(parser.parse())
+
+    assert len(results) == 1
+    assert results[0]["url"] == "https://example.com/a"
+    assert results[0]["title"] == "Example A"
+
+
+def test_safari_handles_missing_title_value_gracefully(tmp_path):
+    """Legacy schema row with NULL title yields title=None without crashing."""
+    from datetime import datetime, timezone
+
+    from footprinter.ingest.browser_indexer import SafariParser
+
+    db_path = tmp_path / "History.db"
+    now_core = (datetime.now(timezone.utc) - datetime(2001, 1, 1, tzinfo=timezone.utc)).total_seconds()
+    _make_safari_db(
+        db_path,
+        include_title=True,
+        rows=[("https://example.com/b", None, now_core)],
+    )
+
+    parser = SafariParser(lookback_days=30)
+    parser.history_db_path = db_path
+
+    results = list(parser.parse())
+
+    assert len(results) == 1
+    assert results[0]["url"] == "https://example.com/b"
+    assert results[0]["title"] is None
+
+
+def test_safari_surfaces_unexpected_schema(tmp_path, caplog):
+    """A truly broken schema (no `url` column) must log ERROR — not silently return 0."""
+    from footprinter.ingest.browser_indexer import SafariParser
+
+    db_path = tmp_path / "History.db"
+    _make_safari_db(db_path, include_title=False, include_url=False)
+
+    parser = SafariParser(lookback_days=30)
+    parser.history_db_path = db_path
+
+    with caplog.at_level(logging.ERROR, logger="footprinter.ingest.browser_indexer"):
+        results = list(parser.parse())
+
+    assert results == []
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_records, "Expected an ERROR log when Safari schema is incompatible"
+    msg = " ".join(r.message for r in error_records).lower()
+    assert "url" in msg, f"Error log should name the missing column. Got: {msg}"

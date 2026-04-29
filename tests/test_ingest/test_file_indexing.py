@@ -194,6 +194,144 @@ class TestExclusionPatterns:
         assert scanner.should_exclude("/any/path/node_modules/lodash/index.js") is True
 
 
+class TestConfiguredDirectoryOverridesExclusions:
+    """Explicitly configured directories override default `always` exclusion patterns.
+
+    When the user explicitly configures a directory, exclusion patterns whose
+    only purpose was to skip that area at home-scan time should deactivate for
+    that scan. Sensitive patterns must continue to apply unconditionally.
+    """
+
+    @staticmethod
+    def _build_scanner(home, always=None, sensitive=None):
+        from footprinter.ingest.file_scanner import FileScanner
+
+        config = {
+            "directories": [],
+            "exclusions": {
+                "always": list(always or []),
+                "sensitive": list(sensitive or []),
+            },
+            "indexing": {"supported_extensions": [], "max_file_size_mb": 0},
+        }
+        with patch("os.path.expanduser", side_effect=lambda p: p.replace("~", str(home), 1)):
+            return FileScanner(config=config)
+
+    def test_configured_root_under_downloads_indexes_files(self, tmp_path):
+        """Files under a configured ~/Downloads/<dir> are yielded, not excluded."""
+        sample_root = tmp_path / "Downloads" / "sample"
+        work_dir = sample_root / "work"
+        work_dir.mkdir(parents=True)
+        target = work_dir / "a.txt"
+        target.write_text("hello")
+
+        scanner = self._build_scanner(tmp_path, always=[r"^~/Downloads/.*"])
+
+        results = list(scanner.scan_directory(str(sample_root)))
+
+        assert len(results) == 1
+        assert results[0]["file_name"] == "a.txt"
+
+    def test_unconfigured_downloads_path_still_excluded(self, tmp_path):
+        """Paths under ~/Downloads/ that aren't the configured root remain excluded."""
+        scanner = self._build_scanner(tmp_path, always=[r"^~/Downloads/.*"])
+
+        unconfigured = str(tmp_path / "Downloads" / "other" / "file.txt")
+        assert scanner.should_exclude(unconfigured) is True
+
+    def test_other_always_patterns_still_apply_within_configured_root(self, tmp_path):
+        """Patterns that don't match the root (e.g. __pycache__) still exclude inside it."""
+        sample_root = tmp_path / "Downloads" / "sample"
+        (sample_root / "work").mkdir(parents=True)
+        (sample_root / "__pycache__").mkdir()
+        keep = sample_root / "work" / "keep.txt"
+        keep.write_text("keep")
+        skip = sample_root / "__pycache__" / "x.pyc"
+        skip.write_text("compiled")
+
+        scanner = self._build_scanner(
+            tmp_path,
+            always=[r"^~/Downloads/.*", r".*/__pycache__/.*"],
+        )
+
+        names = sorted(r["file_name"] for r in scanner.scan_directory(str(sample_root)))
+        assert names == ["keep.txt"]
+
+    def test_sensitive_exclusions_still_apply_within_configured_root(self, tmp_path):
+        """Sensitive patterns are unconditional — credentials never get indexed."""
+        sample_root = tmp_path / "Downloads" / "sample"
+        sample_root.mkdir(parents=True)
+        (sample_root / ".ssh").mkdir()
+        notes = sample_root / "notes.txt"
+        notes.write_text("notes")
+        secret = sample_root / ".ssh" / "id_rsa"
+        secret.write_text("PRIVATE")
+
+        scanner = self._build_scanner(
+            tmp_path,
+            always=[r"^~/Downloads/.*"],
+            sensitive=[r".*/\.ssh/.*"],
+        )
+
+        names = sorted(r["file_name"] for r in scanner.scan_directory(str(sample_root)))
+        assert names == ["notes.txt"]
+
+    def test_should_exclude_default_behavior_unchanged(self, tmp_path):
+        """Direct should_exclude(path) calls (no override) preserve current semantics."""
+        scanner = self._build_scanner(tmp_path, always=[r"^~/Downloads/.*"])
+
+        downloads_path = str(tmp_path / "Downloads" / "foo.txt")
+        assert scanner.should_exclude(downloads_path) is True
+
+    def test_symlink_target_outside_root_uses_full_exclusion_set(self, tmp_path):
+        """A symlink in the configured root pointing to an excluded sibling stays excluded.
+
+        The relaxed exclusion list applies to *content under* the configured
+        root, not to wherever symlinks happen to resolve. Otherwise a symlink
+        could escape the always-exclusion set.
+        """
+        sample_root = tmp_path / "Downloads" / "sample"
+        sample_root.mkdir(parents=True)
+        sibling = tmp_path / "Downloads" / "other"
+        sibling.mkdir()
+        target = sibling / "secret.txt"
+        target.write_text("should not be indexed")
+
+        link = sample_root / "link.txt"
+        link.symlink_to(target)
+
+        scanner = self._build_scanner(tmp_path, always=[r"^~/Downloads/.*"])
+
+        results = list(scanner.scan_directory(str(sample_root)))
+        names = [r["file_name"] for r in results]
+        assert "link.txt" not in names
+        assert "secret.txt" not in names
+
+    def test_pattern_substring_match_does_not_deactivate(self, tmp_path):
+        """Patterns that share a substring with the root but don't exclude its contents stay active.
+
+        Probe-based check: a pattern is deactivated only if it would exclude
+        arbitrary descendants of the scan root, not merely match the root path
+        as a regex string.
+        """
+        sample_root = tmp_path / "Downloads" / "sample"
+        sample_root.mkdir(parents=True)
+        cache_dir = sample_root / "__pycache__"
+        cache_dir.mkdir()
+        (cache_dir / "x.pyc").write_text("compiled")
+        (sample_root / "keep.txt").write_text("keep")
+
+        # `__pycache__` shares no substring with the root, but stays active.
+        # `^~/Downloads/.*` matches all descendants — gets deactivated.
+        scanner = self._build_scanner(
+            tmp_path,
+            always=[r"^~/Downloads/.*", r".*/__pycache__/.*"],
+        )
+
+        names = sorted(r["file_name"] for r in scanner.scan_directory(str(sample_root)))
+        assert names == ["keep.txt"]
+
+
 class TestFileScannerIntegration:
     """Integration tests for file scanner."""
 

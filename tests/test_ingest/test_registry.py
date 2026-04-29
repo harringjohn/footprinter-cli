@@ -53,11 +53,11 @@ class TestGetPipelines:
 
     def test_google_connector_adds_google_pipeline(self):
         """With Google connector sources, a 'google' pipeline appears."""
-        from footprinter.ingest.registry import get_pipelines
+        from footprinter.ingest.registry import POST_PIPES, get_pipelines
 
         pipelines = get_pipelines(GOOGLE_CONNECTOR_SOURCES, GOOGLE_CONNECTOR_PIPELINES)
         assert "google" in pipelines
-        assert set(pipelines["google"]) == {"drive_folders", "drive_files", "gmail", "access_resolution"}
+        assert set(pipelines["google"]) == {"drive_folders", "drive_files", "gmail", *POST_PIPES}
 
     def test_all_pipeline_includes_core_and_connectors(self):
         """'all' pipeline merges core + connector sources."""
@@ -121,21 +121,21 @@ class TestGetRefreshSources:
 
     def test_google_connector_adds_google_key(self):
         """With Google connector, 'google' refresh key is added."""
-        from footprinter.ingest.registry import get_refresh_pipes
+        from footprinter.ingest.registry import POST_PIPES, get_refresh_pipes
 
         refresh = get_refresh_pipes(GOOGLE_CONNECTOR_SOURCES, GOOGLE_CONNECTOR_PIPELINES)
         assert "google" in refresh
-        assert set(refresh["google"]) == {"drive_folders", "drive_files", "gmail", "access_resolution"}
+        assert set(refresh["google"]) == {"drive_folders", "drive_files", "gmail", *POST_PIPES}
 
     def test_google_connector_adds_per_stage_keys(self):
         """Each connector stage gets its own refresh key, plus post-processing."""
-        from footprinter.ingest.registry import get_refresh_pipes
+        from footprinter.ingest.registry import POST_PIPES, get_refresh_pipes
 
         refresh = get_refresh_pipes(GOOGLE_CONNECTOR_SOURCES, GOOGLE_CONNECTOR_PIPELINES)
         assert "gmail" in refresh
-        assert refresh["gmail"] == ["gmail", "access_resolution"]
+        assert refresh["gmail"] == ["gmail", *POST_PIPES]
         assert "drive" in refresh
-        assert set(refresh["drive"]) == {"drive_folders", "drive_files", "access_resolution"}
+        assert set(refresh["drive"]) == {"drive_folders", "drive_files", *POST_PIPES}
 
     def test_all_key_includes_everything(self):
         """'all' refresh key includes core + connector stages."""

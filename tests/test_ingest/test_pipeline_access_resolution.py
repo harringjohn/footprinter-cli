@@ -348,18 +348,27 @@ class TestAccessResolutionRegistration:
     """Tests for access_resolution appearing in pipeline definitions."""
 
     def test_access_resolution_in_local_pipeline(self):
-        """local pipeline ends with access_resolution."""
-        from footprinter.ingest.registry import get_pipelines
+        """local pipeline includes access_resolution after data-source pipes."""
+        from footprinter.ingest.registry import CORE_PIPES, get_pipelines
 
         pipelines = get_pipelines({})
-        assert pipelines["local"][-1] == "access_resolution"
+        stages = pipelines["local"]
+        assert "access_resolution" in stages
+        # Runs after all data-source pipes (post-processing slot)
+        ar_idx = stages.index("access_resolution")
+        for core in CORE_PIPES:
+            assert stages.index(core) < ar_idx
 
     def test_access_resolution_in_all_pipeline(self):
-        """all pipeline ends with access_resolution."""
-        from footprinter.ingest.registry import get_pipelines
+        """all pipeline includes access_resolution after data-source pipes."""
+        from footprinter.ingest.registry import CORE_PIPES, get_pipelines
 
         pipelines = get_pipelines({})
-        assert pipelines["all"][-1] == "access_resolution"
+        stages = pipelines["all"]
+        assert "access_resolution" in stages
+        ar_idx = stages.index("access_resolution")
+        for core in CORE_PIPES:
+            assert stages.index(core) < ar_idx
 
     def test_access_resolution_in_all_sources(self):
         """access_resolution is a valid source name."""

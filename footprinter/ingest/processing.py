@@ -93,6 +93,30 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
         return PipeResult.completed("access_resolution", **stats)
 
 
+# ---------------------------------------------------------------------------
+# Folder stats runner
+# ---------------------------------------------------------------------------
+
+
+def run_folder_stats(db: "Database") -> PipeResult:
+    """Refresh pre-computed folder counts (direct_file_count, total_*).
+
+    Wraps ``refresh_folder_counts`` so that folder stats are kept current
+    after every ingest run. Always a full rebuild from the current ``files``
+    table — that is the correct semantic for a derived-stats refresh, so
+    this runner ignores ``full_mode``.
+    """
+    from footprinter.db.folders import refresh_folder_counts
+
+    try:
+        stats = refresh_folder_counts(db.conn)
+    except Exception as e:  # Intentional broad catch: last-resort for folder stats; pipeline must continue
+        logger.error("Folder stats refresh error: %s", e, exc_info=True)
+        return PipeResult.make_error("folder_stats", str(e), ErrorType.RUNTIME)
+    else:
+        return PipeResult.completed("folder_stats", **stats)
+
+
 # Identity mapping — pipe names map directly to phase names.
 PIPE_TO_PHASE: Dict[str, str] = {}
 

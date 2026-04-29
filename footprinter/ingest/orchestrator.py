@@ -52,11 +52,15 @@ class DataPipelineOrchestrator:
         # Ensure DB schema exists (fresh installs need tables before pipes run)
         from .database import Database
         Database(str(get_db_path()), connector_specs=get_schema_specs(self._connectors)).close()
-        from .processing import ProcessingPipeline, run_access_resolution
+        from .processing import ProcessingPipeline, run_access_resolution, run_folder_stats
         self.processing = ProcessingPipeline()
         self.processing.register(
             "access_resolution",
             runner=lambda db: run_access_resolution(db, full_mode=self.full_mode),
+        )
+        self.processing.register(
+            "folder_stats",
+            runner=lambda db: run_folder_stats(db),
         )
         self.runner = PipeRunner(
             processing=self.processing, get_db=self._get_db,
