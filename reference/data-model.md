@@ -6,7 +6,7 @@ Current database schema for Footprinter. The database is SQLite, stored at `data
 
 ## Data Privacy & Storage Model
 
-Footprinter's database is a **metadata catalog**, not a content store. File content lives at its source — on the local filesystem, or in a remote store accessed via a connector plugin — never in the database. The database records *what exists and where*, not *what it says*.
+Footprinter's database is a **metadata catalog by default**, not a content store. File content lives at its source — on the local filesystem, or in a remote store accessed via a connector plugin — and is not copied into the database unless you opt in. Two opt-in features (`content_snippets` and the Gmail connector's `body_preview`) store short previews; vector embeddings live in a separate ChromaDB store. See `content-storage.md` for the three-tier model. The database otherwise records *what exists and where*, not *what it says*.
 
 ### What's stored
 
@@ -14,7 +14,7 @@ Footprinter's database is a **metadata catalog**, not a content store. File cont
 |------|---------|---------|
 | File paths, names, sizes, timestamps | Yes | Core catalog metadata |
 | Full file content | **No** | Content stays at its source (disk or remote store) |
-| Content preview | Opt-in | First ~1000 characters of text-readable files, when `indexing.content_snippets: true` (default `false`). Used for keyword-search snippets. |
+| Content preview | Opt-in | First ~1000 characters of text-readable files, when `indexing.content_snippets: true` (default `false`). Used for keyword-search snippets. See `content-storage.md` for the three-tier storage model. |
 | Content hashes | Yes | Fixed-length fingerprints (see below) — not reversible to content |
 | Email subjects, senders, labels | Yes | Metadata from email connector plugins |
 | Email body | Partial | `body_preview` — first portion only |
