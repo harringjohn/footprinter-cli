@@ -1,0 +1,161 @@
+# Footprinter Configuration (example)
+# Copy to config.yaml and fill in your values.
+
+# Directories to scan - only Work, Personal, and .claude
+directories:
+  - "~/Work"
+  - "~/Personal"
+  - "~/.claude"
+
+# Browser history sources
+browsers:
+  - safari
+  - chrome
+
+# Exclusion patterns (regex)
+# Patterns starting with ^~/ expand ~ to your home directory at runtime.
+#
+# Files matching these patterns are NEVER scanned — they don't appear in the
+# database at all. This is different from hidden files (dot-files/dot-directories),
+# which ARE scanned and indexed with status='hidden' so they appear in the catalog
+# but are excluded from Drive sync.
+#
+# Two tiers: always (all folders), sensitive (all folders)
+exclusions:
+  # Always skip - applies to all folders
+  # Files matching these patterns are skipped during scanning and never enter the database.
+  # Use for regeneratable dependencies and system noise that has no archival value.
+  always:
+    # Regeneratable dependencies
+    - ".*/node_modules/.*"       # npm dependencies
+    - ".*/__pycache__/.*"        # Python bytecode
+    - ".*/venv/.*"               # Python virtualenvs (non-hidden)
+    - ".*/\\.venv/.*"            # Python virtualenvs (hidden)
+    - ".*/site-packages/.*"      # Python packages
+    - ".*\\.pyc$"                # Python compiled files
+    - ".*/\\.vscode/extensions/.*"  # VS Code extensions (reinstallable)
+    - ".*/\\.npm/.*"             # npm cache
+    - ".*/\\.nvm/.*"             # Node version manager
+    - ".*/\\.cache/.*"           # Generic caches
+    - ".*/\\.sf/.*"              # Salesforce CLI
+    - ".*/\\.sfdx/.*"            # Salesforce DX CLI
+    - ".*/\\.docker/.*"          # Docker config
+    - ".*/\\.cumulusci/.*"       # CumulusCI cache
+    # Home-level Claude dirs only (keep .claude within Work/Personal)
+    - "^~/\\.claude/.*"           # Home-level .claude
+    - "^~/\\.claude-worktrees/.*" # Home-level .claude-worktrees
+    # Git internals (but NOT .gitignore, .gitattributes - those are kept)
+    - ".*/\\.git/.*"             # Git internal directory contents
+    # System noise
+    - ".*\\.tmp$"                # Temp files
+    - ".*/~\\$.*"                # Office lock files (~$document.docx)
+    - ".*/\\.Trash/.*"           # macOS Trash
+    - ".*/Library/.*"            # macOS system directory
+    - ".*\\.DS_Store$"           # macOS Finder metadata
+    # User directories not for archival
+    - "^~/Downloads/.*"      # Transient downloads
+    - "^~/Music/Audio Music Apps/.*"  # App databases
+    - "^~/Applications/.*"   # User-installed apps
+    # Hidden app data (not in Work/Personal)
+    - "^~/\\.local/.*"       # Local app data
+    - "^~/\\.cursor/.*"      # Cursor IDE
+    - "^~/\\.codex/.*"       # Codex CLI
+    - "^~/\\.zsh_sessions/.*"  # Shell history
+    - "^~/\\.bash_sessions/.*" # Shell history
+
+  # Always skip - sensitive data
+  # Credential files and key stores that should never be indexed for security.
+  # Matched files are skipped during scanning (never enter the database).
+  sensitive:
+    - ".*/Library/Keychains/.*"  # macOS keychains
+    - ".*/\\.aws/.*"             # AWS credentials
+    - ".*/\\.ssh/.*"             # SSH keys
+    - ".*/\\.kube/.*"            # Kubernetes config
+
+# Indexing configuration - INDEX ALL FILE TYPES
+indexing:
+  supported_extensions: []  # Empty = index ALL file types
+  max_file_size_mb: 0       # 0 = no size limit (index everything)
+  lookback_days: 14         # Browser history window (days back to index)
+  content_snippets: false   # Extract file/email content previews for keyword search
+
+# Semantic search — stores content as embeddings in a local ChromaDB database
+# Enables finding files and chats by meaning, not just keywords
+# Trade-off: additional disk space and longer indexing time
+semantic:
+  file_vectorization: false
+  chat_vectorization: false
+
+# Vectorization — controls what gets embedded for semantic search
+# Requires semantic.file_vectorization: true to take effect for files
+vectorization:
+  # File extensions to embed (omit = all types; empty list = disable vectorization)
+  # Default: prose documents that benefit from meaning-based search.
+  # Code files (.py, .js, etc.) are searchable via FTS — vectorization adds
+  # little value for structured code but significant noise to the vector space.
+  # NOTE: file_types filters among types the extractor can read (text, code,
+  # .pdf, .docx, .csv). Adding unsupported types (.xlsx, .pptx, etc.) has no
+  # effect — files pass the allowlist but produce no embeddings.
+  file_types:
+    - .md
+    - .txt
+    - .pdf
+    - .docx
+  # Chunk size in characters — tuned for MiniLM-L6-v2 (256-token input window).
+  # ~1000 chars ≈ 250 tokens. Larger chunks get silently truncated by the model,
+  # meaning content past the window is invisible to semantic search.
+  chunk_size: 1000
+  # Overlap between consecutive chunks (fraction of chunk_size, 0.0 to 1.0).
+  # Applies to file vectorization only. Chat message chunking uses a fixed
+  # character overlap defined in footprinter/semantic/chunking.py.
+  chunk_overlap: 0.15
+  # Patterns (fnmatch syntax) for file paths to skip during vectorization.
+  # Matched against the full absolute path (e.g. ~/Work/file.json expands at runtime).
+  # Files matching these patterns are still indexed (searchable via FTS)
+  # but not embedded in the vector store.
+  #
+  # Common exclusions — system caches, IDE output, and tool output that
+  # match text file extensions but contain no meaningful prose content:
+  #   - "**/Photos Library.photoslibrary/**"  # macOS Spotlight index cache (.txt)
+  #   - "**/.claude/debug/**"                 # Claude Code debug logs
+  #   - "**/.claude/paste-cache/**"           # Claude Code paste cache
+  #   - "**/.claude/cache/**"                 # Claude Code cache
+  #   - "**/.claude/projects/**"              # Claude Code session data
+  #   - "**/.claude/plans/**"                 # Claude Code auto-generated plans
+  #   - "**/.claude/plugins/**"              # Claude Code plugin cache
+  #   - "**/.cci/**"                          # CumulusCI cache
+  #   - "**/.context/**"                      # IDE context directories
+  exclude_patterns: []
+
+# Source registry seeds — loaded into the sources table on init
+# Connector sources added by: fp connect install <name>
+source_seeds:
+  - name: local
+    source_type: file
+    account: null
+    label: "Local Files"
+    icon: folder
+  - name: browser
+    source_type: browser
+    account: null
+    label: "Browser History"
+    icon: globe
+  - name: email
+    source_type: email
+    account: null
+    label: "Email"
+    icon: envelope
+  - name: chat
+    source_type: chat
+    account: null
+    label: "Chat"
+    icon: message
+
+# Display labels for the group/project hierarchy
+# Customize these to match your organization's terminology
+domain:
+  labels:
+    group_singular: "Client"
+    group_plural: "Clients"
+    project_singular: "Project"
+    project_plural: "Projects"

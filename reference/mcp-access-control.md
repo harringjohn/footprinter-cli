@@ -1,0 +1,567 @@
+# Access Control
+
+Reference for the security model that controls access to Footprinter data. The model applies to both interfaces (CLI and MCP), with **roles** determining which path a caller takes.
+
+---
+
+## Roles
+
+Footprinter uses a `Role` enum (`footprinter/services/roles.py`) to distinguish callers:
+
+| Role | Interface | `can_write` | `sees_all` | Description |
+|------|-----------|-------------|------------|-------------|
+| `ADMIN` | CLI (`fp` commands) | Yes | Yes | Full access. Bypasses visibility and permission checks. |
+| `VIEWER` | MCP (AI assistants) | No | No | Read-only. Subject to visibility filtering and permission gating. |
+
+**ADMIN bypasses everything.** When the CLI fetches data, it skips visibility and permission checks entirely — the local user owns the data. The access control model below applies only to VIEWER callers (MCP requests from AI assistants).
+
+Interface layers assign the role at the entry point:
+- CLI commands pass `Role.ADMIN`
+- The MCP server passes `Role.VIEWER`
+
+---
+
+## Two-Layer Model
+
+VIEWER requests pass through two layers before content is returned:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         MCP Request                              │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LAYER 1: VISIBILITY                          │
+│                                                                  │
+│  Outcome         │ Effect                                        │
+│  ─────────────────────────────────────────────────────────────  │
+│  hidden          │ Item excluded from results (doesn't exist)    │
+│  opaque          │ Minimal metadata: id, content_type, source    │
+│  visible         │ Full metadata returned                        │
+│                                                                  │
+│  Semantics: MOST-RESTRICTIVE-WINS                               │
+│  If ANY matching policy is hidden → hidden                      │
+│  If ANY matching policy is opaque → opaque                      │
+│  Otherwise → visible                                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ (only if visible)
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LAYER 2: PERMISSIONS                         │
+│                                                                  │
+│  Outcome         │ Effect                                        │
+│  ─────────────────────────────────────────────────────────────  │
+│  allow           │ Content readable                              │
+│  deny            │ Content blocked (metadata still visible)      │
+│                                                                  │
+│  Semantics: DENY-WINS                                           │
+│  If ANY matching policy is deny → denied                        │
+│  If NO deny and at least one allow → allowed                    │
+│  If nothing set → baseline (allow)                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key insight**: Visibility is a precondition for permissions. Hidden items cannot be read (they don't exist). Opaque items cannot be read (content not exposed). Only visible items proceed to permission checks.
+
+---
+
+## Gating Pipeline
+
+The access service (`footprinter/services/access_service.py`) implements a 3-stage pipeline for VIEWER callers via `gate_access()`:
+
+1. **Existence** — item must exist in the database
+2. **Visibility** — `mcp_view` must not be `hidden` or `opaque`
+3. **Permission** — `mcp_read` must not be `deny`
+
+ADMIN callers bypass stages 2 and 3 (checked via `role.sees_all`). Stage 1 always applies.
+
+Return statuses from `gate_access()`:
+
+| Status | Meaning |
+|--------|---------|
+| `ok` | Access granted — includes metadata and content |
+| `hidden` | Item hidden from this role |
+| `opaque` | Minimal metadata only |
+| `denied` | Permission denied — metadata visible, content blocked |
+| `not_found` | Item doesn't exist |
+| `invalid_type` | Unrecognised item type |
+
+---
+
+## Policy Tables
+
+Policies are the source of truth for access control. Two tables store them:
+
+### visibility_policies
+
+```sql
+CREATE TABLE visibility_policies (
+    scope TEXT PRIMARY KEY,
+    setting TEXT NOT NULL CHECK (setting IN ('hidden', 'opaque', 'visible')),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### permission_policies
+
+```sql
+CREATE TABLE permission_policies (
+    scope TEXT PRIMARY KEY,
+    setting TEXT NOT NULL CHECK (setting IN ('allow', 'deny')),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Scope Patterns
+
+Policies are keyed by scope — a string that identifies what the policy applies to. The resolution engine checks all matching scopes for an entity and applies the layer semantics (most-restrictive-wins for visibility, deny-wins for permissions).
+
+| Scope pattern | Applies to | Example |
+|---------------|-----------|---------|
+| `global` | All entities of all types | `global` |
+| `source:{type}` | All entities of a source type | `source:files`, `source:emails`, `source:chats`, `source:folders`, `source:browser` |
+| `account:{name}` | Entities from a specific account | `account:personal`, `account:work-org` |
+| `folder:{path}` | Files and folders with matching path prefix | `folder:~/Work/clients/`, `folder:~/Personal/` |
+| `project:{id}` | A project and all its children (files, emails, chats, folders) | `project:3` |
+| `client:{id}` | A client, its projects, and all their children | `client:1` |
+| `file:{id}` | A single file | `file:42` |
+| `email:{id}` | A single email | `email:10` |
+| `chat:{id}` | A single chat | `chat:5` |
+
+### Folder Prefix Matching
+
+Folder scope rules use path prefix matching with tilde expansion:
+
+```sql
+-- Example rows
+scope                       | setting
+----------------------------|--------
+folder:~/Personal/          | hidden
+folder:~/Work/clients/      | opaque
+```
+
+**Matching rules:**
+- The scope must start with `folder:`
+- Tilde is expanded to the full home path at resolution time
+- Longest matching prefix wins when multiple rules apply
+- Prefix matching is case-sensitive
+
+**Example:** For path `~/Work/clients/acme/report.pdf`:
+- `folder:~/Work/` matches
+- `folder:~/Work/clients/` matches (longer, wins)
+- `folder:~/Work/clients/acme/` would match and win if it existed
+
+---
+
+## Resolution Semantics
+
+### Visibility Resolution
+
+The resolution engine checks policies at each scope in the hierarchy for the entity type. All matching policies are collected, then most-restrictive-wins applies:
+
+```
+hidden > opaque > visible
+```
+
+If no policies match at any scope, the hardcoded baseline applies: `BASELINE_VISIBILITY = 'opaque'` (in `footprinter/visibility.py`).
+
+**Scope hierarchy by entity type:**
+
+| Entity type | Scopes checked (in order) |
+|------------|--------------------------|
+| **Files** | `file:{id}` → folder prefix (longest match) → folder FK → `project:{id}` → `client:{id}` → `source:files` → `global` |
+| **Emails** | `email:{id}` → `project:{id}` → `client:{id}` → `account:{name}` → `source:emails` → `global` |
+| **Chats** | `chat:{id}` → `project:{id}` → `client:{id}` → `account:{name}` → `source:chats` → `global` |
+| **Folders** | folder prefix (longest match) → parent folder → `project:{id}` → `source:folders` → `global` |
+| **Browser** | `source:browser` → `global` |
+| **Projects** | `project:{id}` → `client:{id}` → `global` |
+| **Clients** | `client:{id}` → `global` |
+
+Browser history uses source-level policy only — there is no item-level or folder hierarchy for browser history entries.
+
+### Permission Resolution
+
+Same hierarchy structure, deny-wins semantics. All matching policies are collected:
+
+```
+deny (any scope) → denied
+all allow/no match → allowed
+nothing set → baseline (allow)
+```
+
+If no policies match at any scope, the hardcoded baseline applies: `BASELINE_PERMISSION = True` (allow) (in `footprinter/permissions.py`).
+
+**Scope hierarchy by entity type:**
+
+| Entity type | Scopes checked (in order) |
+|------------|--------------------------|
+| **Files** | `file:{id}` → folder prefix (longest match) → `project:{id}` → `client:{id}` → `source:files` → `global` |
+| **Emails** | `email:{id}` → `project:{id}` → `client:{id}` → `account:{name}` → `source:emails` → `global` |
+| **Chats** | `chat:{id}` → `project:{id}` → `client:{id}` → `account:{name}` → `source:chats` → `global` |
+| **Browser** | `source:browser` → `global` |
+
+---
+
+## Entity Columns
+
+All 8 entity tables carry `mcp_view` and `mcp_read` columns. These store **cached resolved values** written by the recalculation engine. They are not direct settings — use `visibility_policies` and `permission_policies` to manage access.
+
+| Table | `mcp_view` | `mcp_read` | Recalculated | Notes |
+|-------|-----------|-----------|--------------|-------|
+| `files` | ✓ | ✓ | Both | Full hierarchy resolution |
+| `folders` | ✓ | Column exists | Visibility only | Permission not resolved; stays at `inherit` |
+| `visits` | ✓ | ✓ | Neither | Source-level policy; resolved at query time |
+| `projects` | ✓ | ✓ | Both | Scoped by project/client |
+| `chats` | ✓ | ✓ | Both | Full hierarchy resolution |
+| `messages` | ✓ | ✓ | Neither | Inherits from parent chat at query time |
+| `emails` | ✓ | ✓ | Both | Full hierarchy resolution |
+| `clients` | ✓ | ✓ | Both | Top-level scope |
+
+Default value for all columns: `'inherit'`.
+
+### Column Value Semantics
+
+| Column value | Meaning |
+|--------------|---------|
+| `'inherit'` | No entity-specific policy — resolve from the global policy at query time. If no global policy exists, falls back to the hardcoded baseline (`opaque` for visibility, `allow` for permissions). |
+| `NULL` / missing | Truly missing data — fails closed to `opaque` / `deny` regardless of global policy. |
+| `'hidden'`, `'opaque'`, `'visible'` | Resolved visibility from a specific (non-global) policy. |
+| `'allow'`, `'deny'` | Resolved permission from a specific (non-global) policy. |
+
+The recalculation engine writes `'inherit'` when the only matching policies are `global` or the hardcoded baseline. It writes the resolved value when a specific policy (source, account, folder, project, client, or entity-level) determines the outcome. This means:
+
+- Changing a global policy takes effect immediately for all `inherit` entities — no recalculation needed.
+- Specific policies still require recalculation to update cached values.
+- The MCP server loads the global policy once per request (two PK lookups) and resolves `inherit` values on the fly.
+
+---
+
+## Recalculation Engine
+
+The recalculation engine (`footprinter/access.py`) resolves policies and writes cached values to entity columns. It does not run at query time — it pre-computes values so that query-time lookups are fast column reads.
+
+### ENTITY_META
+
+The engine maintains metadata for 6 entity types that participate in batch recalculation:
+
+| Entity | Table | Visibility | Permissions | Path column |
+|--------|-------|-----------|-------------|-------------|
+| `file` | `files` | ✓ | ✓ | `path` |
+| `email` | `emails` | ✓ | ✓ | — |
+| `chat` | `chats` | ✓ | ✓ | — |
+| `folder` | `folders` | ✓ | — | `path` |
+| `project` | `projects` | ✓ | ✓ | `root_path` |
+| `client` | `clients` | ✓ | — | — |
+
+`visits` and `messages` are not in ENTITY_META — they rely on `inherit` resolution at query time rather than pre-computed values.
+
+### Triggers
+
+| Trigger | Mechanism |
+|---------|-----------|
+| **Policy CRUD** | CLI commands (`fp mcp view set`, `fp mcp read set`, etc.) call `recalculate_access(scope)` after modifying a policy |
+| **Relationship edits** | Changing a file's project, a project's client, or similar FK changes triggers recalculation for affected entities |
+| **Pipeline stage** | The `access_resolution` stage runs as the last step in every pipeline, stamping all newly ingested entities |
+
+### Batch Behavior
+
+- `recalculate_access(conn, scope)` — resolves all entities affected by a scope in a single transaction
+- `recalculate_access_batched(conn, scope, batch_size=5000)` — same but commits per batch with progress callback, for large scopes
+- `recalculate_entity(conn, entity_type, entity_id)` — resolves a single entity
+- `stamp_entities(conn, ids_by_type)` — resolves and writes visibility + permissions for given entity IDs; used by both `recalculate_access` and the incremental pipeline path
+
+### Incremental vs Full
+
+- **Incremental** (default `fp ingest`): The `access_resolution` stage only stamps entities added since the last run
+- **Full** (`fp ingest --full`): Recalculates everything — useful after bulk policy changes or schema migrations
+
+### Inherit Logic
+
+Entities whose resolution traces back to only the `global` policy or the hardcoded baseline are stored as `'inherit'` rather than the resolved value. This is determined by `_is_inherit_source()`, which checks both direct sources (`"global"`, `"baseline"`) and cascade paths (`"project:3 (via global)"`).
+
+---
+
+## MCP Tool Enforcement
+
+MCP tools read the cached `mcp_view` and `mcp_read` columns at query time. For most values, no live policy resolution happens. The exception is `inherit`: the MCP server loads the global visibility and permission policies once per request via `load_globals()`, and `inherit` values are resolved to the global policy on the fly by `resolve_inherit_visibility()` and `resolve_inherit_permission()` (in `footprinter/services/access_service.py`).
+
+### Error Codes
+
+| Code | Meaning | When Returned |
+|------|---------|---------------|
+| `NOT_FOUND` | Item is hidden | `mcp_view = 'hidden'` |
+| `VISIBILITY_RESTRICTED` | Item is opaque | `mcp_view = 'opaque'` (returns minimal metadata) |
+| `PERMISSION_DENIED` | Read access denied | Item is visible but `mcp_read = 'deny'` |
+
+### Tool Behavior by Visibility
+
+| Tool | hidden | opaque | visible |
+|------|--------|--------|---------|
+| `footprinter_status` | N/A (aggregates) | N/A (aggregates) | Aggregate counts |
+| `footprinter_search` | Excluded | Excluded (FTS), minimal fields (list) | Full metadata |
+| `footprinter_project` | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_client` | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_folder` | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_semantic` | Excluded | Excluded | Requires `mcp_read = 'allow'` |
+| `footprinter_read` | NOT_FOUND | VISIBILITY_RESTRICTED | Check permissions |
+
+Semantic search tools are stricter than metadata tools: opaque and denied items are excluded entirely (not metadata-limited), because match relevance itself is content-derived.
+
+### Opaque Field Sets
+
+When an item is opaque, only a minimal set of fields is returned. The allowed fields per entity type are defined in `access_service.py`:
+
+| Entity type | Opaque fields |
+|-------------|--------------|
+| File | `id`, `content_type`, `source`, `project_id` |
+| Email | `id`, `account`, `project_id`, `client_id` |
+| Chat | `id`, `account`, `project_id`, `client_id` |
+| Folder | `id`, `direct_files`, `direct_file_count`, `source`, `project_id` |
+| Browser | `id`, `browser`, `project_id` |
+| Project | `id`, `type`, `project_type`, `status`, `client_id` |
+| Client | `id`, `client_type`, `status` |
+
+---
+
+## Vector Store / Semantic Search
+
+Semantic search uses vector embeddings (ChromaDB) to find files and chats by meaning. Vectors are a content-derived index — access control is enforced at query time, not at storage time.
+
+### Vector Persistence Model
+
+Vectors are created at ingest time and persist with the entity. They are deleted only when the entity is removed (`status = 'removed'`). Permission and visibility changes have **no effect** on vector storage.
+
+| Event | Vector action |
+|-------|--------------|
+| Entity vectorized at ingest | Vectors created |
+| Entity marked `status = 'removed'` | Vectors deleted |
+| Entity deleted via CLI | Vectors deleted (coupled operation) |
+| Permission changes (`mcp_read`) | No effect |
+| Visibility changes (`mcp_view`) | No effect |
+
+**Rationale:** Vectors are an index over content, like FTS5. You don't rebuild the FTS5 index when permissions change — you check permissions at query time. Same principle.
+
+### Query-Time Access Control
+
+Semantic search requires both `mcp_view = 'visible'` **and** `mcp_read = 'allow'`. This is stricter than metadata search:
+
+- Both opaque and denied items are **excluded entirely** from semantic results
+- Rationale: semantic matches are content-derived — appearing in results for a query reveals information about the content
+- The same `visible + allow` filter applies when the FTS5 keyword fallback is active (ML dependencies unavailable)
+- Unlike metadata search tools, semantic search tools do not report suppression counts — excluded items are silently omitted
+
+### Metadata Search vs Semantic Search
+
+| `mcp_view` | `mcp_read` | Metadata search | Semantic search |
+|---------------------|-------------------|-----------------|-----------------|
+| `hidden`            | (any)             | Excluded        | Excluded        |
+| `opaque`            | (not evaluated)   | Minimal metadata | Excluded       |
+| `visible`           | `deny`            | Full metadata, no content | Excluded |
+| `visible`           | `allow`           | Full metadata + content | Full result + snippet |
+
+---
+
+## CLI Management
+
+The `fp mcp` subcommands manage visibility and permission policies without raw SQL. Policy changes automatically trigger recalculation for affected entities.
+
+### Visibility policies (`fp mcp view`)
+
+```bash
+fp mcp view show                     # Display current visibility policies
+fp mcp view show --json              # JSON output
+fp mcp view set <scope> <setting>    # Set: visible, opaque, or hidden
+fp mcp view delete <scope>           # Delete a visibility policy
+fp mcp view check [<path>]           # Check visibility resolution for a path
+fp mcp view reset                    # Clear and re-seed visibility defaults
+```
+
+### Permission policies (`fp mcp read`)
+
+```bash
+fp mcp read show                     # Display current permission policies
+fp mcp read show --json              # JSON output
+fp mcp read set <scope> <setting>    # Set: allow or deny
+fp mcp read delete <scope>           # Delete a permission policy
+fp mcp read check [<path>]           # Check permission resolution for a path
+fp mcp read reset                    # Clear and re-seed permission defaults
+```
+
+### Combined check (`fp mcp check`)
+
+```bash
+fp mcp check <path>                  # Check both visibility and permission
+fp mcp check --folder <path>         # Folder aggregate check
+fp mcp check --project <id>          # Project-level check
+fp mcp check --client <id>           # Client-level check
+```
+
+### Bulk policy changes (`fp mcp bulk`)
+
+```bash
+fp mcp bulk --folder <path> --visibility hidden       # Hide a folder
+fp mcp bulk --project <id> --permission allow         # Allow read for a project
+fp mcp bulk --folder <path> --permission deny --dry-run  # Preview
+```
+
+### Scope Syntax
+
+All `set`, `delete`, and `check` commands accept scope strings:
+
+```bash
+# Global
+fp mcp view set global visible
+
+# Source type
+fp mcp read set source:emails deny
+
+# Account
+fp mcp view set account:personal hidden
+
+# Folder prefix (tilde expanded)
+fp mcp view set "folder:~/Personal/" hidden
+fp mcp read set "folder:~/Work/clients/" deny
+
+# Entity-specific
+fp mcp view set file:42 hidden
+fp mcp read set email:10 deny
+```
+
+### Valid Settings
+
+| Setting | Table | Meaning |
+|---------|-------|---------|
+| `allow` | `permission_policies` | Grant read access |
+| `deny` | `permission_policies` | Block read access |
+| `visible` | `visibility_policies` | Full metadata in results |
+| `opaque` | `visibility_policies` | Minimal metadata only |
+| `hidden` | `visibility_policies` | Excluded from results |
+
+### Seed Defaults (Open Access)
+
+On fresh install, `fp setup` wizard automatically seeds:
+- `visibility_policies`: `global` = `visible`
+- `permission_policies`: `global` = `allow`
+
+All indexed data is visible and readable by AI assistants by default. Use `fp mcp read set` to restrict access.
+
+Seeding uses `INSERT OR IGNORE`, so it never overwrites existing policies. Running `fp mcp view reset` and `fp mcp read reset` clear policies and re-apply defaults.
+
+### Security Posture
+
+Footprinter uses a **fail-open** read-permission posture by design. As a personal tool managing local data, the default is that everything indexed is readable by AI assistants. Visibility defaults are more conservative — metadata is hidden until `fp setup` seeds explicit policies.
+
+Two layers control this:
+
+| Layer | Constant | Default | Effect |
+|-------|----------|---------|--------|
+| **Hardcoded baseline** | `BASELINE_PERMISSION = True` | Allow | When zero policy rows exist, all reads are permitted |
+| **Hardcoded baseline** | `BASELINE_VISIBILITY = 'opaque'` | Opaque | When zero policy rows exist, metadata is hidden (conservative) |
+| **Seeded policies** | *(created by `fp setup`)* | Allow + Visible | Explicit `global` rows that override baselines |
+
+The distinction matters:
+
+- **Hardcoded baselines** are fallback constants in `permissions.py` and `visibility.py`. They apply only when the policy tables are completely empty (e.g., before running `fp setup`). The permission baseline is permissive (allow reads); the visibility baseline is conservative (hide metadata).
+- **Seeded policies** are database rows created by `fp setup`. They make the open-access posture explicit and manageable — you can narrow them with `fp mcp read set` and `fp mcp view set` commands.
+
+To switch to deny-by-default (metadata-only — metadata visible, content denied):
+
+```bash
+fp mcp read set global deny
+```
+
+To verify current policies:
+
+```bash
+fp mcp read show
+fp mcp view show
+```
+
+---
+
+## Common Patterns
+
+### Hide Personal Files
+
+```bash
+fp mcp view set "folder:~/Personal/identity/" hidden
+```
+
+### Allow Work Files, Deny Personal
+
+```bash
+# Visibility: show everything
+fp mcp view set global visible
+
+# Permissions: deny by default
+fp mcp read set global deny
+
+# Allow work files
+fp mcp read set "folder:~/Work/" allow
+```
+
+### Make Client Data Opaque
+
+```bash
+fp mcp view set "folder:~/Work/clients/" opaque
+```
+
+### Block Specific Email Account
+
+```bash
+fp mcp view set account:personal hidden
+```
+
+---
+
+## Debugging Access Control
+
+### Check Effective Access for a Path
+
+```bash
+# Quick check — shows resolved visibility + permission
+fp mcp check ~/Work/clients/acme/report.pdf
+```
+
+### Query Matching Policies
+
+```sql
+-- What visibility policies might affect a path?
+SELECT scope, setting
+FROM visibility_policies
+WHERE '~/Work/clients/acme/report.pdf' LIKE REPLACE(scope, 'folder:', '') || '%'
+   OR scope IN ('global', 'source:files')
+ORDER BY LENGTH(scope) DESC;
+
+-- What permission policies might affect a path?
+SELECT scope, setting
+FROM permission_policies
+WHERE '~/Work/clients/acme/report.pdf' LIKE REPLACE(scope, 'folder:', '') || '%'
+   OR scope IN ('global', 'source:files')
+ORDER BY LENGTH(scope) DESC;
+```
+
+### Check Cached Values for a File
+
+```sql
+-- See the resolved (cached) values on a file
+SELECT id, path, mcp_view, mcp_read
+FROM files
+WHERE id = ?;
+```
+
+These cached values were written by the recalculation engine. If they seem wrong, check the matching policies above and re-run recalculation:
+
+```bash
+fp mcp view check <path>   # Re-resolves and shows the result
+fp mcp read check <path>
+```
+
+---
+
+## Related Documentation
+
+- `reference/data-model.md` — Full schema for policy tables and entity columns
+- `reference/pipeline.md` — `access_resolution` pipeline stage reference

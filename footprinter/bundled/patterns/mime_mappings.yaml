@@ -1,0 +1,68 @@
+# MIME type fragment -> ContentType mapping
+# These appear in the database as partial MIME types
+# Values must match ContentType enum names
+
+# Audio/Video MIME fragments
+x-wav: MEDIA_RECORDING
+x-aiff: MEDIA_RECORDING
+mp4a-lat: MEDIA_RECORDING
+mpeg: MEDIA_RECORDING
+mp2t: MEDIA_RECORDING
+quicktim: MEDIA_RECORDING
+x-m4a: MEDIA_RECORDING
+audio: MEDIA_RECORDING
+video: MEDIA_RECORDING
+
+# Image MIME fragments
+x-icon: MEDIA_IMAGE
+x-png: MEDIA_IMAGE
+image: MEDIA_IMAGE
+
+# Code/text MIME fragments
+x-python: CODE
+javascri: CODE
+x-sh: CODE
+x-csh: CODE
+x-csrc: CODE
+x-c++sr: CODE
+x-java: CODE
+x-sql: CODE
+x-tex: DOCUMENTATION
+x-latex: DOCUMENTATION
+html: CODE
+xml: CODE
+plain: DOCUMENTATION
+rtf: DOCUMENTATION
+markdown: DOCUMENTATION
+calendar: ADMINISTRATIVE
+
+# Data MIME fragments
+octet-st: DATA
+spreadsh: DATA
+csv: DATA
+tab-sepa: DATA
+
+# Archive
+zip: DATA
+x-tar: DATA
+x-gzip: DATA
+
+# Document MIME fragments
+pdf: ADMINISTRATIVE
+msword: ADMINISTRATIVE
+wordproc: ADMINISTRATIVE
+presenta: ADMINISTRATIVE
+document: ADMINISTRATIVE
+vnd.ms-e: DATA
+vnd.oasi: ADMINISTRATIVE
+x-iwork-: ADMINISTRATIVE
+vnd.yell: CODE
+
+# Package/archive MIME types
+x-zip: DATA
+x-pkcs12: DATA
+x-x509-c: DATA
+x-shells: CODE
+wsdl+xml: CODE
+xml-dtd: CODE
+x-subrip: DATA

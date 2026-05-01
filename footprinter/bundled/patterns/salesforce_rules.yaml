@@ -1,0 +1,84 @@
+# Salesforce-specific classification rules
+# This file is a self-contained pattern pack. When enabled via pattern_packs
+# config, these extensions/patterns are merged into the classifier at init time.
+
+# Extensions representing portfolio work (KEEP)
+keep_extensions:
+  - '.cls'
+  - '.trigger'
+  - '.cmp'
+  - '.component'
+  - '.page'
+  - '.flow'
+  - '.workflow'
+  - '.object'
+  - '.layout'
+  - '.permissionset'
+  - '.profile'
+  - '.app'
+  - '.tab'
+
+# Salesforce-specific file extensions merged into core extension sets when pack is enabled
+extensions:
+  code:
+    - '.cmp'
+    - '.component'
+    - '.page'
+    - '.flow'
+    - '.workflow'
+    - '.object'
+    - '.layout'
+    - '.permissionset'
+    - '.profile'
+    - '.app'
+    - '.tab'
+    - '.quickaction'
+    - '.soql'
+    - '.tag'
+    - '.flexipage'
+    - '.report'
+    - '.objecttranslation'
+    - '.flowdefinition'
+    - '.globalvalueset'
+    - '.auradoc'
+    - '.topicsforobjects'
+  data:
+    - '.resource'
+
+# LWC/Aura paths (keep .js, .html, .css within these)
+component_paths:
+  - 'lwc/'
+  - 'aura/'
+  - 'force-app/'
+
+# Path markers that identify Salesforce project directories
+path_markers:
+  - 'force-app'
+  - '.sfdx'
+
+# LWC webruntime bundle file prefixes (no-extension files)
+lwr_file_prefixes:
+  - 'lwr_loader'
+  - 'lwr_app'
+  - 'lwr_error_shim'
+  - 'meta-pixel-event-dispatcher'
+  - 'runtime'
+
+# XML file path prefixes for Salesforce XML disambiguation
+xml_paths:
+  - 'force-app/'
+  - 'salesforce/'
+
+# Patterns for boilerplate/auto-generated files to EXCLUDE
+exclude_patterns:
+  - '-meta\.xml$'
+  - '\.settings$'
+  - '\.labels$'
+  - '\.sharingrules$'
+  - '\.assignmentrules$'
+  - '\.autoresponserules$'
+  - '\.escalationrules$'
+  - '\.approvalprocess$'
+  - '\.remotesite$'
+  - '\.namedcredential$'
+  - '\.externalcredential$'

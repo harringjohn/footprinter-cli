@@ -1,0 +1,27 @@
+# PII and credential detection patterns
+# Used by RetentionClassifier for sensitivity analysis
+
+pii_patterns:
+  # Identity numbers
+  ssn: '\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b'
+  ein: '\b\d{2}-\d{7}\b'
+  passport: '\b[A-Z]{1,2}\d{6,9}\b'
+  # Financial
+  credit_card: '\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b'
+  bank_account: '\b(?:account|acct|routing)[\s#:]*\d{8,17}\b'
+  # Contact (contextual - only flag bulk lists, not single emails)
+  bulk_email_list: '(?:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\s*[,;\n]){3,}'
+  phone: '\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b'
+  # Address (full format only - street + city + state + zip)
+  address: '\b\d+\s+[\w\s]+(?:St(?:reet)?|Ave(?:nue)?|Rd|Road|Blvd|Dr(?:ive)?|Ln|Lane|Way|Ct|Court)[\s,]+[\w\s]+,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?\b'
+  # Dates with context only
+  date_of_birth: '\b(?:DOB|Date of Birth|Birth(?:date)?|Born)[\s:]+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'
+
+credential_patterns:
+  api_key: "(?:api[_-]?key|apikey)\\s*[=:]\\s*[\"']?[\\w-]{20,}"
+  aws_key: 'AKIA[0-9A-Z]{16}'
+  aws_secret: "(?:aws[_-]?secret|secret[_-]?key)\\s*[=:]\\s*[\"']?[\\w/+=]{40}"
+  stripe_key: 'sk_(?:live|test)_[0-9a-zA-Z]{24,}'
+  password: "(?:password|passwd|pwd)\\s*[=:]\\s*[\"'][^\"']{6,}[\"']"
+  bearer_token: 'Bearer\s+[A-Za-z0-9_-]{20,}'
+  private_key: '-----BEGIN (?:RSA |EC )?PRIVATE KEY-----'

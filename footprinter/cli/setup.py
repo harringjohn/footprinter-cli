@@ -1,0 +1,1931 @@
+"""
+Interactive setup wizard for Footprinter.
+
+Guides new users through configuration in ~3 minutes.
+Usage:
+    fp setup                  # Run interactive wizard
+    fp setup --check          # Validate existing configuration
+    fp setup --hooks          # Install git hooks (sets core.hooksPath)
+    fp setup --reset          # Clear data and re-run wizard
+"""
+
+import argparse
+import logging
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+from rich.console import Console
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+
+from footprinter.cli import mcp_setup
+from footprinter.cli._policy_helpers import (
+    get_policy_db as _get_db_connection,
+)
+from footprinter.cli._policy_helpers import (
+    normalize_path as _normalize_path,
+)
+from footprinter.cli._policy_helpers import (
+    seed_access_policies as _seed_access_policies,
+)
+from footprinter.cli._prompt import (
+    PromptCancelled,
+)
+from footprinter.cli._prompt import (
+    SafeConfirm as Confirm,
+)
+from footprinter.cli._prompt import (
+    SafePrompt as Prompt,
+)
+
+# In-process pipeline — imported here so tests can patch them
+from footprinter.cli.ingest import _run_with_logging
+from footprinter.ingest.orchestrator import DataPipelineOrchestrator
+from footprinter.paths import (
+    get_bundled_path,
+    get_chroma_path,
+    get_config_path,
+    get_db_path,
+    get_log_path,
+)
+from footprinter.source_registry import ConfigError, get_config
+
+logger = logging.getLogger(__name__)
+
+
+def _load_existing_config() -> dict | None:
+    """Load existing config, returning None if missing or invalid."""
+    try:
+        return get_config()
+    except ConfigError:
+        return None
+
+
+console = Console()
+
+
+def _repo_root() -> Path:
+    """Repo checkout root (dev-only: git hooks, subprocess cwd)."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _hooks_available() -> bool:
+    """True when dev git hooks are present (private repo only)."""
+    return (_repo_root() / "scripts" / "hooks" / "post-merge").exists()
+
+
+# Common directories checked during quick start — only those that exist are included
+QUICK_START_CANDIDATES = ["~/Documents", "~/Desktop", "~/Work", "~/Projects"]
+
+# Directories offered as optional extras (not defaults)
+OPTIONAL_DIRECTORIES = ["~/.claude"]
+
+KNOWN_BROWSERS = ["safari", "chrome"]
+
+# Vectorization defaults — file types that benefit from semantic embedding
+DEFAULT_FILE_TYPES = [".md", ".txt", ".pdf", ".docx"]
+
+# Known junk patterns — (fnmatch_pattern, description) tuples
+# Files matching these exist as text but contain no meaningful prose content.
+# Patterns use ** glob syntax; fnmatch matches / on Unix.
+KNOWN_JUNK_PATTERNS = [
+    ("**/Photos Library.photoslibrary/**", "macOS Spotlight index cache"),
+    ("**/.claude/debug/**", "Claude Code debug logs"),
+    ("**/.claude/paste-cache/**", "Claude Code paste cache"),
+    ("**/.claude/cache/**", "Claude Code cache"),
+    ("**/.claude/projects/**", "Claude Code session data"),
+    ("**/.claude/plans/**", "Claude Code auto-generated plans"),
+    ("**/.claude/plugins/**", "Claude Code plugin cache"),
+    ("**/.cci/**", "CumulusCI cache"),
+    ("**/.context/**", "IDE context directories"),
+    ("**/.github/**", "GitHub config and workflows"),
+    ("**/.ai-dev/**", "AI dev tool directories"),
+]
+
+_SCAN_FILE_LIMIT = 50_000
+
+
+def _scan_directories_for_vectorization(directories: list[str], file_types: list[str]) -> dict:
+    """Scan directories for files matching file_types, detecting junk patterns.
+
+    Returns dict with total, by_extension, junk_hits, total_after_exclusions,
+    and truncated flag.
+    """
+    from fnmatch import fnmatch
+
+    by_extension: dict[str, int] = {}
+    junk_hits: dict[str, int] = {}
+    total = 0
+    truncated = False
+
+    for directory in directories:
+        expanded = os.path.expanduser(directory)
+        if not os.path.isdir(expanded) or os.path.islink(expanded):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(expanded, followlinks=False):
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in file_types:
+                    continue
+                total += 1
+                by_extension[ext] = by_extension.get(ext, 0) + 1
+
+                # Check junk patterns
+                full_path = os.path.join(dirpath, filename)
+                for pattern, _desc in KNOWN_JUNK_PATTERNS:
+                    if fnmatch(full_path, pattern):
+                        junk_hits[pattern] = junk_hits.get(pattern, 0) + 1
+                        break  # one pattern match per file is enough
+
+                if total >= _SCAN_FILE_LIMIT:
+                    truncated = True
+                    break
+            if truncated:
+                break
+        if truncated:
+            break
+
+    junk_total = sum(junk_hits.values())
+    return {
+        "total": total,
+        "by_extension": by_extension,
+        "junk_hits": junk_hits,
+        "total_after_exclusions": total - junk_total,
+        "truncated": truncated,
+    }
+
+
+def get_available_browsers() -> list[str]:
+    """Browsers available on the current platform (Safari is macOS-only)."""
+    browsers = ["chrome"]
+    if sys.platform == "darwin":
+        browsers.insert(0, "safari")
+    return browsers
+
+
+# ---------------------------------------------------------------------------
+# argparse registration (for fp CLI router)
+# ---------------------------------------------------------------------------
+
+
+def register(subparsers) -> None:
+    """Register ``fp setup`` with its subcommands."""
+    from footprinter.cli._common import FORMATTER
+
+    parser = subparsers.add_parser(
+        "setup",
+        help="Configuration wizard and system setup",
+        description=(
+            "Interactive setup wizard and system configuration.\n\n"
+            "Run with no arguments for the guided wizard (~3 minutes).\n"
+            "Use flags to run specific setup tasks."
+        ),
+        epilog=(
+            "examples:\n"
+            "  fp setup                   Run the interactive wizard\n"
+            "  fp setup --check           Validate existing configuration\n"
+            "  fp setup mcp --claude      Configure MCP for Claude Desktop\n"
+            "  fp setup folders add ~/Work/newdir\n"
+            "\n"
+            "tip: use 'fp setup <command> --help' for details on subcommands."
+        ),
+        formatter_class=FORMATTER,
+    )
+    parser.set_defaults(func=_handle_setup)
+
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate existing configuration and exit",
+    )
+    if _hooks_available():
+        parser.add_argument(
+            "--hooks",
+            action="store_true",
+            help="Install git hooks (sets core.hooksPath to scripts/hooks)",
+        )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Clear database and vector store, then re-run setup wizard",
+    )
+
+    subs = parser.add_subparsers(dest="setup_action", metavar="COMMAND", title="commands (one required)")
+
+    # mcp
+    mcp_p = subs.add_parser(
+        "mcp",
+        help="Configure MCP integration",
+        description=(
+            "Configure the MCP server snippet for AI clients.\n\nChecks, previews, or writes the JSON config."
+        ),
+        epilog=(
+            "examples:\n"
+            "  fp setup mcp --check       Check if already configured\n"
+            "  fp setup mcp --dry-run     Preview config write without changing anything\n"
+            "  fp setup mcp --claude      Write to Claude Desktop config (creates backup)"
+        ),
+        formatter_class=FORMATTER,
+    )
+    mcp_p.add_argument(
+        "--check",
+        action="store_true",
+        dest="mcp_check",
+        help="Check if footprinter is configured in any MCP client",
+    )
+    mcp_p.add_argument(
+        "--claude",
+        action="store_true",
+        help="Write/merge snippet into Claude Desktop config (creates backup)",
+    )
+    mcp_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview config write without changing anything",
+    )
+
+    # folders (add/remove only — list is now fp folder list)
+    folders_p = subs.add_parser(
+        "folders",
+        help="Manage indexed folders",
+        description=(
+            "Add or remove directories from the indexing configuration.\n\n"
+            "Use 'fp folder list' to view indexed folders."
+        ),
+        epilog=("examples:\n  fp setup folders add ~/Work/newproject\n  fp setup folders remove ~/Work/old"),
+        formatter_class=FORMATTER,
+    )
+    folders_sub = folders_p.add_subparsers(dest="folders_command", metavar="COMMAND", title="commands (one required)")
+    add_p = folders_sub.add_parser(
+        "add",
+        help="Add a directory to index",
+        description="Add a directory path to the indexing configuration.",
+        formatter_class=FORMATTER,
+    )
+    add_p.add_argument("path", help="Directory path to add")
+    add_p.add_argument(
+        "--no-index",
+        action="store_true",
+        help="Skip running the indexer after adding",
+    )
+    remove_p = folders_sub.add_parser(
+        "remove",
+        help="Remove a directory from config",
+        description="Remove a directory from the indexing configuration.",
+        formatter_class=FORMATTER,
+    )
+    remove_p.add_argument("path", help="Directory path to remove")
+
+
+def _handle_setup(args) -> None:
+    """Dispatch ``fp setup`` subcommands."""
+    try:
+        _handle_setup_inner(args)
+    except (PromptCancelled, KeyboardInterrupt):
+        console.print("\n[dim]Setup cancelled.[/dim]")
+        sys.exit(130)
+
+
+def _dispatch_mcp(args) -> None:
+    """Shared MCP subcommand dispatch — used by both router and main()."""
+    # --check runs before the availability gate so it works without mcp extras
+    if getattr(args, "mcp_check", False):
+        sys.exit(mcp_setup.check_config())
+
+    # Gate write/print on mcp dependency (--check still works without it)
+    if not mcp_setup.is_mcp_available():
+        console.print("[red]MCP package not installed.[/red] Install with: pip install mcp")
+        sys.exit(1)
+
+    snippet = mcp_setup.generate_snippet()
+
+    if getattr(args, "claude", False) or getattr(args, "dry_run", False):
+        ok = mcp_setup.write_config(snippet, dry_run=args.dry_run)
+        sys.exit(0 if ok else 1)
+
+    # Default: print snippet
+    mcp_setup.print_snippet(snippet)
+
+
+def _handle_setup_inner(args) -> None:
+    """Inner dispatch for ``fp setup`` — separated so cancellation is caught."""
+    action = getattr(args, "setup_action", None)
+
+    if action == "mcp":
+        _dispatch_mcp(args)
+        return
+
+    if action == "folders":
+        cmd = getattr(args, "folders_command", None)
+        if cmd == "add":
+            sys.exit(folders_add(args.path, index=not args.no_index))
+        elif cmd == "remove":
+            sys.exit(folders_remove(args.path))
+        else:
+            console.print("[yellow]Usage: fp setup folders add|remove[/yellow]")
+        return
+
+    if getattr(args, "reset", False):
+        db_path = get_db_path()
+        chroma_path = get_chroma_path()
+
+        console.print(
+            "[bold yellow]This will delete all indexed data.[/bold yellow]\nConfig and credentials are preserved."
+        )
+
+        if not Confirm.ask("Continue?"):
+            console.print("[dim]Reset cancelled.[/dim]")
+            return
+
+        cleared = []
+        if db_path.exists():
+            db_path.unlink()
+            cleared.append(str(db_path))
+        if chroma_path.exists():
+            shutil.rmtree(chroma_path)
+            cleared.append(str(chroma_path))
+        if cleared:
+            console.print(f"[green]Cleared:[/green] {', '.join(cleared)}")
+        else:
+            console.print("[dim]Nothing to clear (no existing data found).[/dim]")
+
+        run_interactive_wizard()
+        return
+
+    if getattr(args, "hooks", False):
+        sys.exit(install_git_hooks())
+    elif getattr(args, "check", False):
+        sys.exit(check_existing_config())
+    else:
+        run_interactive_wizard()
+
+
+# ---------------------------------------------------------------------------
+# Standalone entry point (fp setup)
+# ---------------------------------------------------------------------------
+
+
+def main():
+    """CLI entry point for fp setup."""
+    parser = argparse.ArgumentParser(
+        prog="fp setup",
+        description="Interactive setup wizard for Footprinter",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate existing configuration and exit",
+    )
+    if _hooks_available():
+        parser.add_argument(
+            "--hooks",
+            action="store_true",
+            help="Install git hooks (sets core.hooksPath to scripts/hooks)",
+        )
+
+    subparsers = parser.add_subparsers(dest="subcommand")
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Configure MCP integration",
+    )
+    mcp_parser.add_argument(
+        "--check",
+        action="store_true",
+        dest="mcp_check",
+        help="Check if footprinter is configured in any MCP client",
+    )
+    mcp_parser.add_argument(
+        "--claude",
+        action="store_true",
+        help="Write/merge snippet into Claude Desktop config (creates backup)",
+    )
+    mcp_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview config write without changing anything",
+    )
+
+    folders_parser = subparsers.add_parser(
+        "folders",
+        help="Manage indexed folders",
+    )
+    folders_sub = folders_parser.add_subparsers(dest="folders_command")
+    add_parser = folders_sub.add_parser("add", help="Add a directory to index")
+    add_parser.add_argument("path", help="Directory path to add")
+    add_parser.add_argument(
+        "--no-index",
+        action="store_true",
+        help="Skip running the indexer after adding",
+    )
+    remove_parser = folders_sub.add_parser("remove", help="Remove a directory from config")
+    remove_parser.add_argument("path", help="Directory path to remove")
+
+    args = parser.parse_args()
+
+    if args.subcommand == "mcp":
+        _dispatch_mcp(args)
+        return
+
+    if args.subcommand == "folders":
+        cmd = getattr(args, "folders_command", None)
+        if cmd == "add":
+            sys.exit(folders_add(args.path, index=not args.no_index))
+        elif cmd == "remove":
+            sys.exit(folders_remove(args.path))
+        else:
+            folders_parser.print_help()
+            return
+
+    if getattr(args, "hooks", False):
+        sys.exit(install_git_hooks())
+    elif args.check:
+        sys.exit(check_existing_config())
+    else:
+        run_interactive_wizard()
+
+
+def check_existing_config() -> int:
+    """Validate existing config and print results.
+
+    Returns:
+        0 if config is valid, 1 otherwise.
+    """
+    try:
+        config = get_config()
+    except ConfigError as e:
+        console.print(f"[red]Config error:[/red] {e}")
+        return 1
+
+    errors, warnings = validate_config(config)
+    if errors:
+        console.print("[red]Configuration errors:[/red]")
+        for err in errors:
+            console.print(f"  - {err}")
+        return 1
+
+    console.print("[green]Configuration is valid.[/green]")
+    if warnings:
+        console.print("[yellow]Warnings:[/yellow]")
+        for w in warnings:
+            console.print(f"  - {w}")
+
+    # Architecture check
+    arch_warning = check_architecture()
+    if arch_warning:
+        console.print()
+        console.print(f"[yellow]Architecture warning:[/yellow] {arch_warning}")
+
+    # Core dependency check — only surface errors
+    core_deps = check_core_deps()
+    missing_core = [name for name, avail in core_deps if not avail]
+    if missing_core:
+        console.print()
+        console.print(f"[red]Missing core dependencies:[/red] {', '.join(missing_core)}")
+        console.print("Reinstall with: pip install footprinter-cli")
+
+    # Optional features table
+    features = check_optional_features(config)
+    console.print()
+    feat_table = Table(title="Optional Features", show_header=True, header_style="bold")
+    feat_table.add_column("Feature", style="cyan")
+    feat_table.add_column("Status")
+
+    for name, installed, enabled, hint in features:
+        if not installed:
+            feat_table.add_row(name, f"[yellow]not installed[/yellow] — {hint}")
+        elif enabled:
+            feat_table.add_row(name, "[green]enabled[/green]")
+        else:
+            feat_table.add_row(name, "[dim]installed, not enabled[/dim]")
+
+    console.print(feat_table)
+
+    return 1 if missing_core else 0
+
+
+def _is_importable(module_name: str) -> bool:
+    """Return True if *module_name* can be imported."""
+    try:
+        __import__(module_name)
+        return True
+    except ImportError:
+        return False
+
+
+def check_core_deps() -> list[tuple[str, bool]]:
+    """Check core dependencies. Returns ``(name, available)`` pairs.
+
+    Core deps are hard requirements — if any are missing the install is broken.
+    """
+    return [
+        ("PyYAML", _is_importable("yaml")),
+        ("Rich", _is_importable("rich")),
+    ]
+
+
+def check_optional_features(
+    config: dict,
+) -> list[tuple[str, bool, bool | None, str]]:
+    """Check optional features against install state *and* config.
+
+    Returns ``(name, installed, enabled, hint)`` for each feature.
+    ``enabled`` is ``None`` when not applicable (shouldn't happen currently).
+    """
+    features: list[tuple[str, bool, bool | None, str]] = []
+
+    # Semantic Search (chromadb + onnxruntime)
+    sem_installed = _is_importable("chromadb") and _is_importable("onnxruntime")
+    sem_cfg = config.get("semantic", {})
+    sem_enabled = sem_cfg.get("file_vectorization", False) or sem_cfg.get("chat_vectorization", False)
+    features.append(("Semantic Search", sem_installed, sem_enabled, "pip install footprinter-cli[semantic]"))
+
+    # Connector-declared features (dynamic)
+    from footprinter.connectors import discover_connectors
+
+    for spec in discover_connectors().values():
+        for feat_name, probe, cfg_section, hint in spec.features:
+            installed = _is_importable(probe)
+            enabled = config.get(cfg_section, {}).get("enabled", False)
+            features.append((feat_name, installed, enabled, hint))
+
+    return features
+
+
+def check_architecture() -> str | None:
+    """Check for architecture mismatches. Returns warning string or None."""
+    import platform
+
+    machine = platform.machine()
+    # Detect Rosetta: arm64 hardware but x86_64 Python.
+    # hw.optional.arm64 returns 1 on Apple Silicon even under Rosetta,
+    # unlike hw.machine which reports x86_64 under Rosetta.
+    if machine == "x86_64":
+        try:
+            hw = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], capture_output=True, text=True)
+            if hw.stdout.strip() == "1":
+                return (
+                    "Python is running as x86_64 on arm64 hardware (Rosetta). "
+                    "Native dependencies may have compatibility issues. "
+                    "Consider recreating venv with native arm64 Python."
+                )
+        except Exception:
+            pass  # Best-effort Rosetta detection; sysctl may not exist on non-macOS
+    return None
+
+
+def install_git_hooks() -> int:
+    """Set core.hooksPath to scripts/hooks.
+
+    Returns:
+        0 on success, 1 on failure.
+    """
+    root = _repo_root()
+    hooks_dir = root / "scripts" / "hooks"
+    post_merge = hooks_dir / "post-merge"
+
+    if not post_merge.exists():
+        console.print(f"[red]Hook script not found:[/red] {post_merge}")
+        return 1
+
+    # Check we're in a git repo
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print("[red]Not a git repository.[/red]")
+            return 1
+    except FileNotFoundError:
+        console.print("[red]git not found.[/red]")
+        return 1
+
+    # Set core.hooksPath
+    result = subprocess.run(
+        ["git", "config", "--local", "core.hooksPath", "scripts/hooks"],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Failed to set core.hooksPath:[/red] {result.stderr.strip()}")
+        return 1
+
+    console.print("[green]Git hooks installed.[/green]")
+    console.print("  core.hooksPath = [cyan]scripts/hooks[/cyan]")
+    console.print(f"  post-merge hook: [cyan]{post_merge.relative_to(root)}[/cyan]")
+    return 0
+
+
+def validate_config(config: dict) -> tuple[list[str], list[str]]:
+    """Validate a config dict and return errors and warnings.
+
+    Args:
+        config: Parsed YAML config dict.
+
+    Returns:
+        Tuple of (errors, warnings). Empty errors means valid.
+    """
+    errors = []
+
+    if config is None:
+        errors.append("Config is empty or invalid YAML")
+        return errors, []
+
+    # directories is required and must be a non-empty list
+    dirs = config.get("directories")
+    missing_dirs: list[str] = []
+    if not dirs:
+        errors.append("'directories' is missing or empty")
+    elif not isinstance(dirs, list):
+        errors.append("'directories' must be a list")
+    else:
+        for d in dirs:
+            expanded = os.path.expanduser(d)
+            if not os.path.isdir(expanded):
+                missing_dirs.append(d)
+
+    # browsers must be a list (can be empty)
+    browsers = config.get("browsers")
+    if browsers is None:
+        errors.append("'browsers' key is missing")
+    elif not isinstance(browsers, list):
+        errors.append("'browsers' must be a list")
+    else:
+        for b in browsers:
+            if b not in KNOWN_BROWSERS:
+                errors.append(f"Unknown browser: {b}")
+
+    # Absent directories are a warning, not an error — the bundled example
+    # lists macOS-flavored defaults (~/Work, ~/Personal, ~/.claude) that a
+    # fresh Linux install won't have. Let `fp setup --check` pass and point
+    # the user at what's missing instead of rejecting the whole config.
+    warnings = []
+    if missing_dirs:
+        warnings.append(
+            "Directories not found (will be skipped during indexing): "
+            + ", ".join(missing_dirs)
+        )
+    if "exclusions" not in config:
+        warnings.append("'exclusions' section missing — default exclusions will be used")
+    if "indexing" not in config:
+        warnings.append("'indexing' section missing — default settings will be used")
+
+    return errors, warnings
+
+
+def _print_phase(step: int, total: int, name: str):
+    """Print phase progression indicator as a visual Rule."""
+    console.print()
+    console.print(Rule(f"[bold]Step {step} of {total} — {name}[/bold]", style="dim"))
+
+
+def _choose_preset() -> dict | None:
+    """Offer preset profiles. Returns preset dict or None for full/custom."""
+    console.print("  [bold]Quick start[/bold] — common directories, no email, browser or chat history (add more later)")
+    console.print("  [bold]Full setup[/bold]  — choose everything yourself")
+    choice = Prompt.ask("  Profile", choices=["quick", "full"], default="full")
+    if choice == "quick":
+        dirs = [d for d in QUICK_START_CANDIDATES if os.path.isdir(os.path.expanduser(d))]
+        if not dirs:
+            console.print("  [yellow]No common directories found — switching to full setup[/yellow]")
+            return None
+        # Surface what quick mode skips so the user isn't surprised later when
+        # browser/chat/CSV results are empty.
+        console.print(
+            "\n  [dim]Quick start skips: browser history, chat history import, "
+            "CSV import. Default content settings apply (snippets ON, semantic OFF). "
+            "You can add any of these later with fp setup or fp ingest.[/dim]"
+        )
+        return {"directories": dirs, "browsers": []}
+    return None
+
+
+def run_interactive_wizard():
+    """Run the full interactive setup flow.
+
+    Structured as 7 phases: Welcome, Data Sources, Content & Search,
+    Confirm & Write, Claude Desktop, Populate, Summary.
+
+    Access policies are seeded silently inside Confirm & Write (no
+    visible phase). Claude Desktop runs before Populate so the user can
+    restart Claude Desktop while indexing finishes.
+
+    PromptCancelled and KeyboardInterrupt propagate to the caller
+    (``_handle_setup``) which prints the cancellation message and
+    exits with code 130.
+    """
+    existing = _load_existing_config()
+
+    # Phase 1: Welcome
+    _print_phase(1, 7, "Welcome")
+    welcome_extra = ""
+    if existing is not None:
+        welcome_extra = (
+            "\n\n[bold yellow]Existing configuration detected.[/bold yellow]\n"
+            "  Current settings will be shown as defaults. Only sections\n"
+            "  you explicitly change will be updated."
+        )
+    console.print(
+        Panel(
+            "[bold]Footprinter Setup Wizard[/bold]\n\n"
+            "Footprinter indexes your files, browser history, emails, and chat\n"
+            "exports for AI-powered search and analysis.\n\n"
+            "[bold]Phases:[/bold]\n"
+            "  1. Welcome — what Footprinter does\n"
+            "  2. Data Sources — directories, browsers, chat exports, CSV import\n"
+            "  3. Content & Search — snippets and semantic search\n"
+            "  4. Confirm & Write — preview and save configuration\n"
+            "  5. Claude Desktop — MCP integration\n"
+            "  6. Populate — index your data\n"
+            "  7. Summary — results and next steps"
+            + (
+                "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
+                "  - Full Disk Access for Safari history (System Settings > Privacy & Security)"
+                if sys.platform == "darwin"
+                else ""
+            )
+            + welcome_extra,
+            title="fp setup",
+        )
+    )
+
+    # Phase 2: Data Sources
+    _print_phase(2, 7, "Data Sources")
+    if existing is not None:
+        preset = None  # Skip preset choice in reconfigure mode
+    else:
+        preset = _choose_preset()
+    if preset:
+        answers = {"directories": preset["directories"], "browsers": preset["browsers"]}
+        connector_results = {}
+        chat_export_path = None
+    else:
+        answers = collect_answers(existing=existing)
+        connector_results = {}
+        chat_export_path = collect_chat_export_path()
+
+    # Phase 3: Content & Search
+    _print_phase(3, 7, "Content & Search")
+    if preset:
+        semantic_answers = collect_vectorization_answers(directories=preset["directories"], quick=True)
+    else:
+        semantic_answers = collect_vectorization_answers(directories=answers["directories"], existing=existing)
+
+    # Phase 4: Confirm & Write
+    _print_phase(4, 7, "Confirm & Write")
+    preview_config(
+        answers,
+        connectors=connector_results,
+        chat_export_path=chat_export_path,
+        semantic=semantic_answers,
+    )
+
+    if not Confirm.ask("Write this configuration?", default=True):
+        console.print("[dim]Setup cancelled.[/dim]")
+        return
+
+    config = generate_config(answers, connector_results=connector_results, semantic=semantic_answers, existing=existing)
+    write_config(config)
+    # Seed default MCP access policies silently as part of writing config —
+    # not a visible phase. The "Restrict to metadata only?" prompt inside
+    # the helper is the only user-facing decision.
+    seed_access_policies()
+
+    # Phase 5: Claude Desktop
+    _print_phase(5, 7, "Claude Desktop")
+    mcp_configured = offer_setup_claude()
+
+    # Phase 6: Populate
+    _print_phase(6, 7, "Populate")
+
+    # Truncate setup log before first orchestrator call
+    setup_log = get_log_path()
+    setup_log.parent.mkdir(parents=True, exist_ok=True)
+    setup_log.write_text("")
+
+    # Build dynamic description of what will run
+    stages_desc = ["local file indexing"]
+    if answers.get("browsers"):
+        stages_desc.append("browser history")
+    if chat_export_path:
+        stages_desc.append("chat import")
+    console.print(f"  This will run: {', '.join(stages_desc)}.")
+    if mcp_configured:
+        console.print(
+            "  [dim]Tip: restart Claude Desktop while indexing runs to load the MCP server.[/dim]"
+        )
+
+    chat_result = {}
+    if Confirm.ask("Index and analyze your data now?", default=True):
+        try:
+            run_orchestrator(answers, connector_results=connector_results)
+        except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
+            console.print(f"  [yellow]Indexing error: {e}[/yellow]")
+        if chat_export_path:
+            try:
+                chat_result = import_chat_export(chat_export_path)
+            except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
+                console.print(f"  [yellow]Chat import error: {e}[/yellow]")
+        # CSV import runs here — the orchestrator above creates the DB, so
+        # _offer_csv_import_wizard can open it and insert rows. Asking earlier
+        # (in Data Sources) would silently skip on fresh installs.
+        _offer_csv_import_wizard()
+    else:
+        console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
+
+    # Phase 7: Summary
+    _print_phase(7, 7, "Summary")
+    print_summary(
+        chat_result=chat_result,
+        mcp_configured=mcp_configured,
+        connector_results=connector_results,
+    )
+
+
+def _offer_csv_import_wizard() -> None:
+    """Wizard wrapper that opens the DB and calls _offer_csv_import."""
+    from footprinter.cli._common import open_db
+
+    try:
+        with open_db() as conn:
+            _offer_csv_import(conn)
+    except SystemExit:
+        # open_db exits if DB not found — not an error during setup
+        console.print("  [dim]Database not ready — skipping CSV import.[/dim]")
+
+
+def _offer_csv_import(conn) -> None:
+    """Prompt user to import clients/projects from CSV files.
+
+    Loops until the user enters an empty path to finish.
+    Detects entity type from CSV headers (client_type → clients,
+    project_name → projects). Shows a summary and confirms before inserting.
+    """
+    import csv as csv_mod
+
+    console.print("\n[bold]Import clients/projects from CSV[/bold]")
+    console.print(
+        "  If you have a spreadsheet of clients or projects, paste the file path.\n"
+        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv --commit[/dim]"
+    )
+
+    while True:
+        path_str = Prompt.ask("  CSV file path (blank to skip)", default="")
+        if not path_str:
+            return
+
+        csv_path = Path(path_str).expanduser()
+        if not csv_path.exists():
+            console.print(f"  [red]File not found: {csv_path}[/red]")
+            continue
+
+        # Read headers to detect entity type
+        try:
+            with open(csv_path, encoding="utf-8", newline="") as f:
+                reader = csv_mod.DictReader(f)
+                headers = reader.fieldnames or []
+                rows = list(reader)
+        except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
+            console.print(f"  [red]Could not read CSV: {e}[/red]")
+            continue
+
+        if not rows:
+            console.print("  [dim]Empty CSV — nothing to import.[/dim]")
+            continue
+
+        # Detect entity type from headers
+        if "client_type" in headers:
+            entity_type = "client"
+            svc_name = "client_service"
+        elif "project_name" in headers:
+            entity_type = "project"
+            svc_name = "project_service"
+        else:
+            console.print(
+                "  [red]Could not detect CSV type.[/red] Expected 'client_type' "
+                "(for clients) or 'project_name' (for projects) in headers."
+            )
+            continue
+
+        from footprinter.cli.upsert import CSV_COLUMNS, _process_csv_rows
+
+        required_cols, optional_cols, int_cols = CSV_COLUMNS[entity_type]
+
+        # Check required columns
+        missing = set(required_cols) - set(headers)
+        if missing:
+            console.print(f"  [red]Missing required columns: {', '.join(sorted(missing))}[/red]")
+            continue
+
+        import footprinter.services as svc
+
+        service = getattr(svc, svc_name)
+
+        created, updated, errors, error_details = _process_csv_rows(
+            conn,
+            rows,
+            service,
+            entity_type,
+            required_cols,
+            optional_cols,
+            int_cols,
+        )
+
+        # Show summary
+        table = Table(title=f"CSV Import — {entity_type}s")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right")
+        table.add_row("Created", str(created))
+        table.add_row("Updated", str(updated))
+        table.add_row("Errors", str(errors))
+        console.print(table)
+
+        if error_details:
+            for err in error_details[:5]:
+                console.print(f"  [yellow]Row {err['row']}: {err['error']}[/yellow]")
+            if len(error_details) > 5:
+                console.print(f"  [dim]... and {len(error_details) - 5} more errors[/dim]")
+
+        console.print(f"  [green]Imported {created} new, updated {updated} existing {entity_type}(s).[/green]")
+
+
+def collect_answers(existing: dict | None = None) -> dict:
+    """Gather user input via rich prompts.
+
+    Args:
+        existing: Optional existing config dict. When provided, current
+                  directories and browsers are shown as defaults.
+
+    Returns:
+        Dict with keys: directories, browsers.
+    """
+    answers = {}
+
+    # --- Directories ---
+    console.print("\n[bold]1. Directories to scan[/bold]")
+    console.print(
+        "  Footprinter will scan these directories for files to index —\n"
+        "  metadata, content types, and project structure.\n"
+        "  [dim]Common choices: ~/Work, ~/Personal, ~/Documents[/dim]\n"
+        "  [dim]Use ~ for your home directory.[/dim]"
+    )
+
+    existing_dirs = (existing or {}).get("directories", [])
+    if existing_dirs:
+        console.print(f"  Current directories: {', '.join(existing_dirs)}")
+        if Confirm.ask("  Keep current directories?", default=True):
+            directories = list(existing_dirs)
+            # Still offer to add more
+            console.print("  [dim]You can add more directories below (leave blank to continue).[/dim]")
+            while True:
+                path = Prompt.ask("  Add another directory (leave blank to finish)", default="")
+                if not path:
+                    break
+                if Path(path).expanduser().is_dir():
+                    directories.append(path)
+                    console.print(f"  [green]✓[/green] Added {path}")
+                else:
+                    console.print(f"  [red]Directory not found: {path}[/red]")
+            answers["directories"] = directories
+        else:
+            # User wants to re-enter directories — fall through to standard collection
+            answers["directories"] = _collect_directories_from_scratch()
+    else:
+        answers["directories"] = _collect_directories_from_scratch()
+
+    # --- Browsers ---
+    console.print("\n[bold]2. Browser history[/bold]")
+    console.print(
+        "  Optionally index your browsing history for search and context.\n"
+        "  [dim]You can enable this later in config.yaml.[/dim]"
+    )
+
+    existing_browsers = (existing or {}).get("browsers", [])
+    if existing_browsers:
+        console.print(f"  Currently enabled: {', '.join(existing_browsers)}")
+        if Confirm.ask("  Keep current browser settings?", default=True):
+            browsers = list(existing_browsers)
+        else:
+            browsers = _collect_browsers_from_scratch()
+    else:
+        browsers = _collect_browsers_from_scratch()
+    answers["browsers"] = browsers
+
+    return answers
+
+
+def _collect_directories_from_scratch() -> list[str]:
+    """Collect directories interactively from scratch."""
+    while True:
+        directories = []
+
+        # Prompt for directories one at a time
+        while True:
+            prompt_text = (
+                "  Enter directory path" if not directories else "  Add another directory (leave blank to finish)"
+            )
+            path = Prompt.ask(prompt_text, default="" if directories else ...)
+            if not path:
+                break
+            expanded = os.path.expanduser(path)
+            if os.path.isdir(expanded):
+                directories.append(path)
+                console.print(f"  [green]✓[/green] Added {path}")
+            else:
+                console.print(f"  [red]Directory not found: {path}[/red]")
+
+        # Offer optional directories if they exist
+        for d in OPTIONAL_DIRECTORIES:
+            expanded = os.path.expanduser(d)
+            if os.path.isdir(expanded):
+                if d == "~/.claude":
+                    console.print("  [dim]~/.claude contains Claude Code settings and chat history[/dim]")
+                if Confirm.ask(f"  Include {d}?", default=False):
+                    directories.append(d)
+
+        if directories:
+            return directories
+        console.print("  [red]At least one directory is required.[/red]")
+
+
+SAFARI_FDA_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+
+
+def _guide_safari_full_disk_access() -> None:
+    """Walk the user through granting Full Disk Access for Safari history.
+
+    Safari's History.db is protected by macOS's Full Disk Access permission.
+    Selecting Safari in the wizard does nothing on its own — the user must
+    add their terminal/app to Privacy & Security → Full Disk Access. The
+    caller fires this helper once after all browser selections are
+    collected, so the user finishes naming browsers before being walked
+    through the OS permission grant.
+    """
+    if sys.platform != "darwin":
+        return
+
+    console.print()
+    console.print(
+        "  [yellow]Safari history requires Full Disk Access.[/yellow] This is a one-time\n"
+        "  macOS permission grant. Without it, Safari history will return 0 rows."
+    )
+    console.print(
+        "  Open [bold]System Settings → Privacy & Security → Full Disk Access[/bold]\n"
+        "  and add the terminal or app you're running [bold]fp[/bold] from."
+    )
+
+    if Confirm.ask("  Open System Settings now?", default=True):
+        subprocess.run(["open", SAFARI_FDA_URL], check=False)
+        console.print(
+            "  [dim]Toggle Full Disk Access on for Terminal (or iTerm, VS Code, etc.).[/dim]"
+        )
+
+    if not Confirm.ask(
+        "  Press y once you've granted access (n to skip and continue without Safari history)",
+        default=False,
+    ):
+        console.print("  [dim]Skipping — Safari history will be empty until you grant access and re-run.[/dim]")
+        return
+
+    history_db = Path(os.path.expanduser("~/Library/Safari/History.db"))
+    try:
+        with history_db.open("rb") as f:
+            f.read(16)
+        console.print("  [green]✓[/green] Safari history is readable.")
+    except (PermissionError, FileNotFoundError, OSError, RuntimeError):
+        console.print(
+            "  [yellow]⚠[/yellow] Safari history still appears unreadable. Re-run [bold]fp setup[/bold]\n"
+            "  after granting Full Disk Access if browser results are empty."
+        )
+
+
+def _collect_browsers_from_scratch() -> list[str]:
+    """Collect browser selection, then fire FDA guidance once if Safari was chosen.
+
+    Firing FDA after the full per-browser loop keeps cause-and-effect grouped:
+    the user finishes naming all browsers they want, then deals with the
+    macOS permission grant once (rather than being interrupted between
+    browsers).
+    """
+    browsers = []
+    for b in get_available_browsers():
+        if Confirm.ask(f"  Include {b}?", default=True):
+            browsers.append(b)
+    if "safari" in browsers:
+        _guide_safari_full_disk_access()
+    return browsers
+
+
+def _check_semantic_deps() -> bool:
+    """Check semantic deps and offer pip install if missing. Return True if available."""
+    if _is_importable("chromadb") and _is_importable("onnxruntime"):
+        return True
+
+    console.print("\n  [yellow]Semantic search requires chromadb and onnxruntime.[/yellow]")
+    if Confirm.ask("  Install now? (pip install footprinter-cli[semantic])", default=True):
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "footprinter-cli[semantic]"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            console.print("  [green]✓[/green] Semantic dependencies installed.")
+            return True
+        else:
+            console.print(f"  [red]Install failed:[/red] {result.stderr.strip()}")
+
+    console.print("  [dim]You can enable semantic search later with fp setup.[/dim]")
+    return False
+
+
+def collect_vectorization_answers(
+    directories: list[str],
+    existing: dict | None = None,
+    quick: bool = False,
+) -> dict:
+    """Ask about content indexing: snippets and vectorization.
+
+    Groups all content extraction decisions into one section:
+    - Content snippets: FTS keyword search previews (per entity)
+    - Semantic search: vector embeddings for meaning-based search (per entity)
+
+    Args:
+        directories: Directories to scan for file type preview.
+        existing: Optional existing config dict for defaults.
+        quick: If True, show compact summary with auto-selected exclusions.
+
+    Returns:
+        Dict with content_snippets (bool),
+        file_vectorization, chat_vectorization (bool),
+        file_types (list), exclude_patterns (list).
+    """
+    existing_vec = (existing or {}).get("vectorization", {})
+    existing_semantic = (existing or {}).get("semantic", {})
+    # Fresh installs default to ON so `fp search` returns content matches, not
+    # just filenames; reconfigure runs preserve the user's prior choice.
+    if existing is not None and "indexing" in existing and "content_snippets" in existing["indexing"]:
+        snippets_default = existing["indexing"]["content_snippets"]
+    else:
+        snippets_default = True
+    file_types = existing_vec.get("file_types", list(DEFAULT_FILE_TYPES))
+    existing_excludes = existing_vec.get("exclude_patterns", [])
+
+    console.print("\n[bold]Content Indexing[/bold]")
+    console.print(
+        "  By default (Tier 0), Footprinter indexes metadata only —\n"
+        "  filenames, paths, timestamps, structure. Nothing is read from\n"
+        "  inside your files. The options below opt in to reading and\n"
+        "  storing file content for richer search.\n"
+    )
+
+    console.print("  [bold]Content snippets (Tier 1)[/bold]")
+    console.print(
+        "  Reads each file during indexing and stores a short preview\n"
+        "  (~1000 chars) in Footprinter's local database, so keyword\n"
+        "  search matches file contents — not just filenames. Connector\n"
+        "  plugins (e.g. Gmail) use the same flag to store body previews.\n"
+        "  [bold]Local only[/bold]: previews are written to a local SQLite database\n"
+        "  on your machine. Nothing is uploaded or shared, and Claude only sees\n"
+        "  content when you grant explicit permission via fp mcp.\n"
+        "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]"
+    )
+    content_snippets = Confirm.ask("  Enable file content snippets?", default=snippets_default)
+
+    console.print("\n  [bold]Semantic search[/bold]")
+    console.print(
+        "  Stores content as embeddings in a local ChromaDB database.\n"
+        "  This lets you find files and chats by meaning, not just keywords.\n"
+        "  [dim]Trade-off: additional disk space (~500 MB) and longer indexing time.[/dim]"
+    )
+
+    if quick:
+        result = _collect_vectorization_quick(directories, file_types, existing_excludes, existing_semantic)
+    else:
+        result = _collect_vectorization_full(directories, file_types, existing_excludes, existing_semantic)
+    result["content_snippets"] = content_snippets
+    return result
+
+
+def _collect_vectorization_quick(
+    directories: list[str],
+    file_types: list[str],
+    existing_excludes: list[str],
+    existing_semantic: dict,
+) -> dict:
+    """Quick-mode vectorization: compact summary with auto-selected exclusions."""
+    scan = _scan_directories_for_vectorization(directories, file_types)
+
+    if scan["total"] > 0:
+        junk_count = sum(scan["junk_hits"].values())
+        console.print(f"\n  Found [bold]{scan['total']}[/bold] files matching {', '.join(file_types)}")
+        if junk_count > 0:
+            console.print(
+                f"  [yellow]{junk_count} likely junk files detected[/yellow] "
+                f"→ {scan['total_after_exclusions']} after exclusions"
+            )
+
+    file_default = existing_semantic.get("file_vectorization", False)
+    chat_default = existing_semantic.get("chat_vectorization", False)
+
+    file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
+    chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
+
+    if not file_vec and not chat_vec:
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": existing_excludes,
+        }
+
+    # Auto-include detected junk exclusions
+    exclude_patterns = list(existing_excludes)
+    for pattern in scan["junk_hits"]:
+        if pattern not in exclude_patterns:
+            exclude_patterns.append(pattern)
+
+    if not _check_semantic_deps():
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": exclude_patterns,
+        }
+
+    return {
+        "file_vectorization": file_vec,
+        "chat_vectorization": chat_vec,
+        "file_types": file_types,
+        "exclude_patterns": exclude_patterns,
+    }
+
+
+def _collect_vectorization_full(
+    directories: list[str],
+    file_types: list[str],
+    existing_excludes: list[str],
+    existing_semantic: dict,
+) -> dict:
+    """Full-mode vectorization: enable decision first, then file types and exclusions.
+
+    Asking the enable Confirm before file-type/exclusion configuration avoids
+    the cost-up-front-then-decline anti-pattern where the user configures an
+    allowlist, watches a directory scan, and reviews exclusions before being
+    asked whether they want semantic search at all.
+    """
+    file_default = existing_semantic.get("file_vectorization", False)
+    chat_default = existing_semantic.get("chat_vectorization", False)
+    file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
+    chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
+
+    if not file_vec and not chat_vec:
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": list(existing_excludes),
+        }
+
+    if not _check_semantic_deps():
+        return {
+            "file_vectorization": False,
+            "chat_vectorization": False,
+            "file_types": file_types,
+            "exclude_patterns": list(existing_excludes),
+        }
+
+    # File type allowlist — only asked when semantic is being enabled
+    console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
+    keep_types = Confirm.ask("  Keep these file types?", default=True)
+    if not keep_types:
+        raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
+        file_types = [t.strip() for t in raw.split(",") if t.strip()]
+
+    # Scan and show results
+    scan = _scan_directories_for_vectorization(directories, file_types)
+
+    if scan["total"] > 0:
+        console.print(f"\n  Scanned: [bold]{scan['total']}[/bold] files found")
+        for ext, count in sorted(scan["by_extension"].items()):
+            console.print(f"    {ext}: {count}")
+
+    # Junk exclusions
+    exclude_patterns = list(existing_excludes)
+    if scan["junk_hits"]:
+        console.print("\n  [yellow]Recommended exclusions:[/yellow]")
+        detected_patterns = []
+        for pattern, count in scan["junk_hits"].items():
+            desc = next((d for p, d in KNOWN_JUNK_PATTERNS if p == pattern), pattern)
+            console.print(f"    {pattern} ({count} files) — {desc}")
+            detected_patterns.append(pattern)
+
+        accept_all = Confirm.ask("  Accept recommended exclusions?", default=True)
+        if accept_all:
+            for p in detected_patterns:
+                if p not in exclude_patterns:
+                    exclude_patterns.append(p)
+        else:
+            for pattern in detected_patterns:
+                desc = next((d for p, d in KNOWN_JUNK_PATTERNS if p == pattern), pattern)
+                include = Confirm.ask(f"  Exclude {pattern}?", default=True)
+                if include and pattern not in exclude_patterns:
+                    exclude_patterns.append(pattern)
+
+    if scan["total"] > 0:
+        after = scan["total"] - sum(scan["junk_hits"].get(p, 0) for p in exclude_patterns)
+        console.print(f"\n  Files to embed: [bold]{after}[/bold] (of {scan['total']} total)")
+
+    return {
+        "file_vectorization": file_vec,
+        "chat_vectorization": chat_vec,
+        "file_types": file_types,
+        "exclude_patterns": exclude_patterns,
+    }
+
+
+def preview_config(
+    answers: dict,
+    console=None,
+    connectors: dict = None,
+    chat_export_path: str = None,
+    semantic: dict = None,
+):
+    """Display a summary of the configuration before writing.
+
+    Args:
+        answers: Dict from collect_answers().
+        console: Optional Rich Console (for testing).
+        connectors: Optional connector results dict.
+        chat_export_path: Optional path to a chat export file/directory.
+        semantic: Optional dict from collect_vectorization_answers().
+    """
+    if console is None:
+        console = Console()
+
+    lines = []
+    lines.append(f"Directories: {', '.join(answers.get('directories', []))}")
+    browsers = answers.get("browsers", [])
+    if browsers:
+        lines.append(f"Browsers: {', '.join(browsers)}")
+    else:
+        lines.append("Browsers: [dim]none (can add later)[/dim]")
+    if chat_export_path:
+        lines.append(f"Chat export: {chat_export_path}")
+    else:
+        lines.append("Chat export: [dim]none (can add later)[/dim]")
+    if semantic and (semantic.get("file_vectorization") or semantic.get("chat_vectorization")):
+        parts = []
+        if semantic.get("file_vectorization"):
+            parts.append("files")
+        if semantic.get("chat_vectorization"):
+            parts.append("chats")
+        lines.append(f"Semantic search: {', '.join(parts)}")
+        if semantic.get("file_types"):
+            lines.append(f"  File types: {', '.join(semantic['file_types'])}")
+        if semantic.get("exclude_patterns"):
+            lines.append(f"  Exclusion patterns: {len(semantic['exclude_patterns'])}")
+    else:
+        lines.append("Semantic search: [dim]disabled (can enable later)[/dim]")
+
+    if semantic and semantic.get("content_snippets"):
+        lines.append("Content snippets: files")
+    else:
+        lines.append("Content snippets: [dim]disabled (can enable later)[/dim]")
+
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="Configuration Preview",
+            border_style="dim",
+            expand=False,
+        )
+    )
+    console.print()
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base. Returns a new dict."""
+    result = dict(base)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def generate_config(
+    answers: dict,
+    connector_results: dict = None,
+    semantic: dict = None,
+    existing: dict | None = None,
+) -> dict:
+    """Load config.example.yaml and apply user answers.
+
+    Args:
+        answers: Dict from collect_answers().
+        connector_results: Optional dict from connector setup hooks mapping
+                account names to verified service lists
+                (e.g. {"personal": ["drive"]}).
+        semantic: Optional dict from collect_vectorization_answers() with
+                  file_vectorization and chat_vectorization bools.
+        existing: Optional existing config dict. When provided, its values
+                  are deep-merged on top of the template before wizard answers
+                  are applied, preserving sections the user didn't change.
+                  Note: source_seeds are reconciled by name (template seeds
+                  kept, existing seeds overlaid) rather than replaced wholesale.
+
+    Returns:
+        Config dict ready to write as YAML.
+    """
+    import copy
+
+    if connector_results is None:
+        connector_results = {}
+
+    with open(get_bundled_path("config.example.yaml"), "r") as f:
+        config = yaml.safe_load(f)
+
+    if existing is not None:
+        # Save template seeds before merge (_deep_merge replaces lists wholesale)
+        template_seeds = list(config.get("source_seeds", []))
+        config = _deep_merge(config, copy.deepcopy(existing))
+        # Reconcile source_seeds: keep all template seeds, overlay existing by name
+        existing_seeds = config.get("source_seeds", [])
+        by_name = {s["name"]: s for s in template_seeds}
+        for s in existing_seeds:
+            by_name[s["name"]] = s
+        config["source_seeds"] = list(by_name.values())
+
+    # Apply answers — these always come from explicit user input
+    config["directories"] = answers.get("directories") or []
+    config["browsers"] = answers.get("browsers", [])
+
+    # Strip the placeholder API key — real key goes in .env
+    if "claude" in config and "api_key" in config["claude"]:
+        config["claude"]["api_key"] = "YOUR_API_KEY_HERE"
+
+    # Apply connector config via hooks (enable flags, source_seeds, accounts)
+    if connector_results:
+        from footprinter.connectors import discover_connectors, resolve_hook
+
+        for _name, spec in discover_connectors().items():
+            if spec.config_apply:
+                fn = resolve_hook(spec.config_apply)
+                if fn:
+                    fn(config, connector_results)
+
+    # Apply semantic search settings — always ensure section exists with safe defaults
+    config.setdefault("semantic", {})
+    if semantic:
+        config["semantic"]["file_vectorization"] = semantic.get("file_vectorization", False)
+        config["semantic"]["chat_vectorization"] = semantic.get("chat_vectorization", False)
+    else:
+        config["semantic"].setdefault("file_vectorization", False)
+        config["semantic"].setdefault("chat_vectorization", False)
+
+    # Apply vectorization settings from the wizard (file_types, exclude_patterns)
+    if semantic and "file_types" in semantic:
+        config.setdefault("vectorization", {})
+        config["vectorization"]["file_types"] = semantic["file_types"]
+    if semantic and "exclude_patterns" in semantic:
+        config.setdefault("vectorization", {})
+        config["vectorization"]["exclude_patterns"] = semantic["exclude_patterns"]
+
+    # Apply content snippets setting
+    config.setdefault("indexing", {})
+    if semantic and "content_snippets" in semantic:
+        config["indexing"]["content_snippets"] = semantic["content_snippets"]
+
+    return config
+
+
+def write_config(config: dict, path: Path = None):
+    """Write config dict to YAML file.
+
+    Args:
+        config: Config dict to write.
+        path: Override output path (default: config/config.yaml).
+    """
+    target = path or get_config_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(target, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    console.print(f"  Wrote [bold]{target}[/bold]")
+
+
+def _run_orchestrator_stages(stages: list[str]):
+    """Run pipeline stages in-process via the same code path as ``fp ingest``.
+
+    Uses DataPipelineOrchestrator + ``_run_with_logging()`` directly.
+
+    Args:
+        stages: List of stage names (e.g. ["local_folders", "local_files"]).
+    """
+    orchestrator = DataPipelineOrchestrator()
+    try:
+        _run_with_logging(
+            orchestrator,
+            pipes=stages,
+            mode="incremental",
+            quiet=False,
+            header="Setup Indexing",
+            show_next_steps=False,
+        )
+    except ValueError as e:
+        console.print(f"[yellow]Pipeline error:[/yellow] {e}")
+    except KeyboardInterrupt:
+        console.print("[dim]Interrupted.[/dim]")
+
+
+def run_orchestrator(answers: dict = None, connector_results: dict = None):
+    """Run initial indexing stages via the in-process pipeline.
+
+    Builds stages dynamically: always includes local_folders,local_files.
+    Adds browser stage if answers contains non-empty browsers list.
+    Adds connector pipes if connector_results has verified accounts.
+
+    Args:
+        answers: Dict from collect_answers(). None defaults to {}.
+        connector_results: Optional dict of connector results.
+    """
+    if answers is None:
+        answers = {}
+    if connector_results is None:
+        connector_results = {}
+
+    console.print("\n[bold]Running initial indexing...[/bold]")
+    stages = ["local_folders", "local_files"]
+    if answers.get("browsers"):
+        stages.append("browser")
+    if connector_results:
+        from footprinter.connectors import discover_connectors, is_installed
+
+        for name, spec in discover_connectors().items():
+            if is_installed(spec):
+                stages.extend(spec.pipes)
+    _run_orchestrator_stages(stages)
+
+
+def collect_chat_export_path() -> str | None:
+    """Prompt user for a chat export path (Phase 2 — Data Sources).
+
+    Returns:
+        Expanded path string if user provides a valid path, None otherwise.
+    """
+    console.print("\n[bold]3. Chat history[/bold]")
+    console.print(
+        "  Optionally import Claude or ChatGPT chat exports.\n"
+        "  [dim]You can also import later with: fp ingest import <file>[/dim]"
+    )
+    if not Confirm.ask("  Do you have Claude or ChatGPT exports to import?", default=False):
+        return None
+
+    console.print("  [dim]Supported: Claude .zip export or unzipped directory[/dim]")
+    path = Prompt.ask("  Path to export file (.zip or directory)")
+    if not path:
+        return None
+
+    path = os.path.expanduser(path)
+    resolved = Path(path)
+    if not resolved.exists():
+        console.print(f"  [red]File not found: {path}[/red]")
+        return None
+
+    return str(resolved)
+
+
+def import_chat_export(path: str) -> dict:
+    """Import a chat export from a previously collected path (Phase 5 — Populate).
+
+    Args:
+        path: Expanded path to the export file or directory.
+
+    Returns:
+        Result dict from ChatIndexer.upload(), or {} on failure.
+    """
+    resolved = Path(path)
+    try:
+        from footprinter.ingest.chat_indexer import ChatIndexer
+        from footprinter.ingest.database import Database
+
+        db = Database(str(get_db_path()))
+        manager = ChatIndexer(db)
+        result = manager.upload(resolved)
+        console.print("  [green]Chat import complete.[/green]")
+        if isinstance(result, dict):
+            added = result.get("chats_added", 0)
+            updated = result.get("chats_updated", 0)
+            msgs = result.get("messages_imported", 0)
+            console.print(
+                f"  Imported: [cyan]{added + updated}[/cyan] chats "
+                f"({added} new, {updated} updated), "
+                f"[cyan]{msgs}[/cyan] messages"
+            )
+        return result if isinstance(result, dict) else {}
+    except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised
+        console.print(f"  [yellow]Chat import failed: {e}[/yellow]")
+        console.print(f"  [dim]Run manually: fp ingest import {path}[/dim]")
+        return {}
+
+
+def offer_setup_claude() -> bool:
+    """Offer to configure Claude Desktop MCP integration.
+
+    Returns:
+        True if MCP was successfully configured, False otherwise.
+    """
+    if not mcp_setup.is_mcp_available():
+        console.print("\n[dim]MCP package not installed — skipping Claude Desktop configuration.[/dim]")
+        console.print("  [dim]Install with: pip install mcp[/dim]")
+        return False
+
+    try:
+        snippet = mcp_setup.generate_snippet()
+    except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised
+        console.print(f"  [yellow]MCP setup failed: {e}[/yellow]")
+        console.print("  [dim]Run manually: fp setup mcp --claude[/dim]")
+        return False
+
+    # Offer snippet for manual copy/paste (Cursor, Windsurf, etc.)
+    if Confirm.ask(
+        "\nView MCP config snippet (for Claude Code, Cursor, VS Code, and other clients)?",
+        default=True,
+    ):
+        mcp_setup.print_snippet(snippet)
+
+    # Offer Claude Desktop auto-config
+    if not Confirm.ask("\nConfigure Claude Desktop automatically?", default=False):
+        return False
+
+    try:
+        mcp_setup.write_config(snippet)
+        console.print("  [green]Claude Desktop MCP configured.[/green]")
+        return True
+    except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised
+        console.print(f"  [yellow]MCP setup failed: {e}[/yellow]")
+        console.print("  [dim]Run manually: fp setup mcp --claude[/dim]")
+        return False
+
+
+# _get_db_connection and _normalize_path imported from _policy_helpers
+
+
+def _require_config() -> tuple[dict, Path]:
+    """Load config via get_config(), exit on missing or invalid config.
+
+    Returns:
+        Tuple of (config_dict, config_path).
+
+    Exits:
+        sys.exit(1) with helpful message if config is missing or corrupt.
+    """
+    try:
+        config = get_config()
+    except ConfigError as e:
+        console.print(f"[red]Config error:[/red] {e}")
+        sys.exit(1)
+
+    return config, get_config_path()
+
+
+def folders_add(path: str, index: bool = True) -> int:
+    """Add a directory to the config and optionally trigger indexing.
+
+    Args:
+        path: Directory path to add.
+        index: If True, prompt to run indexing after adding.
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    normalized = _normalize_path(path)
+    expanded = os.path.expanduser(normalized)
+
+    config, config_path = _require_config()
+    directories = config.get("directories", [])
+
+    # Duplicate-check before existence-check: a configured path is a duplicate
+    # regardless of whether the directory is currently reachable, and "already
+    # configured" is more actionable than "not a directory" when both are true.
+    existing_expanded = {os.path.expanduser(d) for d in directories}
+    if expanded in existing_expanded:
+        console.print(f"[yellow]Already configured:[/yellow] {normalized}")
+        return 1
+
+    if not os.path.isdir(expanded):
+        console.print(f"[red]Not a directory or not found:[/red] {path}")
+        return 1
+
+    directories.append(normalized)
+    config["directories"] = directories
+    write_config(config, config_path)
+    console.print(f"[green]Added:[/green] {normalized}")
+
+    if index:
+        if Confirm.ask("Run indexing for the new folder now?", default=True):
+            _run_orchestrator_stages(["local_folders", "local_files"])
+
+    return 0
+
+
+def folders_remove(path: str) -> int:
+    """Remove a directory from the config.
+
+    Does NOT delete files from the database — they remain as audit trail.
+
+    Args:
+        path: Directory path to remove.
+
+    Returns:
+        0 on success, 1 if path wasn't configured.
+    """
+    normalized = _normalize_path(path)
+    expanded = os.path.expanduser(normalized)
+
+    config, config_path = _require_config()
+    directories = config.get("directories", [])
+
+    # Filter out entries that match when expanded
+    remaining = [d for d in directories if os.path.expanduser(d) != expanded]
+
+    if len(remaining) == len(directories):
+        console.print(f"[yellow]Not configured:[/yellow] {normalized}")
+        return 1
+
+    config["directories"] = remaining
+    write_config(config, config_path)
+    console.print(f"[green]Removed:[/green] {normalized}")
+    console.print("[dim]  Note: indexed files remain in the database.[/dim]")
+    return 0
+
+
+def _get_indexing_counts() -> dict:
+    """Query DB for folder and file counts. Returns empty dict if DB doesn't exist."""
+    conn = _get_db_connection()
+    if conn is None:
+        return {}
+
+    try:
+        cur = conn.cursor()
+        counts = {}
+        for table, query in [
+            ("folders", "SELECT COUNT(*) FROM folders"),
+            ("files", "SELECT COUNT(*) FROM files WHERE status != 'removed'"),
+            ("visits", "SELECT COUNT(*) FROM visits"),
+            ("projects", "SELECT COUNT(*) FROM projects"),
+            ("chats", "SELECT COUNT(*) FROM chats WHERE status != 'removed'"),
+            ("messages", "SELECT COUNT(*) FROM messages WHERE status != 'removed'"),
+        ]:
+            try:
+                cur.execute(query)
+                counts[table] = cur.fetchone()[0]
+            except sqlite3.OperationalError:
+                counts[table] = 0
+        return counts
+    except Exception:  # Intentional broad catch: setup wizard display must not crash
+        return {}
+    finally:
+        conn.close()
+
+
+def seed_access_policies() -> dict:
+    """Seed default MCP access policies (metadata-only access). Idempotent via INSERT OR IGNORE.
+
+    Returns:
+        Dict with visibility_seeded and permission_seeded bools, or {} if no DB.
+    """
+    conn = _get_db_connection()
+    if conn is None:
+        return {}
+
+    try:
+        result = _seed_access_policies(conn)
+
+        if result.get("visibility_seeded") or result.get("permission_seeded"):
+            console.print(
+                "\n[bold]MCP access policies[/bold]: seeded default access (metadata visible, content allowed)"
+            )
+        else:
+            console.print("\n[bold]MCP access policies[/bold]: already configured")
+        console.print("  [dim]Manage with: fp mcp view show | fp mcp read show[/dim]")
+
+        # Explain what the defaults mean
+        console.print("\n  [dim]Visible[/dim] = Claude can see file names, sizes, and paths")
+        console.print("  [dim]Content allowed[/dim] = Claude can read file contents when asked")
+        console.print(
+            "  [dim]Security posture: fail-open (all reads allowed). "
+            "See reference/mcp-access-control.md § Security Posture.[/dim]"
+        )
+
+        # Offer to restrict to metadata-only access
+        if Confirm.ask(
+            "\n  Restrict to metadata only? (no content reading)",
+            default=False,
+        ):
+            from footprinter.db.policies import set_permission_policy
+
+            set_permission_policy(conn, "global", "deny")
+            console.print("  [green]Switched to metadata-only access (content denied)[/green]")
+        else:
+            console.print("  [dim]Keeping full access (content allowed)[/dim]")
+
+        return result
+    except Exception as e:  # Intentional broad catch: policy seeding is best-effort during setup
+        logger.error(f"Failed to seed access policies: {e}")
+        console.print(f"  [yellow]Warning: failed to seed access policies: {e}[/yellow]")
+        console.print("  [dim]Run 'fp setup' later to retry[/dim]")
+        return {}
+    finally:
+        conn.close()
+
+
+def print_summary(
+    chat_result: dict = None,
+    mcp_configured: bool = False,
+    connector_results: dict = None,
+):
+    """Display results table and next steps.
+
+    Args:
+        chat_result: Result dict from import_chat_export(), or None.
+        mcp_configured: Whether MCP was configured during the wizard.
+        connector_results: Result dict from connector setup hooks, or None.
+    """
+    console.print()
+
+    table = Table(title="Setup Complete")
+    table.add_column("File", style="bold")
+    table.add_column("Status")
+
+    # Config
+    config_path = get_config_path()
+    if config_path.exists():
+        table.add_row(str(config_path), "[green]Created[/green]")
+    else:
+        table.add_row(str(config_path), "[red]Missing[/red]")
+
+    # Database
+    db_path = get_db_path()
+    if db_path.exists():
+        table.add_row(str(db_path), "[green]Ready[/green]")
+    else:
+        table.add_row(str(db_path), "[yellow]Not yet created[/yellow]")
+
+    console.print(table)
+
+    # Indexing counts
+    counts = _get_indexing_counts()
+    if counts:
+        console.print()
+        console.print(
+            f"  Indexed: [cyan]{counts.get('folders', 0)}[/cyan] folders, [cyan]{counts.get('files', 0)}[/cyan] files"
+        )
+        browser_count = counts.get("visits", 0)
+        if browser_count > 0:
+            console.print(f"  Browser history: [cyan]{browser_count}[/cyan] URLs")
+        chat_count = counts.get("chats", 0)
+        chat_msg_count = counts.get("messages", 0)
+        if chat_count > 0:
+            console.print(f"  Chat: [cyan]{chat_count}[/cyan] chats, [cyan]{chat_msg_count}[/cyan] messages")
+        project_count = counts.get("projects", 0)
+        if project_count > 0:
+            console.print(f"  Projects detected: [cyan]{project_count}[/cyan]")
+            console.print("  Use [bold]fp project[/bold] and [bold]fp client[/bold] to organize your data.")
+
+    # Getting started section
+    console.print()
+    console.print("[bold]Ready to explore your data:[/bold]")
+    console.print('  [cyan]fp search[/cyan] [dim]"query"[/dim]          Search your files')
+    console.print("  [cyan]fp ingest status[/cyan]           Show data counts")
+    console.print("  [cyan]fp ingest[/cyan]                  Re-index (incremental)")
+    console.print()
+    console.print("[dim]Run fp -h or fp <command> --help for more.[/dim]")
+
+    # Optional hints for things not yet configured
+    extras = []
+    connectors_configured = bool(connector_results)
+    if not connectors_configured:
+        extras.append("fp connect")
+    chat_count = counts.get("chats", 0) if counts else 0
+    if (chat_result is None or not chat_result) and chat_count == 0:
+        extras.append("fp ingest import <file>")
+    if extras:
+        console.print()
+        console.print(f"[dim]Not yet set up: {', '.join(extras)}[/dim]")
+
+
+if __name__ == "__main__":
+    main()

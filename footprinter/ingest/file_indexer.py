@@ -1,0 +1,261 @@
+"""
+File indexer that coordinates file scanning and content extraction.
+"""
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
+from footprinter.db import files as files_db
+from footprinter.source_registry import get_config
+
+from .content_extractors import ContentExtractor
+from .database import Database
+from .file_scanner import FileScanner
+
+logger = logging.getLogger(__name__)
+
+
+class FileIndexer:
+    """File indexer coordinating all indexing operations."""
+
+    def __init__(self, config_path: str = None, last_run: Optional[datetime] = None, db: Optional["Database"] = None):
+        """
+        Initialize the indexer.
+
+        Args:
+            config_path: Path to config YAML file (default: resolved via get_config_path())
+            last_run: Timestamp of last successful run. If set, only index files
+                modified after this time. None means full scan.
+            db: Optional shared Database handle. If None, creates its own.
+        """
+        self.config = get_config(config_path)
+        self.db = db if db is not None else Database()
+        self._owns_db = db is None
+        self.incremental = last_run is not None
+
+        if last_run:
+            logger.info(f"Incremental mode: indexing files modified since {last_run}")
+        else:
+            logger.info("Full scan mode (no last_run provided)")
+
+        self._vector_store = None  # lazy
+        self._full_extractor = None  # lazy
+        self._vec_counts = {
+            "vectorized_new": 0,
+            "vectorized_refreshed": 0,
+            "vectorized_skipped_unchanged": 0,
+        }
+
+        self.file_scanner = FileScanner(self.config, since_datetime=last_run)
+        self.content_extractor = ContentExtractor()
+
+    def index_files(
+        self,
+        relationship_maps: Optional[Dict[str, Any]] = None,
+        on_progress: Optional[Callable[[int], None]] = None,
+    ) -> dict:
+        """Index all files from configured directories to files table.
+
+        Args:
+            relationship_maps: Optional pre-built maps for in-memory
+                project/folder resolution. When provided, avoids per-row SQL.
+            on_progress: Optional callback fired with cumulative file count
+                after each file is processed (inserted + updated + skipped +
+                unchanged + errors).
+
+        Returns:
+            Dict with keys: inserted, updated, skipped, unchanged, errors
+        """
+        logger.info("Starting file indexing to files...")
+
+        self._vec_counts = {
+            "vectorized_new": 0,
+            "vectorized_refreshed": 0,
+            "vectorized_skipped_unchanged": 0,
+        }
+
+        inserted_count = 0
+        updated_count = 0
+        skipped_count = 0
+        unchanged_count = 0
+        error_count = 0
+        total_processed = 0
+        batch = []
+        batch_size = 1000  # Commit every 1000 files for performance
+        self._indexed_paths = set()  # Track all indexed paths for stale detection
+
+        for file_metadata in self.file_scanner.scan_all_directories():
+            try:
+                # Extract content preview (only when opt-in enabled)
+                if self.config.get("indexing", {}).get("content_snippets", False):
+                    file_path = Path(file_metadata["file_path"])
+                    content_preview = self.content_extractor.extract(file_path)
+                    file_metadata["content_preview"] = content_preview
+                else:
+                    file_metadata["content_preview"] = None
+
+                # Add to batch
+                batch.append(file_metadata)
+                self._indexed_paths.add(file_metadata["file_path"])
+
+                # Batch insert for performance
+                if len(batch) >= batch_size:
+                    bi, bu, bs, bun = self._insert_batch(batch, relationship_maps)
+                    inserted_count += bi
+                    updated_count += bu
+                    skipped_count += bs
+                    unchanged_count += bun
+                    batch = []
+                    logger.info(
+                        f"Progress: {inserted_count:,} inserted,"
+                        f" {updated_count:,} updated,"
+                        f" {unchanged_count:,} unchanged,"
+                        f" {skipped_count:,} skipped..."
+                    )
+
+            except Exception as e:  # Intentional broad catch: batch loop must not abort on single-item errors
+                logger.error(f"Error indexing file {file_metadata.get('file_path')}: {e}")
+                error_count += 1
+            finally:
+                total_processed += 1
+                if on_progress is not None:
+                    on_progress(total_processed)
+
+        # Insert remaining files
+        if batch:
+            bi, bu, bs, bun = self._insert_batch(batch, relationship_maps)
+            inserted_count += bi
+            updated_count += bu
+            skipped_count += bs
+            unchanged_count += bun
+
+        # Mark stale files (no longer on disk)
+        # Only do this in full mode - incremental mode only scans modified files
+        if not self.incremental:
+            removed_ids = files_db.mark_removed_files(self.db.conn, self._indexed_paths)
+            if removed_ids:
+                store = self._get_vector_store()
+                if store:
+                    for file_id in removed_ids:
+                        try:
+                            store.delete_file(file_id)
+                        except Exception:  # Intentional broad catch: vector cleanup is best-effort
+                            logger.warning("Failed to delete vectors for removed file_id=%s", file_id, exc_info=True)
+                logger.info(f"Marked {len(removed_ids):,} files as stale (no longer on disk)")
+        else:
+            logger.info("Skipping stale detection in incremental mode")
+
+        logger.info(
+            f"File indexing complete: {inserted_count:,} inserted,"
+            f" {updated_count:,} updated,"
+            f" {unchanged_count:,} unchanged,"
+            f" {skipped_count:,} skipped,"
+            f" {error_count:,} errors"
+            f" | vectors: {self._vec_counts['vectorized_new']:,} new,"
+            f" {self._vec_counts['vectorized_refreshed']:,} refreshed,"
+            f" {self._vec_counts['vectorized_skipped_unchanged']:,} skipped-unchanged"
+        )
+        return {
+            "inserted": inserted_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+            "unchanged": unchanged_count,
+            "errors": error_count,
+            **self._vec_counts,
+        }
+
+    def _get_vector_store(self):
+        if self._vector_store is None:
+            try:
+                from footprinter.semantic.vector_store import VectorStore
+
+                self._vector_store = VectorStore.get_instance()
+            except Exception as e:  # Intentional broad catch: vector store is optional; any init failure disables it
+                logger.warning("Vector store unavailable: %s", e)
+                self._vector_store = False  # sentinel: don't retry
+        return self._vector_store if self._vector_store is not False else None
+
+    def _vectorize_file(self, file_id, file_path, result_type="updated"):
+        try:
+            from footprinter.semantic.vector_store import _file_vectorization_enabled
+        except ImportError:
+            return
+        if not _file_vectorization_enabled():
+            return
+        row = self.db.conn.execute(
+            "SELECT COALESCE(json_extract(metadata, '$.vectorize'), 1) as vec,"
+            " vectorized_at, vectorized_chunks FROM files WHERE id = ?",
+            (file_id,),
+        ).fetchone()
+        if row and row["vec"] == 0:
+            return
+        already_vectorized = (
+            row is not None
+            and row["vectorized_at"] is not None
+            and (row["vectorized_chunks"] or 0) > 0
+        )
+        if result_type == "unchanged" and already_vectorized:
+            self._vec_counts["vectorized_skipped_unchanged"] += 1
+            return
+        store = self._get_vector_store()
+        if not store:
+            return
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                return
+            if self._full_extractor is None:
+                from .full_content_extractor import FullContentExtractor
+
+                self._full_extractor = FullContentExtractor.from_config(self.config)
+            chunks = self._full_extractor.extract_with_chunking(path)
+            if not chunks:
+                return
+            metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
+            store.upsert_file(file_id, file_path, chunks, metadata)
+            self.db.conn.execute(
+                "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
+                (len(chunks), file_id),
+            )
+            if already_vectorized:
+                self._vec_counts["vectorized_refreshed"] += 1
+            else:
+                self._vec_counts["vectorized_new"] += 1
+        except Exception as e:  # Intentional broad catch: file vectorization is optional enhancement
+            logger.debug(f"Vectorization skipped for {file_path}: {e}")
+
+    def _insert_batch(
+        self,
+        batch,
+        relationship_maps: Optional[Dict[str, Any]] = None,
+    ) -> tuple:
+        """Insert a batch of files into files table.
+
+        Returns:
+            Tuple of (inserted, updated, skipped, unchanged) counts
+        """
+        inserted = 0
+        updated = 0
+        skipped = 0
+        unchanged = 0
+        for file_metadata in batch:
+            result = files_db.insert_file(self.db.conn, file_metadata, relationship_maps=relationship_maps)
+            if result is None:
+                skipped += 1
+                continue
+            result_type, file_id = result
+            if result_type == "inserted":
+                inserted += 1
+            elif result_type == "unchanged":
+                unchanged += 1
+            else:
+                updated += 1
+            self._vectorize_file(
+                file_id,
+                file_metadata.get("file_path") or file_metadata.get("path"),
+                result_type=result_type,
+            )
+        self.db.conn.commit()
+        return inserted, updated, skipped, unchanged

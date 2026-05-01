@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=61.0,<76.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "footprinter-cli"
+version = "1.0.1"
+description = "A local context layer for your files, browser history, chats, and email — searchable, user-owned, MCP-served."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "SwellCity Group"}
+]
+keywords = ["indexer", "mcp", "metadata", "model-context-protocol", "file-indexing", "sqlite", "context-engineering", "personal-information-management"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Text Processing :: Indexing",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pyyaml>=6.0.1,<7.0",
+    "rich>=13.7.0,<14.0",
+    "mcp>=1.0.0,<2.0",
+    "fastapi>=0.115.0,<1.0",
+    "uvicorn>=0.30.0,<1.0",
+    "cryptography>=42.0.0,<46.0",
+]
+
+[project.optional-dependencies]
+semantic = [
+    "chromadb>=1.4,<2.0",
+    "onnxruntime>=1.16.0,<2.0",
+]
+parse = [
+    "pypdf>=3.0.0,<6.0",
+    "python-docx>=1.1.0,<2.0",
+    "openpyxl>=3.1.0,<4.0",
+    "python-pptx>=0.6.21,<2.0",
+]
+full = ["footprinter-cli[semantic]", "footprinter-cli[parse]"]
+dev = [
+    "pytest>=8.0.0,<9.0",
+    "pytest-cov>=4.1.0,<6.0",
+    "ruff>=0.1.0,<1.0",
+    "httpx>=0.27.0,<1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/swellcitygroup/footprinter"
+Repository = "https://github.com/swellcitygroup/footprinter"
+Issues = "https://github.com/swellcitygroup/footprinter/issues"
+Documentation = "https://github.com/swellcitygroup/footprinter/blob/main/README.md"
+
+[project.scripts]
+fp = "footprinter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["footprinter*"]
+exclude = ["footprinter.fixture*", "footprinter.bundled.fixture*"]
+
+[tool.setuptools.package-data]
+"footprinter.bundled" = ["*.yaml", "patterns/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.format]
+# orchestrator.py has a <130-line guard (thin facade pattern); ruff format expands it past the limit
+exclude = ["footprinter/ingest/orchestrator.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = []
