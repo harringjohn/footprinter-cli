@@ -56,20 +56,20 @@ def _minimal_payload(external_id: str = "ext-1", **overrides):
 
 
 def test_insert_chat_populates_status_and_indexed_at(conn):
-    """New rows must get status='active' and a non-null indexed_at."""
+    """New rows must get status='listed' and a non-null indexed_at."""
     insert_chat(conn, _minimal_payload())
 
     row = conn.execute(
         "SELECT status, indexed_at FROM chats WHERE external_id = 'ext-1'"
     ).fetchone()
-    assert row["status"] == "active"
+    assert row["status"] == "listed"
     assert row["indexed_at"] is not None
 
 
 def test_insert_chat_preserves_existing_status_on_conflict(conn):
-    """Re-importing a chat must not overwrite a user-set status like 'hidden'."""
+    """Re-importing a chat must not overwrite a user-set status like 'unlisted'."""
     insert_chat(conn, _minimal_payload())
-    conn.execute("UPDATE chats SET status = 'hidden' WHERE external_id = 'ext-1'")
+    conn.execute("UPDATE chats SET status = 'unlisted' WHERE external_id = 'ext-1'")
     conn.commit()
 
     insert_chat(conn, _minimal_payload(title="Updated title"))
@@ -77,7 +77,7 @@ def test_insert_chat_preserves_existing_status_on_conflict(conn):
     row = conn.execute(
         "SELECT status, title FROM chats WHERE external_id = 'ext-1'"
     ).fetchone()
-    assert row["status"] == "hidden"
+    assert row["status"] == "unlisted"
     assert row["title"] == "Updated title"
 
 
@@ -99,9 +99,9 @@ def test_insert_chat_preserves_indexed_at_on_conflict(conn):
 
 def test_insert_chat_accepts_explicit_status(conn):
     """An explicit status in the payload must be honored on insert."""
-    insert_chat(conn, _minimal_payload(status="hidden"))
+    insert_chat(conn, _minimal_payload(status="unlisted"))
 
     row = conn.execute(
         "SELECT status FROM chats WHERE external_id = 'ext-1'"
     ).fetchone()
-    assert row["status"] == "hidden"
+    assert row["status"] == "unlisted"

@@ -59,6 +59,7 @@ class PipeRunner:
         pipe: str,
         on_progress: Optional[Callable] = None,
         last_run: Optional[datetime] = None,
+        scan_roots: Optional[List[str]] = None,
     ) -> Dict:
         """Run a single pipe.
 
@@ -86,6 +87,7 @@ class PipeRunner:
                     full_mode=self.full_mode,
                     last_run=last_run,
                     on_progress=on_progress,
+                    scan_roots=scan_roots,
                 )
                 pipe_result = adapter.run(db, ctx)
                 elapsed = (datetime.now() - start_time).total_seconds()
@@ -181,6 +183,7 @@ class PipeRunner:
         on_progress: Optional[Callable] = None,
         pipe_hook: Optional[Callable] = None,
         last_run: Optional[datetime] = None,
+        scan_roots: Optional[List[str]] = None,
     ) -> List[Dict]:
         """Run multiple pipes in order.
 
@@ -198,7 +201,12 @@ class PipeRunner:
             if pipe_hook:
                 result = pipe_hook(pipe, on_progress=on_progress)
             else:
-                result = self.run_pipe(pipe, on_progress=on_progress, last_run=last_run)
+                result = self.run_pipe(
+                    pipe,
+                    on_progress=on_progress,
+                    last_run=last_run,
+                    scan_roots=scan_roots,
+                )
             results.append(result)
 
             if on_pipe_end:

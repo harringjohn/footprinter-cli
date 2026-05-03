@@ -166,7 +166,7 @@ class TestOrchestratorStatus:
                 id INTEGER PRIMARY KEY,
                 source TEXT,
                 size_bytes INTEGER,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'listed'
             )
         """)
         cursor.execute("CREATE TABLE folders (id INTEGER PRIMARY KEY, source TEXT)")
@@ -614,12 +614,12 @@ class TestRebuildVectorsFileEnabled:
         conn.execute(
             "CREATE TABLE messages (id INTEGER PRIMARY KEY, chat_id INTEGER, "
             "role TEXT, content TEXT, created_at TEXT, vectorized_at TEXT, metadata TEXT, "
-            "status TEXT DEFAULT 'active', vectorized_chunks INTEGER)"
+            "status TEXT DEFAULT 'listed', vectorized_chunks INTEGER)"
         )
         conn.execute(
             "CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT, "
             "summary TEXT, account TEXT, created_at TEXT, message_count INTEGER, "
-            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'active')"
+            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'listed')"
         )
         if extra_sql:
             for sql in extra_sql:
@@ -656,7 +656,7 @@ class TestRebuildVectorsFileEnabled:
         test_file.write_text("test content")
 
         conn = self._make_db(
-            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'active')"]
+            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'listed')"]
         )
 
         mock_extractor = MagicMock()
@@ -675,7 +675,7 @@ class TestRebuildVectorsFileEnabled:
         test_file.write_text("test content")
 
         conn = self._make_db(
-            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'active')"]
+            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'listed')"]
         )
 
         mock_extractor = MagicMock()
@@ -1166,26 +1166,6 @@ class TestThinFacade:
         from footprinter.ingest.status import get_status
 
         assert callable(get_status)
-
-    def test_run_project_links_importable_from_app_processing(self):
-        """run_project_links lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_project_links)
-
-    def test_run_summaries_importable_from_app_processing(self):
-        """run_summaries lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_summaries)
-
-    def test_run_drive_links_importable_from_app_processing(self):
-        """run_drive_links lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_drive_links)
-
-    def test_drive_links_skip_guard_importable_from_app_processing(self):
-        """_drive_links_skip_guard lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app._drive_links_skip_guard)
 
     def test_processing_no_longer_exports_app_scope_functions(self):
         """processing.py must not contain app-scope functions after extraction."""

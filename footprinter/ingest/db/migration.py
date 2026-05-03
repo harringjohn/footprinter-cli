@@ -168,7 +168,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # browser_visits columns added with status/client/project support
     for col, col_def in [
-        ("status", "TEXT DEFAULT 'active'"),
+        ("status", "TEXT DEFAULT 'listed'"),
         ("client_id", "INTEGER"),
         ("project_id", "INTEGER"),
     ]:
@@ -179,7 +179,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # emails: add status column
     try:
-        cursor.execute("ALTER TABLE emails ADD COLUMN status TEXT DEFAULT 'active'")
+        cursor.execute("ALTER TABLE emails ADD COLUMN status TEXT DEFAULT 'listed'")
     except sqlite3.OperationalError:
         pass  # table doesn't exist yet or column already exists
 
@@ -215,6 +215,39 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
     except sqlite3.OperationalError:
         pass  # already renamed or fresh install
 
+    # If both tables now exist, the rename above failed silently because
+    # `visits` was already created by an earlier partial init or by the
+    # schema's CREATE TABLE IF NOT EXISTS.  Merge any legacy rows into
+    # `visits` (INSERT OR IGNORE preserves existing visits on PRIMARY
+    # KEY collision) and drop the legacy table so the `browser_visits`
+    # guard above stops re-firing on every init (which, pre-fix,
+    # dropped chats_fts each session).
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='browser_visits'")
+    legacy_exists = cursor.fetchone() is not None
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='visits'")
+    canonical_exists = cursor.fetchone() is not None
+    if legacy_exists and canonical_exists:
+        # Column intersection from PRAGMA table_info handles schema drift;
+        # the names are from sqlite metadata, not user input, so the
+        # f-string interpolation below is safe.
+        #
+        # `id` is deliberately excluded: both tables AUTOINCREMENT from 1
+        # in the dual-table scenario, so carrying ids across would cause
+        # INSERT OR IGNORE to drop legacy rows on PK collision — silent
+        # data loss (the very thing this merge is meant to prevent).
+        # Letting `visits` assign fresh ids and relying on the
+        # `idx_visits_unique` UNIQUE INDEX on (url, visit_time, browser)
+        # as the conflict arbiter dedupes by the natural visit identity.
+        # Idempotent on retry: re-running the merge after a transient
+        # failure no-ops on already-merged rows via the same UNIQUE.
+        legacy_cols = {row[1] for row in cursor.execute("PRAGMA table_info(browser_visits)").fetchall()}
+        canonical_cols = {row[1] for row in cursor.execute("PRAGMA table_info(visits)").fetchall()}
+        shared_cols = sorted((legacy_cols & canonical_cols) - {"id"})
+        if shared_cols:
+            col_list = ", ".join(shared_cols)
+            cursor.execute(f"INSERT OR IGNORE INTO visits ({col_list}) SELECT {col_list} FROM browser_visits")
+        cursor.execute("DROP TABLE browser_visits")
+
     # clients/projects: add status_reason column
     for table in ("clients", "projects"):
         try:
@@ -222,11 +255,21 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
         except sqlite3.OperationalError:
             pass  # table doesn't exist yet or column already exists
 
+    # folders: add status_reason + status_changed_at (mirrors files pattern)
+    for col, col_def in [
+        ("status_reason", "TEXT"),
+        ("status_changed_at", "DATETIME"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE folders ADD COLUMN {col} {col_def}")
+        except sqlite3.OperationalError:
+            pass  # table doesn't exist yet or column already exists
+
     # ── standard entity column set ──
 
     # folders: add status, client_id, indexed_at
     for col, col_def in [
-        ("status", "TEXT DEFAULT 'active'"),
+        ("status", "TEXT DEFAULT 'listed'"),
         ("client_id", "INTEGER"),
         ("indexed_at", "DATETIME"),
     ]:
@@ -237,7 +280,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # messages: add status
     try:
-        cursor.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'active'")
+        cursor.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'listed'")
     except sqlite3.OperationalError:
         pass
 
@@ -315,12 +358,12 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
             pass  # table doesn't exist yet
 
     # Backfill NULL status on chats/messages from legacy schemas that lacked
-    # a column DEFAULT. MCP filters checking `status != 'removed'` exclude
+    # a column DEFAULT. MCP filters checking `status = 'listed'` exclude
     # NULLs (NULL comparisons evaluate to NULL), so new rows silently
     # disappear from counts and search until backfilled.
     for sql in (
-        "UPDATE chats SET status = 'active' WHERE status IS NULL",
-        "UPDATE messages SET status = 'active' WHERE status IS NULL",
+        "UPDATE chats SET status = 'listed' WHERE status IS NULL",
+        "UPDATE messages SET status = 'listed' WHERE status IS NULL",
     ):
         try:
             cursor.execute(sql)

@@ -6,7 +6,6 @@ Validates phase registration, skip guards, and runner dispatch.
 
 from unittest.mock import MagicMock
 
-import pytest
 
 import footprinter.ingest.processing as processing_module
 from footprinter.ingest.adapters.protocol import PipeResult, PipeStatus
@@ -138,80 +137,6 @@ class TestDictToPipeResultRemoved:
 
     def test_dict_to_pipe_result_removed(self):
         assert not hasattr(processing_module, "dict_to_pipe_result")
-
-
-class TestRunProjectLinksNoRefresh:
-    """run_project_links() must not call refresh_folder_counts."""
-
-    def test_does_not_call_refresh_folder_counts(self):
-        run_project_links = pytest.importorskip("footprinter.ingest.app_processing").run_project_links
-
-        db = MagicMock()
-        db.backfill_project_ids.return_value = {
-            "folders_updated": 0,
-            "files_updated": 0,
-            "files_before": 0,
-            "files_after": 0,
-        }
-
-        config = {"project_detection": {"enabled": False}}
-        result = run_project_links(db, config)
-
-        db.refresh_folder_counts.assert_not_called()
-        assert "folder_counts" not in result
-        assert result["status"] == "completed"
-
-
-class TestRunDriveLinks:
-    """ProcessingPipeline.run_drive_links and its skip guard."""
-
-    def test_run_drive_links_no_drive_sources(self, temp_db):
-        """run_drive_links with empty sources returns all-zero results."""
-        run_drive_links = pytest.importorskip("footprinter.ingest.app_processing").run_drive_links
-        from footprinter.ingest.db.app_database import AppDatabase
-
-        db = AppDatabase(temp_db)
-        db.conn.execute("DELETE FROM sources WHERE source_type = 'remote'")
-        db.conn.commit()
-
-        result = run_drive_links(db)
-
-        assert result["status"] == "completed"
-        assert result["drive_to_local"]["linked"] == 0
-        db.close()
-
-    def test_drive_links_skip_guard_true_when_no_sources(self, temp_db):
-        """Skip guard returns True when no drive sources exist."""
-        _drive_links_skip_guard = pytest.importorskip("footprinter.ingest.app_processing")._drive_links_skip_guard
-        from footprinter.ingest.db.app_database import AppDatabase
-
-        db = AppDatabase(temp_db)
-        db.conn.execute("DELETE FROM sources WHERE source_type = 'remote'")
-        db.conn.commit()
-
-        assert _drive_links_skip_guard(db) is True
-        db.close()
-
-    def test_drive_links_skip_guard_false_when_sources_exist(self, temp_db):
-        """Skip guard returns False when drive sources exist."""
-        _drive_links_skip_guard = pytest.importorskip("footprinter.ingest.app_processing")._drive_links_skip_guard
-        from footprinter.ingest.db.app_database import AppDatabase
-
-        db = AppDatabase(temp_db)
-        # init_db seeds sources from config; just verify they exist
-        cursor = db.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM sources WHERE source_type = 'remote'")
-        count = cursor.fetchone()[0]
-        if count == 0:
-            # Seed one manually if config doesn't have any
-            cursor.execute(
-                "INSERT INTO sources (name, source_type, enabled) VALUES (?, ?, ?)",
-                ("test_drive", "remote", 1),
-            )
-            db.conn.commit()
-
-        assert _drive_links_skip_guard(db) is False
-        db.close()
 
 
 class TestNoRetentionImports:

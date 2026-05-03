@@ -83,14 +83,14 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
         if incremental:
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
-                "WHERE source = 'local' AND status != 'removed' AND path IS NOT NULL"
+                "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
                 " AND (vectorized_at IS NULL OR modified_at > vectorized_at)"
             )
         else:
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
-                "WHERE source = 'local' AND status != 'removed' AND path IS NOT NULL"
+                "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
             )
         counts["files"] = cursor.fetchone()[0]
@@ -99,7 +99,7 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
             cursor.execute(
                 "SELECT COUNT(*) FROM messages "
                 "WHERE content IS NOT NULL AND TRIM(content) != ''"
-                " AND status != 'removed'"
+                " AND status = 'listed'"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
                 " AND vectorized_at IS NULL"
             )
@@ -107,21 +107,21 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
             cursor.execute(
                 "SELECT COUNT(*) FROM messages "
                 "WHERE content IS NOT NULL AND TRIM(content) != ''"
-                " AND status != 'removed'"
+                " AND status = 'listed'"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
             )
         counts["messages"] = cursor.fetchone()[0]
         if incremental:
             cursor.execute(
                 "SELECT COUNT(*) FROM chats "
-                "WHERE status != 'removed'"
+                "WHERE status = 'listed'"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
                 " AND metadata_vectorized_at IS NULL"
             )
         else:
             cursor.execute(
                 "SELECT COUNT(*) FROM chats "
-                "WHERE status != 'removed'"
+                "WHERE status = 'listed'"
                 " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
             )
         counts["chats"] = cursor.fetchone()[0]
@@ -218,7 +218,7 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
     exclude_patterns = vec_config.get("exclude_patterns", [])
     where_parts = [
         "source = 'local'",
-        "status != 'removed'",
+        "status = 'listed'",
         "path IS NOT NULL",
         "COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0",
     ]
@@ -310,7 +310,7 @@ def _vectorize_messages(conn, cursor, store, console, mode: str = "full") -> dic
         FROM messages message
         JOIN chats chat ON message.chat_id = chat.id
         WHERE message.content IS NOT NULL AND message.content != ''
-            AND message.status != 'removed'
+            AND message.status = 'listed'
             AND COALESCE(json_extract(message.metadata, '$.vectorize'), 1) != 0
             {incremental_filter}
         ORDER BY message.id
@@ -421,7 +421,7 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
         f"""
         SELECT id, title, summary, account as source, created_at, message_count
         FROM chats
-        WHERE status != 'removed'
+        WHERE status = 'listed'
             AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0
             {incremental_filter}
         ORDER BY id
@@ -524,7 +524,7 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
     if files_enabled:
         cursor.execute(
             "SELECT COALESCE(SUM(vectorized_chunks), 0) FROM files"
-            " WHERE vectorized_at IS NOT NULL AND status != 'removed'"
+            " WHERE vectorized_at IS NOT NULL AND status = 'listed'"
         )
         db_file_chunks = cursor.fetchone()[0]
         chroma_file_chunks = store.get_file_stats().get("total_chunks", 0)
@@ -548,7 +548,7 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
         # COUNT(*) for chat_info (each chat = exactly 1 chroma doc).
         cursor.execute(
             "SELECT COALESCE(SUM(vectorized_chunks), 0) FROM messages"
-            " WHERE status != 'removed' AND vectorized_at IS NOT NULL"
+            " WHERE status = 'listed' AND vectorized_at IS NOT NULL"
         )
         db_msg_chunks = cursor.fetchone()[0]
 
@@ -556,11 +556,11 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
         # vectorized_chunks column was added will have chunks=0.
         cursor.execute(
             "SELECT COUNT(*) FROM messages"
-            " WHERE status != 'removed' AND vectorized_at IS NOT NULL AND vectorized_chunks = 0"
+            " WHERE status = 'listed' AND vectorized_at IS NOT NULL AND vectorized_chunks = 0"
         )
         stale_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM chats WHERE status != 'removed' AND metadata_vectorized_at IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM chats WHERE status = 'listed' AND metadata_vectorized_at IS NOT NULL")
         db_chat_info_count = cursor.fetchone()[0]
         chroma_chat_docs = store.get_chat_stats().get("total_documents", 0)
 

@@ -43,7 +43,12 @@ def _expand_home(pattern: str) -> str:
 class FileScanner:
     """File system scanner with configurable exclusion patterns."""
 
-    def __init__(self, config: Dict, since_datetime: Optional[datetime] = None):
+    def __init__(
+        self,
+        config: Dict,
+        since_datetime: Optional[datetime] = None,
+        scan_roots: Optional[List[str]] = None,
+    ):
         """
         Initialize file scanner.
 
@@ -51,9 +56,12 @@ class FileScanner:
             config: Configuration dictionary
             since_datetime: If provided, only scan files modified after this datetime
                            (for incremental indexing)
+            scan_roots: When set, scan only these paths instead of
+                config["directories"] (FPR-1624 — used by `fp setup folders add`).
         """
         self.config = config
         self.since_datetime = since_datetime
+        self.scan_roots = scan_roots
         self.always_exclusions = self._compile_always_exclusions()
         self.sensitive_exclusions = self._compile_sensitive_exclusions()
         self.supported_extensions = set(config.get("indexing", {}).get("supported_extensions", []))
@@ -85,7 +93,7 @@ class FileScanner:
         Check if file should be excluded based on patterns.
 
         v3 Architecture (2026-01): Index ALL files in ~/Work and ~/Personal.
-        Hidden files are indexed with status='hidden', not excluded.
+        Hidden files are indexed with status='unlisted', not excluded.
 
         Only exclude:
         - always: Regeneratable dependencies (node_modules, venv, .git internals)
@@ -116,7 +124,7 @@ class FileScanner:
                 return True
 
         # NOTE: Hidden files (starting with .) are NOT excluded
-        # They are indexed with status='hidden' in the database
+        # They are indexed with status='unlisted' in the database
 
         return False
 
@@ -300,8 +308,10 @@ class FileScanner:
             logger.info(f"Scan complete: {file_count} files, {excluded_count} excluded, {error_count} errors")
 
     def scan_all_directories(self) -> Generator[Dict, None, None]:
-        """Scan all configured directories."""
-        directories = self.config.get("directories", [])
+        """Scan all configured directories (or only ``scan_roots`` when set)."""
+        directories = (
+            self.scan_roots if self.scan_roots is not None else self.config.get("directories", [])
+        )
 
         for directory in directories:
             yield from self.scan_directory(directory)

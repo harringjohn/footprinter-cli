@@ -27,7 +27,12 @@ class LocalFilesAdapter:
         """Index local files into files table."""
         try:
             last_run = None if ctx.full_mode else ctx.last_run
-            indexer = FileIndexer(config_path=ctx.config_path, last_run=last_run, db=db)
+            indexer = FileIndexer(
+                config_path=ctx.config_path,
+                last_run=last_run,
+                db=db,
+                scan_roots=ctx.scan_roots,
+            )
 
             # Build in-memory maps once before ingest
             registry = SourceRegistry(db.conn)
@@ -48,6 +53,7 @@ class LocalFilesAdapter:
                 "local_files",
                 inserted=counts["inserted"],
                 updated=counts["updated"],
+                unchanged=counts["unchanged"],
                 skipped=counts["skipped"],
                 errors=counts["errors"],
                 mode="full" if ctx.full_mode else "incremental",
@@ -63,6 +69,6 @@ class LocalFilesAdapter:
     def status(self, db: Any) -> Dict[str, Any]:
         """Return local file count."""
         cursor = db.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM files WHERE source = 'local' AND status != 'removed'")
+        cursor.execute("SELECT COUNT(*) FROM files WHERE source = 'local' AND status = 'listed'")
         count = cursor.fetchone()[0]
         return {"local_files": count}

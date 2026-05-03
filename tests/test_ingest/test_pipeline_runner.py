@@ -489,6 +489,48 @@ class TestStageProgressCallback:
         assert call_ctx.on_progress is None
 
 
+class TestStageScanRoots:
+    """scan_roots is threaded into PipeContext."""
+
+    def test_scan_roots_injected_into_context(self):
+        """run_pipes(scan_roots=[...]) → adapter receives PipeContext with scan_roots."""
+        mock_db = MagicMock()
+        mock_adapter = MagicMock()
+        mock_adapter.run.return_value = PipeResult.completed("local_folders")
+        mock_cls = MagicMock(return_value=mock_adapter)
+
+        runner = _make_runner(
+            get_db=MagicMock(return_value=mock_db),
+            adapter_registry={"local_folders": mock_cls},
+        )
+        runner.processing.is_processing_pipe.return_value = False
+
+        runner.run_pipes(["local_folders"], scan_roots=["/tmp/only-this"])
+
+        call_ctx = mock_adapter.run.call_args[0][1]
+        assert isinstance(call_ctx, PipeContext)
+        assert call_ctx.scan_roots == ["/tmp/only-this"]
+
+    def test_no_scan_roots_by_default(self):
+        """Without scan_roots, PipeContext.scan_roots is None — preserves fp ingest semantics."""
+        mock_db = MagicMock()
+        mock_adapter = MagicMock()
+        mock_adapter.run.return_value = PipeResult.completed("local_folders")
+        mock_cls = MagicMock(return_value=mock_adapter)
+
+        runner = _make_runner(
+            get_db=MagicMock(return_value=mock_db),
+            adapter_registry={"local_folders": mock_cls},
+        )
+        runner.processing.is_processing_pipe.return_value = False
+
+        runner.run_pipes(["local_folders"])
+
+        call_ctx = mock_adapter.run.call_args[0][1]
+        assert isinstance(call_ctx, PipeContext)
+        assert call_ctx.scan_roots is None
+
+
 # ── TestPipeRunnerNoFTS ────────────────────────────────────────────
 
 

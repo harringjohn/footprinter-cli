@@ -1,17 +1,18 @@
 """Folder queries and write operations."""
 
 import sqlite3
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from footprinter.db.sql_utils import paginate, paginated_response
+from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
 
 def list_folders(
     conn: sqlite3.Connection,
     *,
     project_id: int | None = None,
-    depth: int | None = 1,
+    depth: int | None = None,
     include_hidden: bool = False,
+    status: "str | list[str] | None" = None,
     sort_by: str = "size",
     limit: int = 50,
     page: int = 1,
@@ -25,9 +26,16 @@ def list_folders(
         Filter by project. ``0`` means 'no project assigned'.
     depth : int or None
         Max path depth (segments below home).
-        ``1`` = top-level + one below, ``None`` = no filter.
+        ``None`` = no filter (default; reads pre-computed counts and scales
+        to 100k+ folders). ``1`` = top-level + one below; any explicit value
+        triggers descendant rollup via correlated subqueries.
     include_hidden : bool
         If False, exclude folders with hidden segments (``/.``).
+    status : str, list[str], or None
+        ``None`` → exclude removed (default).
+        ``"all"`` → no status filter.
+        Single string → exact match (``"listed"``, ``"unlisted"``, ``"removed"``).
+        List of strings → ``WHERE status IN (...)``.
     sort_by : str
         ``'size'`` (DESC), ``'files'`` (DESC), or ``'path'`` (ASC).
     limit : int
@@ -43,6 +51,13 @@ def list_folders(
     where = "1=1"
     params: list = []
 
+    status_conds, status_params = build_status_filter(
+        status, column="folder.status", default_exclude=["removed"]
+    )
+    for cond in status_conds:
+        where += f" AND {cond}"
+    params.extend(status_params)
+
     if project_id is not None:
         if project_id == 0:
             where += " AND folder.project_id IS NULL"
@@ -57,32 +72,28 @@ def list_folders(
     if not include_hidden:
         where += " AND folder.relative_path NOT LIKE '%/.%'"
 
-    # When depth filtering is active, roll up descendant files.
-    # Otherwise count only direct children (folder_id match).
+    # When depth is explicitly set, roll up descendant files via correlated
+    # subqueries. When depth is None, read the pre-computed columns the
+    # folders table already maintains (refresh_folder_counts), which scales
+    # to 100k+ rows where the per-row subqueries do not.
     if depth is not None:
-        count_sub = """(
+        count_expr = """(
             SELECT COUNT(*) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
-            WHERE file.status != 'removed'
+            WHERE file.status = 'listed'
               AND (ancestor_folder.id = folder_cte.id
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
-        sum_sub = """(
+        size_expr = """(
             SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
-            WHERE file.status != 'removed'
+            WHERE file.status = 'listed'
               AND (ancestor_folder.id = folder_cte.id
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
     else:
-        count_sub = """(
-            SELECT COUNT(*) FROM files file
-            WHERE file.folder_id = folder_cte.id AND file.status != 'removed'
-        )"""
-        sum_sub = """(
-            SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-            WHERE file.folder_id = folder_cte.id AND file.status != 'removed'
-        )"""
+        count_expr = "COALESCE(folder_cte.direct_file_count, 0)"
+        size_expr = "COALESCE(folder_cte.total_size_bytes, 0)"
 
     sort_map = {
         "size": "live_size_bytes DESC",
@@ -95,15 +106,16 @@ def list_folders(
     fetch_sql = f"""
         WITH folder_cte AS (
             SELECT folder.id, folder.path, folder.relative_path, folder.name, folder.source,
-                   folder.project_id, folder.mcp_view, folder.mcp_read
+                   folder.project_id, folder.mcp_view, folder.mcp_read,
+                   folder.direct_file_count, folder.total_size_bytes
             FROM folders folder
             WHERE {where}
         )
         SELECT
             folder_cte.*,
             project.project_name AS project_name,
-            {count_sub} AS live_file_count,
-            {sum_sub} AS live_size_bytes
+            {count_expr} AS live_file_count,
+            {size_expr} AS live_size_bytes
         FROM folder_cte
         LEFT JOIN projects project ON folder_cte.project_id = project.id
         ORDER BY {order_clause}
@@ -143,36 +155,59 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
     return dict(row) if row else None
 
 
-def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -> dict:
+def get_folder_navigation(
+    conn: sqlite3.Connection,
+    folder_id: int,
+    path: str,
+    *,
+    status: "str | list[str] | None" = None,
+) -> dict:
     """Return navigation data for a folder: files, subfolders, recursive file count.
 
     All results include ``mcp_view`` so the service layer can filter by visibility.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
+    Recursive count widens to match. ``status_reason`` is surfaced on files.
     """
-    # Files in this folder (limit 200, hidden NOT pre-filtered — service does it)
+    status_conds, status_params = build_status_filter(
+        status, column="status", default_include=["listed"]
+    )
+    file_status_sql = (
+        "WHERE folder_id = ? AND " + " AND ".join(status_conds)
+        if status_conds
+        else "WHERE folder_id = ?"
+    )
     files = conn.execute(
-        """SELECT id, name, content_type, size_bytes, modified_at, source, status,
-                  mcp_view, mcp_read
+        f"""SELECT id, name, content_type, size_bytes, modified_at, source,
+                  status, status_reason, mcp_view, mcp_read
            FROM files
-           WHERE folder_id = ? AND status != 'removed'
+           {file_status_sql}
            ORDER BY name
            LIMIT 200""",
-        (folder_id,),
+        [folder_id, *status_params],
     ).fetchall()
     file_results = [dict(r) for r in files]
 
-    # Immediate subfolders (one level deeper)
+    # Immediate subfolders (one level deeper). Honors the same status filter
+    # so widened ADMIN calls see unlisted/removed subfolders too.
+    subfolder_status_sql = (
+        " AND " + " AND ".join(status_conds) if status_conds else ""
+    )
     subfolders = conn.execute(
-        """SELECT id, path, relative_path, name, direct_file_count, total_size_bytes,
-                  source, mcp_view, mcp_read
+        f"""SELECT id, path, relative_path, name, direct_file_count, total_size_bytes,
+                  source, status, status_reason, mcp_view, mcp_read
            FROM folders
-           WHERE path LIKE ? AND path != ? AND path NOT LIKE ?""",
-        (path + "/%", path, path + "/%/%"),
+           WHERE path LIKE ? AND path != ? AND path NOT LIKE ?
+             {subfolder_status_sql}""",
+        [path + "/%", path, path + "/%/%", *status_params],
     ).fetchall()
     subfolder_results = [dict(sf) for sf in subfolders]
 
-    # Recursive file count across all descendants (excludes hidden files)
+    # Recursive file count across all descendants (excludes hidden files; respects status filter)
+    recursive_status_sql = (
+        " AND " + " AND ".join(status_conds) if status_conds else ""
+    )
     recursive = conn.execute(
-        """WITH RECURSIVE descendants(id) AS (
+        f"""WITH RECURSIVE descendants(id) AS (
                SELECT id FROM folders WHERE id = ?
                UNION ALL
                SELECT f.id FROM folders f
@@ -181,9 +216,9 @@ def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -
            SELECT COUNT(*) as total
            FROM files
            WHERE folder_id IN (SELECT id FROM descendants)
-             AND status != 'removed'
-             AND COALESCE(mcp_view, 'inherit') != 'hidden'""",
-        (folder_id,),
+             AND COALESCE(mcp_view, 'inherit') != 'hidden'
+             {recursive_status_sql}""",
+        [folder_id, *status_params],
     ).fetchone()
 
     return {
@@ -231,10 +266,10 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
             folder.project_id, folder.mcp_view, folder.mcp_read,
             project.project_name,
             (SELECT COUNT(*) FROM files file
-             WHERE file.folder_id = folder.id AND file.status != 'removed'
+             WHERE file.folder_id = folder.id AND file.status = 'listed'
             ) AS live_file_count,
             (SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-             WHERE file.folder_id = folder.id AND file.status != 'removed'
+             WHERE file.folder_id = folder.id AND file.status = 'listed'
             ) AS live_size_bytes
         FROM folders folder
         LEFT JOIN projects project ON folder.project_id = project.id
@@ -251,7 +286,7 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
         """
         SELECT id, name, content_type, size_bytes
         FROM files
-        WHERE folder_id = ? AND status != 'removed'
+        WHERE folder_id = ? AND status = 'listed'
         LIMIT 20
         """,
         (folder_id,),
@@ -342,7 +377,7 @@ def cascade_project_id(
 
     # Update files (skip removed)
     cursor.execute(
-        f"UPDATE files SET project_id = ? WHERE folder_id IN ({ph}) AND status != 'removed'",
+        f"UPDATE files SET project_id = ? WHERE folder_id IN ({ph}) AND status = 'listed'",
         [value] + desc_ids,
     )
     files_updated = cursor.rowcount
@@ -472,7 +507,7 @@ def cascade_client_id(
 
     # Update files (skip removed)
     cursor.execute(
-        f"UPDATE files SET client_id = ? WHERE folder_id IN ({ph}) AND status != 'removed'",
+        f"UPDATE files SET client_id = ? WHERE folder_id IN ({ph}) AND status = 'listed'",
         [value] + desc_ids,
     )
     files_updated = cursor.rowcount
@@ -550,6 +585,45 @@ def insert_drive_folder(conn: sqlite3.Connection, data: Dict[str, Any]) -> tuple
         return "inserted", cursor.lastrowid
 
 
+def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[int]:
+    """Mark local folders as 'removed' if path not in scanned_paths.
+
+    Modeled on mark_removed_files() in db/files.py, with two intentional
+    differences:
+      * folders has no vectorization columns to clear
+      * the caller controls the transaction — this function does not
+        commit, so the cleanup can be rolled back if a later step in the
+        adapter fails
+
+    Returns:
+        List of folder IDs that were marked as removed
+    """
+    if not scanned_paths:
+        return []
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, path FROM folders WHERE source = 'local' AND status = 'listed'")
+
+    removed_ids = [row["id"] for row in cursor.fetchall() if row["path"] not in scanned_paths]
+
+    for i in range(0, len(removed_ids), 500):
+        batch = removed_ids[i : i + 500]
+        placeholders = ",".join("?" * len(batch))
+        cursor.execute(
+            f"""
+            UPDATE folders
+            SET status = 'removed',
+                status_reason = 'folder_deleted',
+                status_changed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """,
+            batch,
+        )
+
+    return removed_ids
+
+
 def update_drive_folder_parents(conn: sqlite3.Connection, source: str, folder_map: Dict[str, str]) -> int:
     """Update parent_folder_id links for Drive folders.
 
@@ -596,11 +670,11 @@ def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
         UPDATE folders
         SET direct_file_count = COALESCE((
                 SELECT COUNT(*) FROM files file
-                WHERE file.folder_id = folders.id AND file.status != 'removed'
+                WHERE file.folder_id = folders.id AND file.status = 'listed'
             ), 0),
             total_size_bytes = COALESCE((
                 SELECT SUM(file.size_bytes) FROM files file
-                WHERE file.folder_id = folders.id AND file.status != 'removed'
+                WHERE file.folder_id = folders.id AND file.status = 'listed'
             ), 0)
     """
     )

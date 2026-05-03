@@ -91,7 +91,7 @@ class TestInsertFile:
 
         # Create a real project to reference
         cursor = db.conn.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (99, 'test-proj', 'active')")
+        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (99, 'test-proj', 'listed')")
 
         # Simulate manual project override
         cursor.execute("UPDATE files SET project_id = 99 WHERE id = ?", (file_id,))
@@ -194,7 +194,7 @@ class TestInsertFile:
         # Row updated and reactivated
         cursor.execute("SELECT status, size_bytes FROM files WHERE id = ?", (file_id,))
         row = cursor.fetchone()
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         assert row["size_bytes"] == 999
         db.close()
 
@@ -212,13 +212,6 @@ class TestInsertFileUnchanged:
             "md5_hash": "m",
         }
 
-    def _seed_project_id(self, db, file_id):
-        """Short-circuit requires project_id IS NOT NULL; seed it for unchanged-path tests."""
-        cursor = db.conn.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (77, 'u-proj', 'active')")
-        cursor.execute("UPDATE files SET project_id = 77 WHERE id = ?", (file_id,))
-        db.conn.commit()
-
     def test_identical_hash_and_size_returns_unchanged(self, temp_db):
         from footprinter.ingest.database import Database
 
@@ -226,7 +219,6 @@ class TestInsertFileUnchanged:
         first = files_db.insert_file(db.conn, self._payload())
         assert first[0] == "inserted"
         file_id = first[1]
-        self._seed_project_id(db, file_id)
 
         # Capture updated_at to verify no UPDATE ran on the second call
         cursor = db.conn.cursor()
@@ -287,11 +279,12 @@ class TestInsertFileUnchanged:
         assert second == ("inserted", file_id)
 
         cursor.execute("SELECT status FROM files WHERE id = ?", (file_id,))
-        assert cursor.fetchone()["status"] == "active"
+        assert cursor.fetchone()["status"] == "listed"
         db.close()
 
-    def test_null_project_id_falls_through_to_update(self, temp_db):
-        """NULL project_id must fall through so late-binding project detection can backfill."""
+    def test_null_project_id_fires_unchanged_when_no_project_resolves(self, temp_db):
+        """NULL project_id is fine on the fast-path when no project's root_path matches —
+        UPDATE backfill would have set NULL→NULL anyway."""
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
@@ -302,10 +295,35 @@ class TestInsertFileUnchanged:
         cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
         assert cursor.fetchone()["project_id"] is None, "precondition: no project detected yet"
 
-        # Re-insert with identical hash+size — must NOT short-circuit, so the UPDATE's
-        # project_id = CASE WHEN project_id IS NULL THEN ? ELSE project_id END can run.
+        second = files_db.insert_file(db.conn, self._payload())
+        assert second == ("unchanged", file_id)
+        db.close()
+
+    def test_null_project_id_falls_through_when_project_resolves(self, temp_db):
+        """When a project's root_path now matches, the fast-path defers to the UPDATE so
+        the `CASE WHEN project_id IS NULL THEN ?` backfill can run on the next ingest.
+        Protects the documented re-index contract (reference/data-model.md) for files
+        indexed before their project existed."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        first = files_db.insert_file(db.conn, self._payload())
+        file_id = first[1]
+
+        # User creates a project after the file has been indexed
+        cursor = db.conn.cursor()
+        cursor.execute(
+            "INSERT INTO projects (id, project_name, status, root_path) VALUES (?, ?, ?, ?)",
+            (88, "test-proj", "listed", "/tmp/test"),
+        )
+        db.conn.commit()
+
+        # Re-insert with identical hash+size — must NOT short-circuit
         second = files_db.insert_file(db.conn, self._payload())
         assert second == ("updated", file_id)
+
+        cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
+        assert cursor.fetchone()["project_id"] == 88, "project should be backfilled by UPDATE"
         db.close()
 
     def test_missing_sha256_falls_through_to_update(self, temp_db):
@@ -347,7 +365,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         assert row["status_reason"] is None
         db.close()
 
@@ -368,7 +386,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "hidden"
+        assert row["status"] == "unlisted"
         assert row["status_reason"] == "dot_file"
         db.close()
 
@@ -389,7 +407,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "hidden"
+        assert row["status"] == "unlisted"
         assert row["status_reason"] == "in_dot_folder"
         db.close()
 
@@ -426,7 +444,7 @@ class TestMarkRemovedFiles:
         # a.txt and b.txt still active
         for p in ["/tmp/a.txt", "/tmp/b.txt"]:
             cursor.execute("SELECT status FROM files WHERE path = ?", (p,))
-            assert cursor.fetchone()["status"] == "active"
+            assert cursor.fetchone()["status"] == "listed"
         db.close()
 
     def test_returns_removed_ids(self, temp_db):
@@ -541,7 +559,7 @@ class TestDriveFiles:
         assert row["external_id"] == "drive_file_001"
         assert row["account"] == "test_account"
         assert row["name"] == "report.pdf"
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         db.close()
 
     def test_insert_drive_file_duplicate_updates(self, temp_db):
@@ -673,7 +691,7 @@ class TestModuleLevelFileWrites:
         db = Database(temp_db)
         db.conn.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
         )
         db.conn.commit()
 
@@ -713,18 +731,18 @@ class TestPrefixMaps:
         # Insert two projects with root_path values
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('short', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('short', 'python', '/Users/john/Work', 'listed')"
         )
         short_id = cursor.lastrowid
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('long', 'python', '/Users/john/Work/client-a', 'active')"
+            " VALUES ('long', 'python', '/Users/john/Work/client-a', 'listed')"
         )
         long_id = cursor.lastrowid
         # Project with NULL root_path — should be excluded
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('null-root', 'python', NULL, 'active')"
+            " VALUES ('null-root', 'python', NULL, 'listed')"
         )
         db.conn.commit()
 
@@ -747,7 +765,7 @@ class TestPrefixMaps:
         # Insert a project
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
         )
         proj_id = cursor.lastrowid
 
@@ -791,7 +809,7 @@ class TestPrefixMaps:
         # Seed project and folder
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('myproj', 'python', '/Users/john/Work/myproj', 'active')"
+            " VALUES ('myproj', 'python', '/Users/john/Work/myproj', 'listed')"
         )
         proj_id = cursor.lastrowid
         cursor.execute(
@@ -847,7 +865,7 @@ class TestPrefixMaps:
 
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work/proj', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work/proj', 'listed')"
         )
         db.conn.commit()
 
@@ -877,7 +895,7 @@ class TestPrefixMaps:
 
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('client-a', 'python', '/Users/john/Work/client-a', 'active')"
+            " VALUES ('client-a', 'python', '/Users/john/Work/client-a', 'listed')"
         )
         proj_id = cursor.lastrowid
         db.conn.commit()

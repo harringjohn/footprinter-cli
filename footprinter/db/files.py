@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
-VALID_FILE_STATUSES = frozenset({"active", "hidden", "removed"})
+VALID_FILE_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 
 def list_files(
@@ -37,7 +37,7 @@ def list_files(
     status : str, list[str], or None
         ``None`` → exclude removed (default).
         ``"all"`` → no status filter.
-        Single string → exact match (``"active"``, ``"hidden"``, ``"removed"``).
+        Single string → exact match (``"listed"``, ``"unlisted"``, ``"removed"``).
         List of strings → ``WHERE status IN (...)``.
     content_type : str, optional
         Exact match on ``files.content_type``.
@@ -253,7 +253,7 @@ def list_file_ids_under_path(
     """Return IDs of all non-removed files whose path is under *folder_path*."""
     escaped = folder_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     cursor = conn.execute(
-        "SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' AND status != 'removed'",
+        "SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' AND status = 'listed'",
         (escaped + "/%",),
     )
     return [row["id"] for row in cursor.fetchall()]
@@ -273,14 +273,14 @@ def _determine_file_status(name: str, path: str) -> tuple:
         Tuple of (status, status_reason)
     """
     if name.startswith("."):
-        return "hidden", "dot_file"
+        return "unlisted", "dot_file"
 
     path_parts = path.split("/")
     for part in path_parts:
         if part.startswith(".") and part not in ("", "."):
-            return "hidden", "in_dot_folder"
+            return "unlisted", "in_dot_folder"
 
-    return "active", None
+    return "listed", None
 
 
 def _find_project_for_path(
@@ -483,11 +483,17 @@ def insert_file(
     )
     existing = cursor.fetchone()
 
-    # Fast path: unchanged active row → skip project/folder resolution and the UPDATE.
-    # Requires a non-None sha256 on both sides so missing hashes never short-circuit,
-    # and a non-NULL project_id so we don't strand files waiting on late-binding
-    # project detection (the UPDATE's CASE WHEN project_id IS NULL THEN ? backfill path).
-    if existing is not None and existing["status"] != "removed" and existing["project_id"] is not None:
+    proj_map = relationship_maps.get("project_prefix_map") if relationship_maps else None
+    fpath_map = relationship_maps.get("folder_path_map") if relationship_maps else None
+    fproj_map = relationship_maps.get("folder_project_map") if relationship_maps else None
+    dsn = relationship_maps.get("remote_source_names") if relationship_maps else None
+
+    # Fast path: unchanged active row → skip the UPDATE.
+    # Requires a non-None sha256 on both sides so missing hashes never short-circuit.
+    # When existing.project_id IS NULL we still consult _find_project_for_path: if a
+    # project would resolve, fall through so the UPDATE's `CASE WHEN project_id IS NULL
+    # THEN ?` backfill can run. If no project matches, NULL→NULL — fast-path is safe.
+    if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
         incoming_size = file_data.get("file_size") or file_data.get("size_bytes")
         if (
@@ -496,12 +502,10 @@ def insert_file(
             and incoming_sha == existing["sha256_hash"]
             and incoming_size == existing["size_bytes"]
         ):
-            return ("unchanged", existing["id"])
-
-    proj_map = relationship_maps.get("project_prefix_map") if relationship_maps else None
-    fpath_map = relationship_maps.get("folder_path_map") if relationship_maps else None
-    fproj_map = relationship_maps.get("folder_project_map") if relationship_maps else None
-    dsn = relationship_maps.get("remote_source_names") if relationship_maps else None
+            if existing["project_id"] is not None or _find_project_for_path(
+                conn, file_path, project_prefix_map=proj_map
+            ) is None:
+                return ("unchanged", existing["id"])
 
     project_id = _find_project_for_path(conn, file_path, project_prefix_map=proj_map)
     folder_id = _find_folder_for_path(
@@ -681,7 +685,7 @@ def insert_drive_file(
                 content_type, mime_type, size_bytes,
                 created_at, modified_at, md5_hash, metadata,
                 folder_id, project_id, indexed_at, updated_at, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'active')
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'listed')
         """,
             (
                 data["source"],
@@ -713,7 +717,7 @@ def mark_removed_files(conn: sqlite3.Connection, indexed_paths: set) -> List[int
         return []
 
     cursor = conn.cursor()
-    cursor.execute("SELECT id, path FROM files WHERE source = 'local' AND status != 'removed'")
+    cursor.execute("SELECT id, path FROM files WHERE source = 'local' AND status = 'listed'")
 
     removed_ids = []
     for row in cursor.fetchall():

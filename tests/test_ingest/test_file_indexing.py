@@ -675,7 +675,7 @@ def test_main_reads_directories_from_config(tmp_path):
 
     mock_scanner = MagicMock()
     mock_scanner.scan_folders.return_value = []
-    mock_scanner.save_folders.return_value = (0, 0)
+    mock_scanner.save_folders.return_value = (0, 0, 0)
     mock_scanner.get_folder_stats.return_value = {
         "total_folders": 0,
     }
