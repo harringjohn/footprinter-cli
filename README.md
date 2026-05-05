@@ -1,6 +1,7 @@
 # Footprinter
 
 [![Tests](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml/badge.svg)](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/footprinter-cli)](https://pypi.org/project/footprinter-cli/)
 
 **A local context layer for your files, browser history, chats, and email — searchable, user-owned, and served to AI agents through [MCP](https://modelcontextprotocol.io/).**
 
