@@ -159,24 +159,28 @@ class TestClientService:
         with pytest.raises(PermissionError):
             client_service.delete(service_db, 1, role=Role.VIEWER)
 
-    def test_delete_happy_path(self, service_db):
-        result = client_service.delete(service_db, 1)
-        assert result == {"id": 1, "status": "removed"}
+    def test_delete_happy_path_hard_removes_row(self, service_db):
+        # Insert a fresh client with no dependents so the hard delete succeeds.
+        service_db.execute(
+            """INSERT INTO clients (id, name, slug, client_type, status)
+               VALUES (99, 'Disposable', 'disposable', 'external', 'listed')"""
+        )
+        service_db.commit()
+        result = client_service.delete(service_db, 99)
+        assert result == {"id": 99, "deleted": True}
+        row = service_db.execute("SELECT id FROM clients WHERE id = 99").fetchone()
+        assert row is None
 
-    def test_delete_excluded_from_list(self, service_db):
-        client_service.delete(service_db, 1)
-        listed = client_service.list_(service_db)
-        ids = [c["id"] for c in listed["clients"]]
-        assert 1 not in ids
+    def test_delete_blocks_when_dependents_exist(self, service_db):
+        # Client 1 (Acme) has project 1 (Alpha) attached — hard delete must block.
+        with pytest.raises(ValueError, match="dependents"):
+            client_service.delete(service_db, 1)
+        row = service_db.execute("SELECT id FROM clients WHERE id = 1").fetchone()
+        assert row is not None
 
     def test_delete_not_found(self, service_db):
         result = client_service.delete(service_db, 9999)
         assert result is None
-
-    def test_delete_sets_status_reason(self, service_db):
-        client_service.delete(service_db, 1)
-        row = service_db.execute("SELECT status_reason FROM clients WHERE id = ?", (1,)).fetchone()
-        assert row["status_reason"] == "cli:delete"
 
     # -- Include tests ---------------------------------------------------------
 
@@ -250,14 +254,14 @@ class TestClientService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Secret', 'python', '/Users/u/Work/secret', 'active',
+               VALUES (10, 'Secret', 'python', '/Users/u/Work/secret', 'listed',
                        1, 'hidden', 'allow')"""
         )
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, mcp_view, mcp_read)
                VALUES (10, 'secret.py', '/Users/u/Work/secret/secret.py', 'local',
-                       'active', 'python', 500, 10, 'hidden', 'allow')"""
+                       'listed', 'python', 500, 10, 'hidden', 'allow')"""
         )
         service_db.commit()
 
@@ -297,7 +301,7 @@ class TestProjectService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'active',
+               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
@@ -310,7 +314,7 @@ class TestProjectService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'active',
+               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
@@ -428,24 +432,28 @@ class TestProjectService:
         with pytest.raises(PermissionError):
             project_service.delete(service_db, 1, role=Role.VIEWER)
 
-    def test_delete_happy_path(self, service_db):
-        result = project_service.delete(service_db, 1)
-        assert result == {"id": 1, "status": "removed"}
+    def test_delete_happy_path_hard_removes_row(self, service_db):
+        # Insert a fresh project with no dependents so the hard delete succeeds.
+        service_db.execute(
+            """INSERT INTO projects (id, project_name, project_type, root_path, status)
+               VALUES (99, 'Disposable', 'python', '/tmp/disposable', 'listed')"""
+        )
+        service_db.commit()
+        result = project_service.delete(service_db, 99)
+        assert result == {"id": 99, "deleted": True}
+        row = service_db.execute("SELECT id FROM projects WHERE id = 99").fetchone()
+        assert row is None
 
-    def test_delete_excluded_from_list(self, service_db):
-        project_service.delete(service_db, 1)
-        listed = project_service.list_(service_db)
-        ids = [p["id"] for p in listed["projects"]]
-        assert 1 not in ids
+    def test_delete_blocks_when_dependents_exist(self, service_db):
+        # Project 1 (Alpha) has files/folders/chats attached — hard delete must block.
+        with pytest.raises(ValueError, match="dependents"):
+            project_service.delete(service_db, 1)
+        row = service_db.execute("SELECT id FROM projects WHERE id = 1").fetchone()
+        assert row is not None
 
     def test_delete_not_found(self, service_db):
         result = project_service.delete(service_db, 9999)
         assert result is None
-
-    def test_delete_sets_status_reason(self, service_db):
-        project_service.delete(service_db, 1)
-        row = service_db.execute("SELECT status_reason FROM projects WHERE id = ?", (1,)).fetchone()
-        assert row["status_reason"] == "cli:delete"
 
     # -- Include tests ---------------------------------------------------------
 
@@ -574,20 +582,20 @@ class TestFileService:
         result = file_service.assign(service_db, 999, project_id=1)
         assert result is None
 
-    def test_assign_stamps_assignment_source(self, service_db):
-        """assign() stamps assignment_source when column exists (app-scope DB)."""
-        init_app_schema = pytest.importorskip("footprinter.ingest.db.app_schema").init_app_schema
-
-        init_app_schema(service_db)
-        file_service.assign(service_db, 1, project_id=1)
-        row = service_db.execute("SELECT assignment_source FROM files WHERE id = 1").fetchone()
-        assert row["assignment_source"] == "user"
-
     def test_assign_works_without_assignment_source(self, service_db):
         """assign() succeeds on tool-only DB (no assignment_source column)."""
         result = file_service.assign(service_db, 1, project_id=1)
         assert result is not None
         assert result["project_id"] == 1
+
+    def test_assign_stamps_assignment_source(self, service_db):
+        """assign() writes assignment_source='user' when the column exists."""
+        service_db.execute("ALTER TABLE files ADD COLUMN assignment_source TEXT")
+        file_service.assign(service_db, 1, project_id=1)
+        row = service_db.execute(
+            "SELECT assignment_source FROM files WHERE id = 1"
+        ).fetchone()
+        assert row["assignment_source"] == "user"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -620,6 +628,13 @@ class TestFolderService:
 
     def test_list_admin_returns_all(self, service_db):
         result = folder_service.list_(service_db, role=Role.ADMIN, depth=None)
+        assert len(result["folders"]) == 3
+
+    def test_list_default_depth_is_none(self, service_db):
+        # All three fixture folders sit at /Work/<project>/src — depth 2 below
+        # home — so the old depth=1 default would drop them. The default must
+        # now return everything (FPR-1631).
+        result = folder_service.list_(service_db, role=Role.ADMIN)
         assert len(result["folders"]) == 3
 
     def test_list_viewer_filters_hidden(self, service_db):
@@ -713,7 +728,7 @@ class TestFolderService:
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, folder_id, mcp_view, mcp_read)
                VALUES (10, 'hidden.py', '/Users/u/Work/alpha/src/hidden.py', 'local',
-                       'active', 'python', 100, 1, 1, 'hidden', 'allow')"""
+                       'listed', 'python', 100, 1, 1, 'hidden', 'allow')"""
         )
         service_db.commit()
 

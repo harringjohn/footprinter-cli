@@ -263,7 +263,7 @@ def get_opaque_metadata(conn: sqlite3.Connection, item_type: str, item_id: int) 
 
 
 # ---------------------------------------------------------------------------
-# 3-stage access gating
+# 4-stage access gating
 # ---------------------------------------------------------------------------
 
 
@@ -274,11 +274,13 @@ def gate_access(
     *,
     role: Role = Role.ADMIN,
 ) -> dict:
-    """3-stage access gating + content for a single item.
+    """4-stage access gating + content for a single item.
 
     Returns dict with ``status`` key:
 
     - ``ok`` — access granted; includes ``metadata`` (+ ``content`` for email/chat)
+    - ``removed`` — item has ``status='removed'`` (VIEWER only)
+    - ``unlisted`` — item has ``status='unlisted'`` (VIEWER only)
     - ``hidden`` — item hidden from this role
     - ``opaque`` — minimal ``metadata`` only
     - ``denied`` — permission denied
@@ -299,7 +301,15 @@ def gate_access(
     if not metadata:
         return {"status": "not_found"}
 
-    # Stage 2: Visibility (ADMIN bypasses)
+    # Stage 2: Status (ADMIN bypasses; status rides along in metadata)
+    if not role.sees_all:
+        row_status = metadata.get("status")
+        if row_status == "removed":
+            return {"status": "removed"}
+        if row_status == "unlisted":
+            return {"status": "unlisted"}
+
+    # Stage 3: Visibility (ADMIN bypasses)
     if not role.sees_all:
         visibility = resolve_inherit_visibility(metadata.get("mcp_view"))
         if visibility == "hidden":
@@ -310,7 +320,7 @@ def gate_access(
                 "metadata": _filter_to_opaque(item_type, metadata),
             }
 
-    # Stage 3: Permission (ADMIN bypasses)
+    # Stage 4: Permission (ADMIN bypasses)
     if not role.sees_all:
         if resolve_inherit_permission(metadata.get("mcp_read")) == "deny":
             return {
@@ -318,7 +328,7 @@ def gate_access(
                 "metadata": _filter_to_opaque(item_type, metadata),
             }
 
-    # Stage 4: Return content — reuse metadata already fetched
+    # Stage 5: Return content — reuse metadata already fetched
     if item_type == "file":
         return {"status": "ok", "metadata": metadata}
     elif item_type == "email":

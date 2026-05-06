@@ -46,7 +46,7 @@ def _is_inherit_source(source: str) -> bool:
 #   table:          SQL table name
 #   has_visibility: has mcp_view column
 #   has_permissions: has mcp_read column
-#   has_status:     has status column (filter WHERE status != 'removed')
+#   has_status:     has status column (filter WHERE status = 'listed')
 #   has_project_id: has project_id FK
 #   has_client_id:  has client_id FK
 #   has_account:    has account column
@@ -129,7 +129,7 @@ def _get_all_ids(conn: sqlite3.Connection, entity_type: str) -> list[int]:
     meta = ENTITY_META[entity_type]
     table = meta["table"]
     if meta["has_status"]:
-        rows = conn.execute(f"SELECT id FROM {table} WHERE status != 'removed'").fetchall()
+        rows = conn.execute(f"SELECT id FROM {table} WHERE status = 'listed'").fetchall()
     else:
         rows = conn.execute(f"SELECT id FROM {table}").fetchall()
     return [r["id"] for r in rows]
@@ -162,7 +162,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
             table = meta["table"]
             where = "account = ?"
             if meta["has_status"]:
-                where += " AND status != 'removed'"
+                where += " AND status = 'listed'"
             rows = conn.execute(f"SELECT id FROM {table} WHERE {where}", (value,)).fetchall()
             ids = [r["id"] for r in rows]
             if ids:
@@ -183,7 +183,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
             table = meta["table"]
             where = f"{path_col} LIKE ? ESCAPE '\\'"
             if meta["has_status"]:
-                where += " AND status != 'removed'"
+                where += " AND status = 'listed'"
             rows = conn.execute(
                 f"SELECT id FROM {table} WHERE {where}",
                 (escaped + "%",),
@@ -210,7 +210,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
             table = meta["table"]
             where = "project_id = ?"
             if meta["has_status"]:
-                where += " AND status != 'removed'"
+                where += " AND status = 'listed'"
             rows = conn.execute(f"SELECT id FROM {table} WHERE {where}", (project_id,)).fetchall()
             ids = [r["id"] for r in rows]
             if ids:
@@ -248,7 +248,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
             table = meta["table"]
             where = "client_id = ?"
             if meta["has_status"]:
-                where += " AND status != 'removed'"
+                where += " AND status = 'listed'"
             rows = conn.execute(f"SELECT id FROM {table} WHERE {where}", (client_id,)).fetchall()
             if rows:
                 id_sets.setdefault(etype, {}).update({r["id"]: None for r in rows})

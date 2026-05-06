@@ -133,7 +133,7 @@ class TestInformationOracles:
                 indexed_at TEXT,
                 project_id INTEGER,
                 md5_hash TEXT,
-                status TEXT DEFAULT 'active',
+                status TEXT DEFAULT 'listed',
                 status_reason TEXT,
                 mcp_view TEXT DEFAULT 'inherit',
                 mcp_read TEXT DEFAULT 'inherit'

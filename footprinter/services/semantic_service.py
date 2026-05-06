@@ -18,6 +18,7 @@ from footprinter.services.access_service import (
     resolve_inherit_permission,
     resolve_inherit_visibility,
 )
+from footprinter.services.includes import status_arg_for_role
 from footprinter.services.roles import Role
 
 logger = logging.getLogger(__name__)
@@ -63,18 +64,29 @@ def semantic_search(
     role: Role = Role.ADMIN,
     source: str = "all",
     limit: int = 10,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
 ) -> dict:
     """Search chats and/or files by semantic similarity.
 
     Returns dict with source-specific keys (``chats``, ``files``), ``summary``,
     and optionally ``note`` and ``suppressed``.  Returns ``{"status": ...}``
     for validation errors.
+
+    ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
+    accept them but the listed-only default still applies.
     """
     if not query or len(query) < 3:
         return {"status": "invalid_query"}
 
     if source not in _VALID_SOURCES:
         return {"status": "invalid_source"}
+
+    status_arg = status_arg_for_role(
+        role,
+        include_unlisted=include_unlisted,
+        include_removed=include_removed,
+    )
 
     result: dict = {"query": query}
     all_notes: list[str] = []
@@ -88,6 +100,7 @@ def semantic_search(
             query,
             limit,
             role,
+            status_arg=status_arg,
         )
         result["chats"] = chats
         all_notes.extend(notes)
@@ -99,6 +112,7 @@ def semantic_search(
             query,
             limit,
             role,
+            status_arg=status_arg,
         )
         result["files"] = files
         all_notes.extend(notes)
@@ -134,6 +148,8 @@ def _search_chats(
     query: str,
     limit: int,
     role: Role,
+    *,
+    status_arg: "str | list[str] | None" = None,
 ) -> tuple[list[dict], list[str], int, str]:
     """Search chats via VectorStore → FTS5 fallback → enrich → filter."""
     notes: list[str] = []
@@ -150,14 +166,16 @@ def _search_chats(
         logger.warning("Vector search unavailable (%s), falling back to FTS5", e)
         status = _DEGRADED
         try:
-            results = chat_fts5_fallback(conn, query, limit)
+            results = chat_fts5_fallback(conn, query, limit, status=status_arg)
         except Exception as fallback_err:
             logger.warning("Chat FTS5 fallback failed: %s", fallback_err)
             return [], ["Chat search failed — try footprinter_search"], 0, _FAILED
 
     # Enrich with visibility from DB
     chat_ids = [r.get("chat_id") for r in results if r.get("chat_id")]
-    vis_lookup = enrich_chat_visibility(conn, chat_ids) if chat_ids else {}
+    vis_lookup = (
+        enrich_chat_visibility(conn, chat_ids, status=status_arg) if chat_ids else {}
+    )
 
     for r in results:
         db_row = vis_lookup.get(r.get("chat_id"))
@@ -199,6 +217,8 @@ def _search_files(
     query: str,
     limit: int,
     role: Role,
+    *,
+    status_arg: "str | list[str] | None" = None,
 ) -> tuple[list[dict], list[str], int, str]:
     """Search files via VectorStore (+ enrich) or FTS5 fallback → filter."""
     notes: list[str] = []
@@ -215,7 +235,7 @@ def _search_files(
         logger.warning("Vector search unavailable (%s), falling back to FTS5", e)
         status = _DEGRADED
         try:
-            enriched = file_fts5_fallback(conn, query, limit)
+            enriched = file_fts5_fallback(conn, query, limit, status=status_arg)
         except Exception as fallback_err:
             logger.warning("File FTS5 fallback failed: %s", fallback_err)
             return [], ["File search failed — try footprinter_search"], 0, _FAILED
@@ -234,7 +254,7 @@ def _search_files(
 
         file_ids = [r["file_id"] for r in deduped if r.get("file_id")]
         if file_ids:
-            db_lookup = enrich_file_metadata(conn, file_ids)
+            db_lookup = enrich_file_metadata(conn, file_ids, status=status_arg)
             for r in deduped:
                 db_row = db_lookup.get(r["file_id"])
                 if db_row:

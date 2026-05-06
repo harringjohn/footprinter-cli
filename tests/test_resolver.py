@@ -29,11 +29,11 @@ def resolver_db(tmp_path):
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute(
-        "INSERT INTO clients (name, slug, client_type, status) VALUES ('Acme Corp', 'acme-corp', 'external', 'active')"
+        "INSERT INTO clients (name, slug, client_type, status) VALUES ('Acme Corp', 'acme-corp', 'external', 'listed')"
     )
     conn.execute(
         "INSERT INTO projects (project_name, project_type, root_path, status) "
-        "VALUES ('Manila', 'python', '/Users/test/Work/manila', 'active')"
+        "VALUES ('Manila', 'python', '/Users/test/Work/manila', 'listed')"
     )
     conn.commit()
     yield conn
@@ -152,7 +152,7 @@ class TestResolveIdentifierAmbiguous:
         # Insert a second project with the same name
         resolver_db.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status) "
-            "VALUES ('Manila', 'node', '/Users/test/Work/manila-2', 'active')"
+            "VALUES ('Manila', 'node', '/Users/test/Work/manila-2', 'listed')"
         )
         resolver_db.commit()
 
@@ -262,10 +262,10 @@ class TestConsoleExport:
 
 
 class TestValidStatuses:
-    def test_contains_all_six_statuses(self):
+    def test_contains_all_statuses(self):
         from footprinter.cli._common import VALID_STATUSES
 
-        expected = {"active", "paused", "completed", "abandoned", "archived", "merged"}
+        expected = {"listed", "unlisted", "removed"}
         assert VALID_STATUSES == expected
 
     def test_is_frozenset(self):
@@ -323,12 +323,26 @@ class TestQueriesSubmoduleImports:
 
 
 # ---------------------------------------------------------------------------
-# 12. TestNoDeleteProject
+# 12. TestHardDeleteHelpers
 # ---------------------------------------------------------------------------
 
 
-class TestNoDeleteProject:
-    def test_db_projects_has_no_delete_project(self):
+class TestHardDeleteHelpers:
+    """Hard-delete helpers exist on db.projects and db.clients (FPR-1684).
+
+    Replaces the old "no delete_project" guardrail: the trichotomy work
+    splits soft-delete (fp upsert --status removed) from hard-delete
+    (fp delete → DELETE FROM ... blocked when dependents exist).
+    """
+
+    def test_db_projects_has_delete_project(self):
         import footprinter.db.projects as projects_mod
 
-        assert not hasattr(projects_mod, "delete_project")
+        assert hasattr(projects_mod, "delete_project")
+        assert callable(projects_mod.delete_project)
+
+    def test_db_clients_has_delete_client(self):
+        import footprinter.db.clients as clients_mod
+
+        assert hasattr(clients_mod, "delete_client")
+        assert callable(clients_mod.delete_client)

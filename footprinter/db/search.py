@@ -12,11 +12,20 @@ from typing import Optional
 
 from footprinter.db.sql_utils import (
     build_fts5_query,
+    build_status_filter,
     build_term_conditions,
     paginate,
     paginated_response,
     split_query_terms,
 )
+
+def _status_clause(
+    status: "str | list[str] | None",
+    *,
+    column: str,
+) -> tuple[list[str], list]:
+    """Default to listed-only; honor an explicit status override."""
+    return build_status_filter(status, column=column, default_include=["listed"])
 
 HOME = str(Path.home())
 
@@ -74,7 +83,7 @@ def search_files(
         JOIN files_fts fts ON fts.rowid = file.id
         WHERE files_fts MATCH ?
         AND file.{source_filter}
-        AND file.status != 'removed'
+        AND file.status = 'listed'
         {ext_clause}
     """
     fetch_sql = f"""
@@ -84,7 +93,7 @@ def search_files(
         JOIN files_fts fts ON fts.rowid = file.id
         WHERE files_fts MATCH ?
         AND file.{source_filter}
-        AND file.status != 'removed'
+        AND file.status = 'listed'
         {ext_clause}
         ORDER BY fts.rank
         LIMIT ? OFFSET ?
@@ -133,14 +142,19 @@ def search_files_keyword(
     mime_type: Optional[str] = None,
     limit: int = 50,
     exclude_hidden: bool = True,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """Keyword search for files with optional filters.
 
     Returns list of dicts with file metadata including project/client joins.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     params: list = []
-    where = ["file.status != 'removed'"]
     fts_join = ""
+
+    status_conds, status_params = _status_clause(status, column="file.status")
+    where = list(status_conds)
+    params.extend(status_params)
 
     if has_query:
         fts5_str = build_fts5_query(list(terms))
@@ -175,17 +189,19 @@ def search_files_keyword(
         where.append("file.mcp_view != 'hidden'")
     params.append(limit)
 
+    where_sql = (" AND ".join(where)) if where else "1=1"
+
     rows = conn.execute(
         f"""
         SELECT file.id, file.source, file.name, file.path, file.content_type,
                file.size_bytes, file.modified_at, file.account, file.mime_type,
-               file.mcp_view,
+               file.mcp_view, file.status, file.status_reason,
                project.project_name, client.name AS client
         FROM files file
         {fts_join}
         LEFT JOIN projects project ON file.project_id = project.id
         LEFT JOIN clients client ON project.client_id = client.id
-        WHERE {" AND ".join(where)}
+        WHERE {where_sql}
         ORDER BY file.modified_at DESC
         LIMIT ?
         """,
@@ -206,6 +222,8 @@ def search_files_keyword(
             "project": r["project_name"],
             "client": r["client"],
             "mcp_view": r["mcp_view"],
+            "status": r["status"],
+            "status_reason": r["status_reason"],
         }
         for r in rows
     ]
@@ -225,14 +243,20 @@ def search_emails_keyword(
     days_back: Optional[int] = None,
     limit: int = 50,
     exclude_hidden: bool = True,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """Keyword search for emails with optional filters.
 
     Returns list of dicts with email metadata including project/client joins.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
+    The emails table has no ``status_reason`` column, so only ``status`` is surfaced.
     """
     params: list = []
-    where: list[str] = ["email.status != 'removed'"]
     fts_join = ""
+
+    status_conds, status_params = _status_clause(status, column="email.status")
+    where: list[str] = list(status_conds)
+    params.extend(status_params)
 
     if has_query:
         fts5_str = build_fts5_query(list(terms))
@@ -265,18 +289,20 @@ def search_emails_keyword(
         where.append("email.mcp_view != 'hidden'")
     params.append(limit)
 
+    where_sql = (" AND ".join(where)) if where else "1=1"
+
     rows = conn.execute(
         f"""
         SELECT email.id, email.message_id, email.subject, email.from_address,
                email.from_name, email.to_addresses, email.received_at,
                email.account, email.labels, email.body_preview,
-               email.mcp_view, email.mcp_read,
+               email.mcp_view, email.mcp_read, email.status,
                project.project_name, client.name AS client_name
         FROM emails email
         {fts_join}
         LEFT JOIN projects project ON email.project_id = project.id
         LEFT JOIN clients client ON email.client_id = client.id
-        WHERE {" AND ".join(where)}
+        WHERE {where_sql}
         ORDER BY email.received_at DESC
         LIMIT ?
         """,
@@ -298,6 +324,7 @@ def search_emails_keyword(
             "client_name": r["client_name"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "status": r["status"],
         }
         for r in rows
     ]
@@ -314,13 +341,19 @@ def search_chats_keyword(
     date_to: Optional[str] = None,
     limit: int = 50,
     exclude_hidden: bool = True,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """Keyword search for chats with optional filters.
 
     Returns list of dicts with chat metadata including project/client joins.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
+    The chats table has no ``status_reason`` column, so only ``status`` is surfaced.
     """
     params: list = []
-    where: list[str] = ["chat.status NOT IN ('removed', 'merged')"]
+
+    status_conds, status_params = _status_clause(status, column="chat.status")
+    where: list[str] = list(status_conds)
+    params.extend(status_params)
 
     if has_query:
         cond, cond_params = build_term_conditions(["chat.title"], list(terms))
@@ -343,16 +376,18 @@ def search_chats_keyword(
         where.append("chat.mcp_view != 'hidden'")
     params.append(limit)
 
+    where_sql = (" AND ".join(where)) if where else "1=1"
+
     rows = conn.execute(
         f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title,
                chat.summary, chat.created_at, chat.modified_at,
-               chat.message_count, chat.mcp_view, chat.mcp_read,
+               chat.message_count, chat.mcp_view, chat.mcp_read, chat.status,
                project.project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
         LEFT JOIN clients client ON chat.client_id = client.id
-        WHERE {" AND ".join(where)}
+        WHERE {where_sql}
         ORDER BY chat.created_at DESC
         LIMIT ?
         """,
@@ -372,6 +407,7 @@ def search_chats_keyword(
             "client_name": r["client_name"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "status": r["status"],
         }
         for r in rows
     ]
@@ -385,14 +421,20 @@ def search_browser_keyword(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = 50,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """Keyword search for browser visits with optional filters.
 
     Returns list of dicts with visit metadata. Source-level visibility
     gating is handled by the service layer, not here.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
+    The visits table has no ``status_reason`` column, so only ``status`` is surfaced.
     """
     params: list = []
-    where: list[str] = ["status != 'removed'"]
+
+    status_conds, status_params = _status_clause(status, column="status")
+    where: list[str] = list(status_conds)
+    params.extend(status_params)
 
     if has_query:
         cond, cond_params = build_term_conditions(["url", "title"], list(terms))
@@ -407,11 +449,13 @@ def search_browser_keyword(
         params.append(date_to)
     params.append(limit)
 
+    where_sql = (" AND ".join(where)) if where else "1=1"
+
     rows = conn.execute(
         f"""
-        SELECT id, url, title, visit_time, browser
+        SELECT id, url, title, visit_time, browser, status
         FROM visits
-        WHERE {" AND ".join(where)}
+        WHERE {where_sql}
         ORDER BY visit_time DESC
         LIMIT ?
         """,
@@ -425,6 +469,7 @@ def search_browser_keyword(
             "title": r["title"],
             "visit_time": r["visit_time"],
             "browser": r["browser"],
+            "status": r["status"],
         }
         for r in rows
     ]
@@ -439,25 +484,30 @@ def chat_fts5_fallback(
     conn: sqlite3.Connection,
     query: str,
     limit: int,
+    *,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """FTS5 keyword fallback for chat search.
 
     Returns dicts shaped for semantic_service consumption: chat_id, chat_title,
     snippet, relevance_score, source, created_at, message_id.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     safe_query = query.replace('"', '""')
     fts_query = f'"{safe_query}"*'
 
+    status_conds, status_params = _status_clause(status, column="chat.status")
+    extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
+
     rows = conn.execute(
-        """SELECT chat.id, chat.title, chat.summary, chat.account,
+        f"""SELECT chat.id, chat.title, chat.summary, chat.account,
                   chat.created_at, chat.message_count, fts.rank as fts_rank
            FROM chats_fts fts
            JOIN chats chat ON chat.id = fts.rowid
-           WHERE chats_fts MATCH ?
-             AND chat.status != 'removed'
+           WHERE chats_fts MATCH ?{extra_where}
            ORDER BY fts.rank
            LIMIT ?""",
-        (fts_query, limit),
+        [fts_query, *status_params, limit],
     ).fetchall()
 
     results = []
@@ -482,28 +532,34 @@ def file_fts5_fallback(
     conn: sqlite3.Connection,
     query: str,
     limit: int,
+    *,
+    status: "str | list[str] | None" = None,
 ) -> list[dict]:
     """FTS5 keyword fallback for file search.
 
     Returns dicts shaped for semantic_service consumption: id, source, name,
     path, content_type, size_bytes, modified_at, relevance_score, snippet,
     mcp_view, mcp_read.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     terms = split_query_terms(query)
     match_str = build_fts5_query(terms)
     if not match_str:
         return []
 
+    status_conds, status_params = _status_clause(status, column="file.status")
+    extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
+
     rows = conn.execute(
         "SELECT file.id, file.source, file.name, file.path, "
         "file.content_type, file.size_bytes, "
         "file.modified_at, file.mcp_view, file.mcp_read, "
-        "file.content_preview "
+        "file.status, file.status_reason, file.content_preview "
         "FROM files file "
         "JOIN files_fts fts ON fts.rowid = file.id "
-        "WHERE files_fts MATCH ? AND file.status != 'removed' "
+        f"WHERE files_fts MATCH ?{extra_where} "
         "LIMIT ?",
-        (match_str, limit),
+        [match_str, *status_params, limit],
     ).fetchall()
 
     results = []
@@ -525,6 +581,8 @@ def file_fts5_fallback(
                 "snippet": snippet,
                 "mcp_view": row["mcp_view"],
                 "mcp_read": row["mcp_read"],
+                "status": row["status"],
+                "status_reason": row["status_reason"],
             }
         )
     return results
@@ -538,17 +596,23 @@ def file_fts5_fallback(
 def enrich_chat_visibility(
     conn: sqlite3.Connection,
     chat_ids: list[int],
+    *,
+    status: "str | list[str] | None" = None,
 ) -> dict[int, dict]:
     """Fetch visibility fields for a set of chat IDs.
 
-    Returns {chat_id: {account, mcp_view, mcp_read}} lookup dict.
+    Returns {chat_id: {account, mcp_view, mcp_read, status}} lookup dict.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     if not chat_ids:
         return {}
     ph = ",".join("?" * len(chat_ids))
+    status_conds, status_params = _status_clause(status, column="status")
+    extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
-        f"SELECT id, account, mcp_view, mcp_read FROM chats WHERE id IN ({ph})",
-        chat_ids,
+        f"SELECT id, account, mcp_view, mcp_read, status FROM chats "
+        f"WHERE id IN ({ph}){extra_where}",
+        [*chat_ids, *status_params],
     ).fetchall()
     return {row["id"]: dict(row) for row in rows}
 
@@ -556,18 +620,23 @@ def enrich_chat_visibility(
 def enrich_file_metadata(
     conn: sqlite3.Connection,
     file_ids: list[int],
+    *,
+    status: "str | list[str] | None" = None,
 ) -> dict[int, dict]:
-    """Fetch metadata for a set of file IDs (excludes removed).
+    """Fetch metadata for a set of file IDs.
 
-    Returns {file_id: {id, source, name, path, ...}} lookup dict.
+    Returns {file_id: {id, source, name, path, ..., status, status_reason}} lookup dict.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     if not file_ids:
         return {}
     ph = ",".join("?" * len(file_ids))
+    status_conds, status_params = _status_clause(status, column="status")
+    extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
         f"SELECT id, source, name, path, content_type, size_bytes, "
-        f"modified_at, mcp_view, mcp_read "
-        f"FROM files WHERE id IN ({ph}) AND status != 'removed'",
-        file_ids,
+        f"modified_at, mcp_view, mcp_read, status, status_reason "
+        f"FROM files WHERE id IN ({ph}){extra_where}",
+        [*file_ids, *status_params],
     ).fetchall()
     return {row["id"]: dict(row) for row in rows}

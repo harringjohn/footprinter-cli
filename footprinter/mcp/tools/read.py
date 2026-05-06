@@ -10,6 +10,8 @@ from footprinter.services.roles import Role
 # Map service status codes to MCP error codes
 _STATUS_TO_MCP = {
     "hidden": "NOT_FOUND",
+    "removed": "NOT_FOUND",
+    "unlisted": "NOT_FOUND",
     "not_found": "NOT_FOUND",
     "opaque": "VISIBILITY_RESTRICTED",
     "denied": "PERMISSION_DENIED",

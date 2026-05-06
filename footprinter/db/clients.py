@@ -11,7 +11,7 @@ from footprinter.db.sql_utils import build_status_filter, paginate, paginated_re
 from footprinter.utils.text import _make_slug
 
 VALID_CLIENT_TYPES = {"external", "internal", "personal"}
-VALID_STATUSES = frozenset({"active", "hidden", "removed"})
+VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 
 def list_clients(
@@ -23,7 +23,7 @@ def list_clients(
     ----------
     conn : sqlite3.Connection
     status : str, list[str], or None
-        ``None`` → active only (default).
+        ``None`` → all except ``removed`` (default).
         ``"all"`` → no status filter.
         Single string → exact match.
         List of strings → ``WHERE status IN (...)``.
@@ -43,7 +43,7 @@ def list_clients(
     status_conds, status_params = build_status_filter(
         status,
         column="client.status",
-        default_include=["active"],
+        default_exclude=["removed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
@@ -82,6 +82,46 @@ def list_clients(
     ]
 
     return paginated_response("clients", clients, pagination)
+
+
+CLIENT_DEPENDENT_TABLES = ("projects", "files", "folders", "chats", "emails", "visits")
+
+
+def count_client_dependents(conn: sqlite3.Connection, client_id: int) -> dict[str, int]:
+    """Return per-table counts of records with ``client_id = ?``.
+
+    Tables included: ``CLIENT_DEPENDENT_TABLES``. Zero counts are kept so
+    callers can render "0 projects, 2 files" verbatim.
+    """
+    counts: dict[str, int] = {}
+    for table in CLIENT_DEPENDENT_TABLES:
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE client_id = ?",
+            (client_id,),
+        ).fetchone()
+        counts[table] = row[0] if row else 0
+    return counts
+
+
+def delete_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
+    """Hard-delete a client row.
+
+    Returns ``None`` if the client does not exist. If any dependent records
+    point at the client, returns ``{"blocked": True, "dependents": {...}}``
+    without deleting. Otherwise issues ``DELETE FROM clients`` and returns
+    ``{"deleted": True}``.
+    """
+    cursor = conn.execute("SELECT id FROM clients WHERE id = ?", (client_id,))
+    if cursor.fetchone() is None:
+        return None
+
+    counts = count_client_dependents(conn, client_id)
+    if any(c > 0 for c in counts.values()):
+        return {"blocked": True, "dependents": counts}
+
+    conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    conn.commit()
+    return {"deleted": True}
 
 
 def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optional[bool]:
@@ -161,7 +201,7 @@ def create_client(conn: sqlite3.Connection, *, name: str, client_type: str, path
     try:
         cursor.execute(
             """INSERT INTO clients (name, slug, client_type, path_pattern, status)
-               VALUES (?, ?, ?, ?, 'active')""",
+               VALUES (?, ?, ?, ?, 'listed')""",
             (name, slug, client_type, path_pattern),
         )
         conn.commit()

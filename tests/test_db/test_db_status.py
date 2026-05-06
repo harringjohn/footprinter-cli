@@ -78,7 +78,7 @@ def test_get_system_status_excludes_removed_folders():
     conn = db.conn
 
     conn.execute(
-        "INSERT INTO folders (path, relative_path, name, source, status) VALUES ('/tmp/a', 'a', 'a', 'local', 'active')"
+        "INSERT INTO folders (path, relative_path, name, source, status) VALUES ('/tmp/a', 'a', 'a', 'local', 'listed')"
     )
     conn.execute(
         "INSERT INTO folders (path, relative_path, name, source, status) "
@@ -105,7 +105,7 @@ def test_get_mcp_status_counts_null_status_chats():
 
     conn.execute(
         "INSERT INTO chats (external_id, account, title, status) "
-        "VALUES ('ext-active', 'claude', 'active chat', 'active')"
+        "VALUES ('ext-active', 'claude', 'active chat', 'listed')"
     )
     conn.execute(
         "INSERT INTO chats (external_id, account, title) "

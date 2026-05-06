@@ -208,7 +208,7 @@ def fts5_db(tmp_path):
             created_at TEXT,
             message_count INTEGER DEFAULT 0,
             mcp_view TEXT DEFAULT 'inherit',
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'listed'
         )
     """
     )

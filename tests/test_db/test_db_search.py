@@ -195,18 +195,6 @@ class TestSearchChatsKeyword:
         titles = [r["title"] for r in results]
         assert "Removed Chat" not in titles
 
-    def test_excludes_merged_chats(self, db_conn):
-        db_conn.execute(
-            """INSERT INTO chats (external_id, account, title, summary, message_count,
-                                  created_at, mcp_view, mcp_read, status)
-               VALUES ('conv-mg', 'claude', 'Merged Chat', 'Merged away', 0,
-                       '2026-01-10', 'visible', 'allow', 'merged')"""
-        )
-        db_conn.commit()
-        results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=50)
-        titles = [r["title"] for r in results]
-        assert "Merged Chat" not in titles
-
     def test_returns_list_of_dicts(self, db_conn):
         results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=10)
         assert isinstance(results, list)
@@ -325,7 +313,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (100, 'local', 'report.pdf', '/Users/u/docs/report.pdf', "
-            "'active', 'pdf', 5000, '2026-01-15', 'visible', 'allow', "
+            "'listed', 'pdf', 5000, '2026-01-15', 'visible', 'allow', "
             "'This is the report content preview text')"
         )
         db_conn.commit()
@@ -341,7 +329,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (102, 'local', 'notes.txt', '/Users/u/docs/notes.txt', "
-            "'active', 'text', 1000, '2026-01-15', 'visible', 'allow', NULL)"
+            "'listed', 'text', 1000, '2026-01-15', 'visible', 'allow', NULL)"
         )
         db_conn.commit()
         self._rebuild_fts(db_conn)
@@ -357,7 +345,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (101, 'local', 'classified.docx', '/Users/u/docs/classified.docx', "
-            "'active', 'document', 3000, '2026-01-15', 'visible', 'deny', "
+            "'listed', 'document', 3000, '2026-01-15', 'visible', 'deny', "
             "'CONFIDENTIAL DATA that must not leak')"
         )
         db_conn.commit()
@@ -394,6 +382,13 @@ class TestEnrichChatVisibility:
         lookup = enrich_chat_visibility(db_conn, [999])
         assert 999 not in lookup
 
+    def test_excludes_removed(self, db_conn):
+        db_conn.execute("UPDATE chats SET status = 'removed' WHERE id = 2")
+        db_conn.commit()
+        lookup = enrich_chat_visibility(db_conn, [1, 2])
+        assert 1 in lookup
+        assert 2 not in lookup
+
 
 class TestEnrichFileMetadata:
     """Enrich file results with metadata from DB."""
@@ -423,3 +418,276 @@ class TestWhereClauseRemoved:
         import footprinter.db.search as search_mod
 
         assert not hasattr(search_mod, "_where_clause")
+
+
+# ---------------------------------------------------------------------------
+# FPR-1678: status kwarg matrix for keyword search + FTS5 + enrichment.
+# ADMIN-only widening flows from MCP tool → service layer → these functions.
+# ---------------------------------------------------------------------------
+
+
+_TABLES_WITH_STATUS_REASON = frozenset({"files", "folders", "clients", "projects"})
+
+
+def _seed_mixed_status(conn, table: str) -> None:
+    """Mark id=1 listed, id=2 unlisted, id=3 removed in *table*.
+
+    Sets ``status_reason`` only on tables that have the column.
+    """
+    if table in _TABLES_WITH_STATUS_REASON:
+        conn.executemany(
+            f"UPDATE {table} SET status = ?, status_reason = ? WHERE id = ?",
+            [
+                ("listed", None, 1),
+                ("unlisted", "user_hidden", 2),
+                ("removed", "deleted_by_user", 3),
+            ],
+        )
+    else:
+        conn.executemany(
+            f"UPDATE {table} SET status = ? WHERE id = ?",
+            [("listed", 1), ("unlisted", 2), ("removed", 3)],
+        )
+    conn.commit()
+
+
+class TestSearchFilesKeywordStatusMatrix:
+    """search_files_keyword respects the status kwarg + surfaces status fields.
+
+    Tests pass ``exclude_hidden=False`` so the mcp_view filter on fixture
+    rows doesn't interfere with status-only assertions.
+    """
+
+    def test_default_returns_only_listed(self, db_conn):
+        _seed_mixed_status(db_conn, "files")
+        results = search_files_keyword(
+            db_conn, terms=[], has_query=False, limit=50, exclude_hidden=False
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1]
+
+    def test_status_all_returns_everything(self, db_conn):
+        _seed_mixed_status(db_conn, "files")
+        results = search_files_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 2, 3]
+
+    def test_status_listed_unlisted(self, db_conn):
+        _seed_mixed_status(db_conn, "files")
+        results = search_files_keyword(
+            db_conn,
+            terms=[],
+            has_query=False,
+            limit=50,
+            status=["listed", "unlisted"],
+            exclude_hidden=False,
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 2]
+
+    def test_status_listed_removed(self, db_conn):
+        _seed_mixed_status(db_conn, "files")
+        results = search_files_keyword(
+            db_conn,
+            terms=[],
+            has_query=False,
+            limit=50,
+            status=["listed", "removed"],
+            exclude_hidden=False,
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 3]
+
+    def test_results_include_status_fields(self, db_conn):
+        _seed_mixed_status(db_conn, "files")
+        results = search_files_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
+        )
+        by_id = {r["id"]: r for r in results}
+        assert by_id[2]["status"] == "unlisted"
+        assert by_id[2]["status_reason"] == "user_hidden"
+        assert by_id[3]["status"] == "removed"
+        assert by_id[3]["status_reason"] == "deleted_by_user"
+
+
+class TestSearchEmailsKeywordStatusMatrix:
+    """search_emails_keyword respects the status kwarg + surfaces status fields."""
+
+    def test_default_returns_only_listed(self, db_conn):
+        _seed_mixed_status(db_conn, "emails")
+        results = search_emails_keyword(
+            db_conn, terms=[], has_query=False, limit=50, exclude_hidden=False
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1]
+
+    def test_status_all_returns_everything(self, db_conn):
+        _seed_mixed_status(db_conn, "emails")
+        results = search_emails_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 2, 3]
+
+    def test_results_include_status_field(self, db_conn):
+        _seed_mixed_status(db_conn, "emails")
+        results = search_emails_keyword(
+            db_conn,
+            terms=[],
+            has_query=False,
+            limit=50,
+            status=["listed", "removed"],
+            exclude_hidden=False,
+        )
+        by_id = {r["id"]: r for r in results}
+        assert by_id[3]["status"] == "removed"
+
+
+class TestSearchChatsKeywordStatusMatrix:
+    """search_chats_keyword respects the status kwarg + surfaces status fields."""
+
+    def test_default_returns_only_listed(self, db_conn):
+        _seed_mixed_status(db_conn, "chats")
+        results = search_chats_keyword(
+            db_conn, terms=[], has_query=False, limit=50, exclude_hidden=False
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1]
+
+    def test_status_all_returns_everything(self, db_conn):
+        _seed_mixed_status(db_conn, "chats")
+        results = search_chats_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 2, 3]
+
+    def test_results_include_status_field(self, db_conn):
+        _seed_mixed_status(db_conn, "chats")
+        results = search_chats_keyword(
+            db_conn,
+            terms=[],
+            has_query=False,
+            limit=50,
+            status=["listed", "unlisted"],
+            exclude_hidden=False,
+        )
+        by_id = {r["id"]: r for r in results}
+        assert by_id[2]["status"] == "unlisted"
+
+
+class TestSearchBrowserKeywordStatusMatrix:
+    """search_browser_keyword respects the status kwarg + surfaces status fields."""
+
+    def test_default_returns_only_listed(self, db_conn):
+        _seed_mixed_status(db_conn, "visits")
+        results = search_browser_keyword(db_conn, terms=[], has_query=False, limit=50)
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1]
+
+    def test_status_all_returns_everything(self, db_conn):
+        _seed_mixed_status(db_conn, "visits")
+        results = search_browser_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all"
+        )
+        ids = sorted(r["id"] for r in results)
+        assert ids == [1, 2, 3]
+
+    def test_results_include_status_field(self, db_conn):
+        _seed_mixed_status(db_conn, "visits")
+        results = search_browser_keyword(
+            db_conn, terms=[], has_query=False, limit=50, status="all"
+        )
+        by_id = {r["id"]: r for r in results}
+        assert by_id[3]["status"] == "removed"
+
+
+class TestChatFts5FallbackStatusMatrix:
+    """chat_fts5_fallback respects the status kwarg."""
+
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO chats_fts(chats_fts) VALUES('rebuild')")
+        conn.commit()
+
+    def test_default_excludes_unlisted_and_removed(self, db_conn):
+        # Mark chat 1 unlisted so default filter (listed only) drops it.
+        db_conn.execute("UPDATE chats SET status = 'unlisted' WHERE id = 1")
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = chat_fts5_fallback(db_conn, "Visible Chat", 10)
+        chat_ids = [r["chat_id"] for r in results]
+        assert 1 not in chat_ids
+
+    def test_widened_includes_unlisted(self, db_conn):
+        db_conn.execute("UPDATE chats SET status = 'unlisted' WHERE id = 1")
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = chat_fts5_fallback(
+            db_conn, "Visible Chat", 10, status=["listed", "unlisted"]
+        )
+        chat_ids = [r["chat_id"] for r in results]
+        assert 1 in chat_ids
+
+
+class TestFileFts5FallbackStatusMatrix:
+    """file_fts5_fallback respects the status kwarg."""
+
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')")
+        conn.commit()
+
+    def test_default_excludes_unlisted(self, db_conn):
+        db_conn.execute("UPDATE files SET status = 'unlisted' WHERE id = 1")
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = file_fts5_fallback(db_conn, "readme", 10)
+        ids = [r["id"] for r in results]
+        assert 1 not in ids
+
+    def test_widened_includes_unlisted(self, db_conn):
+        db_conn.execute("UPDATE files SET status = 'unlisted' WHERE id = 1")
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = file_fts5_fallback(
+            db_conn, "readme", 10, status=["listed", "unlisted"]
+        )
+        ids = [r["id"] for r in results]
+        assert 1 in ids
+
+
+class TestEnrichChatVisibilityStatusMatrix:
+    """enrich_chat_visibility respects the status kwarg."""
+
+    def test_default_excludes_removed(self, db_conn):
+        db_conn.execute("UPDATE chats SET status = 'removed' WHERE id = 1")
+        db_conn.commit()
+        lookup = enrich_chat_visibility(db_conn, [1, 2])
+        assert 1 not in lookup
+
+    def test_widened_includes_removed(self, db_conn):
+        db_conn.execute("UPDATE chats SET status = 'removed' WHERE id = 1")
+        db_conn.commit()
+        lookup = enrich_chat_visibility(db_conn, [1, 2], status="all")
+        assert 1 in lookup
+
+
+class TestEnrichFileMetadataStatusMatrix:
+    """enrich_file_metadata respects the status kwarg."""
+
+    def test_default_excludes_removed(self, db_conn):
+        db_conn.execute("UPDATE files SET status = 'removed' WHERE id = 1")
+        db_conn.commit()
+        lookup = enrich_file_metadata(db_conn, [1, 2])
+        assert 1 not in lookup
+
+    def test_widened_includes_removed(self, db_conn):
+        db_conn.execute("UPDATE files SET status = 'removed' WHERE id = 1")
+        db_conn.commit()
+        lookup = enrich_file_metadata(db_conn, [1, 2], status="all")
+        assert 1 in lookup

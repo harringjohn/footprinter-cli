@@ -54,13 +54,28 @@ def footprinter_client(client_name: str) -> dict:
 
 
 @handle_db_errors
-def footprinter_folder(path: str) -> dict:
-    """Get folder contents and metadata."""
+def footprinter_folder(
+    path: str,
+    *,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
+) -> dict:
+    """Get folder contents and metadata.
+
+    ``include_unlisted`` / ``include_removed`` are ADMIN-only. VIEWER (the
+    default for MCP) accepts the flags but always sees listed-only children.
+    """
     if path.startswith("~"):
         path = HOME + path[1:]
 
     with get_db() as conn:
-        result = folder_service.get_by_path(conn, path, role=Role.VIEWER)
+        result = folder_service.get_by_path(
+            conn,
+            path,
+            role=Role.VIEWER,
+            include_unlisted=include_unlisted,
+            include_removed=include_removed,
+        )
         if result is None:
             return mcp_error("NOT_FOUND", internal_message=f"folder: {path}")
         if "path" in result:

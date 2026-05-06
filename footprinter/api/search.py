@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from footprinter.api import MAX_LIMIT
 from footprinter.api.db import get_conn
 from footprinter.services import search_service
 from footprinter.services.roles import Role
@@ -20,7 +21,7 @@ def search(
     client: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     account: Optional[str] = None,
     sender: Optional[str] = None,
     days_back: Optional[int] = None,
