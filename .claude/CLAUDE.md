@@ -23,6 +23,24 @@ This is a **public repo**. Additional constraints beyond global rules:
 - No credentials, API keys, or internal references in any committed file
 - No references to internal tooling, private repos, or org-specific infrastructure
 
+## Documentation
+
+**This repo contains only shipped artifacts.** Do not create documentation files, analysis
+reports, architecture decisions, or research docs in this directory. The only markdown that
+belongs here is: root-level project docs (README, CHANGELOG, SECURITY, CODE_OF_CONDUCT),
+`reference/` shipped docs, `.github/` templates, `examples/` READMEs, and `.claude/CLAUDE.md`
+plus `.context/plans/`.
+
+All internal documentation lives in `~/Work/skunkworks/footprinter-docs/fpr-cli/`:
+- `architecture/` — design docs, decisions
+- `process/` — operational docs, release notes
+- `findings/` — research, reviews, analysis
+
+Historical docs from the monolith era are in `~/Work/skunkworks/footprinter-docs/fpr-poc/`.
+When reading architecture decisions or design docs, check both `fpr-cli/` and `fpr-poc/`
+— the POC-era docs remain the authoritative source for many cross-cutting decisions
+(e.g. separation boundary, four-entry-point architecture).
+
 ## Linear Workflow
 
 Issue lifecycle follows the global protocol (see ~/.claude/CLAUDE.md).
