@@ -332,6 +332,222 @@ class TestRunPipes:
         assert hook is hook_cb
 
 
+class TestRunPipesAggregateRow:
+    """run_pipes writes a single aggregate ingests row (pipe='all') after the batch."""
+
+    def test_aggregate_row_sums_per_pipe_results(self, tool_db):
+        svc = IngestService(tool_db)
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 100, "items_new": 80, "items_updated": 10,
+             "items_skipped": 10, "errors": 0, "elapsed_seconds": 5.0},
+            {"stage": "browser", "status": "completed",
+             "items_processed": 50, "items_new": 40, "items_updated": 5,
+             "items_skipped": 5, "errors": 0, "elapsed_seconds": 3.0},
+            {"stage": "folder_stats", "status": "completed",
+             "items_processed": 0, "items_new": 0, "items_updated": 0,
+             "items_skipped": 0, "errors": 0, "elapsed_seconds": 0.5},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        svc.run_pipes(
+            ["local_files", "browser", "folder_stats"],
+            runner=runner,
+            full_mode=False,
+            mode="incremental",
+            trigger="cli",
+        )
+
+        rows = tool_db.execute(
+            "SELECT * FROM ingests WHERE pipe = 'all'"
+        ).fetchall()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["items_processed"] == 150
+        assert row["items_new"] == 120
+        assert row["items_updated"] == 15
+        assert row["items_skipped"] == 15
+        assert row["errors"] == 0
+        assert row["status"] == "completed"
+        assert row["mode"] == "incremental"
+        assert row["trigger"] == "cli"
+        assert row["started_at"] is not None
+        assert row["completed_at"] is not None
+
+    def test_aggregate_row_status_failed_when_any_pipe_errored(self, tool_db):
+        svc = IngestService(tool_db)
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 100, "items_new": 80, "items_updated": 10,
+             "items_skipped": 10, "errors": 0, "elapsed_seconds": 5.0},
+            {"stage": "browser", "status": "error",
+             "error": "boom", "errors": 1,
+             "items_processed": 0, "items_new": 0, "items_updated": 0,
+             "items_skipped": 0, "elapsed_seconds": 0.1},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        svc.run_pipes(
+            ["local_files", "browser"],
+            runner=runner,
+            full_mode=False,
+            mode="incremental",
+            trigger="cli",
+        )
+
+        row = tool_db.execute(
+            "SELECT * FROM ingests WHERE pipe = 'all'"
+        ).fetchone()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert row["errors"] == 1
+        assert row["items_processed"] == 100
+
+    def test_aggregate_row_records_mode_and_trigger(self, tool_db):
+        svc = IngestService(tool_db)
+        runner = _MockBatchRunner(
+            results=[{"stage": "local_files", "status": "completed",
+                      "items_processed": 1, "errors": 0, "elapsed_seconds": 0.1}]
+        )
+
+        svc.run_pipes(
+            ["local_files"],
+            runner=runner,
+            full_mode=True,
+            mode="full",
+            trigger="cli",
+        )
+
+        row = tool_db.execute(
+            "SELECT mode, trigger FROM ingests WHERE pipe = 'all'"
+        ).fetchone()
+        assert row["mode"] == "full"
+        assert row["trigger"] == "cli"
+
+    def test_aggregate_row_elapsed_uses_wall_clock(self, tool_db, monkeypatch):
+        svc = IngestService(tool_db)
+        runner = _MockBatchRunner(
+            results=[
+                {"stage": "local_files", "status": "completed",
+                 "items_processed": 1, "errors": 0, "elapsed_seconds": 2.0},
+                {"stage": "browser", "status": "completed",
+                 "items_processed": 1, "errors": 0, "elapsed_seconds": 3.0},
+            ]
+        )
+        from footprinter.services import ingest_service as ingest_service_mod
+
+        ticks = iter([0.0, 7.5])
+        monkeypatch.setattr(ingest_service_mod.time, "monotonic", lambda: next(ticks))
+
+        svc.run_pipes(
+            ["local_files", "browser"],
+            runner=runner,
+            full_mode=False,
+            mode="incremental",
+            trigger="cli",
+        )
+
+        row = tool_db.execute(
+            "SELECT elapsed_seconds FROM ingests WHERE pipe = 'all'"
+        ).fetchone()
+        assert row["elapsed_seconds"] == 7.5
+
+    def test_aggregate_row_skipped_when_pipes_empty(self, tool_db):
+        svc = IngestService(tool_db)
+        runner = _MockBatchRunner(results=[])
+
+        svc.run_pipes([], runner=runner, full_mode=False, mode="incremental", trigger="cli")
+
+        rows = tool_db.execute("SELECT * FROM ingests").fetchall()
+        assert rows == []
+
+    def test_aggregate_row_not_written_when_runner_raises(self, tool_db):
+        svc = IngestService(tool_db)
+        runner = _MockBatchRunner(error=RuntimeError("boom"))
+
+        with pytest.raises(RuntimeError, match="boom"):
+            svc.run_pipes(
+                ["local_files"],
+                runner=runner,
+                full_mode=False,
+                mode="incremental",
+                trigger="cli",
+            )
+
+        rows = tool_db.execute(
+            "SELECT * FROM ingests WHERE pipe = 'all'"
+        ).fetchall()
+        assert rows == []
+
+    def test_aggregate_row_handles_pipe_runner_short_circuit(self, tool_db):
+        """PipeRunner aborts on fatal database/config errors and returns a
+        partial results list (fewer entries than pipes requested). The
+        aggregate row should still be written with status='failed' and
+        sums reflecting only the pipes that ran."""
+        svc = IngestService(tool_db)
+        # Three pipes requested; runner short-circuits after the second
+        # with a fatal error, returning only two results.
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 100, "items_new": 80, "items_updated": 10,
+             "items_skipped": 10, "errors": 0, "elapsed_seconds": 5.0},
+            {"stage": "browser", "status": "error", "error_type": "database",
+             "error": "db locked", "errors": 1,
+             "items_processed": 0, "items_new": 0, "items_updated": 0,
+             "items_skipped": 0, "elapsed_seconds": 0.1},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        returned = svc.run_pipes(
+            ["local_files", "browser", "folder_stats"],
+            runner=runner,
+            full_mode=False,
+            mode="incremental",
+            trigger="cli",
+        )
+
+        # Caller still gets the partial results
+        assert len(returned) == 2
+        row = tool_db.execute(
+            "SELECT * FROM ingests WHERE pipe = 'all'"
+        ).fetchone()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert row["items_processed"] == 100
+        assert row["errors"] == 1
+        # metadata records the pipes that actually ran, not the requested list
+        assert json.loads(row["metadata"])["pipes"] == ["local_files", "browser"]
+
+    def test_aggregate_row_failure_swallowed(self, tool_db, caplog):
+        """An exception from the aggregate INSERT must not mask successful
+        pipe results — caller still receives the runner's results list."""
+        svc = IngestService(tool_db)
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 42, "errors": 0, "elapsed_seconds": 1.0},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        # Force the aggregate write to fail by replacing the helper with one
+        # that raises a sqlite3 error.
+        def _boom(*args, **kwargs):
+            raise sqlite3.OperationalError("simulated INSERT failure")
+
+        svc._write_aggregate_row = _boom  # type: ignore[method-assign]
+
+        with caplog.at_level("WARNING"):
+            returned = svc.run_pipes(
+                ["local_files"],
+                runner=runner,
+                full_mode=False,
+                mode="incremental",
+                trigger="cli",
+            )
+
+        assert returned == results
+        assert any("aggregate ingest row" in rec.message for rec in caplog.records)
+
+
 # ── TestEnsureFtsHealth ─────────────────────────────────────────────
 
 

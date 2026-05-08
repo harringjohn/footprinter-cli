@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -191,6 +192,8 @@ class IngestService:
         *,
         runner,
         full_mode: bool = False,
+        mode: str | None = None,
+        trigger: str | None = None,
         on_pipe_start: Optional[Callable] = None,
         on_pipe_end: Optional[Callable] = None,
         on_progress: Optional[Callable] = None,
@@ -202,6 +205,16 @@ class IngestService:
         FTS indexes after the last pipe (or on error) to avoid per-row
         trigger overhead during bulk ingest. FTS optimization requires
         ``get_db`` — silently skipped if constructed without it.
+
+        When ``runner.run_pipes`` returns without raising, writes a single
+        aggregate ingests row with ``pipe='all'`` summing items_processed,
+        items_new, items_updated, items_skipped, and errors across the
+        per-pipe results. ``status`` is ``'failed'`` if any per-pipe result
+        has ``status == 'error'`` (including the fatal-error short-circuit
+        case in ``PipeRunner``), else ``'completed'``. ``elapsed_seconds``
+        is wall-clock around ``runner.run_pipes``. The aggregate write is
+        best-effort: a failure logs a warning and is swallowed so
+        successful pipe results still reach the caller.
         """
         self.ensure_fts_health(full_mode)
 
@@ -214,14 +227,24 @@ class IngestService:
             except sqlite3.OperationalError as e:
                 log.warning("Failed to drop FTS triggers: %s", e)
 
+        started_iso = utc_now_iso()
+        t0 = time.monotonic()
         try:
-            return runner.run_pipes(
+            results = runner.run_pipes(
                 pipes,
                 on_pipe_start=on_pipe_start,
                 on_pipe_end=on_pipe_end,
                 on_progress=on_progress,
                 pipe_hook=pipe_hook,
             )
+            if pipes:
+                try:
+                    self._write_aggregate_row(
+                        results, mode, trigger, started_iso, time.monotonic() - t0
+                    )
+                except sqlite3.Error as e:
+                    log.warning("Failed to write aggregate ingest row: %s", e)
+            return results
         finally:
             if fts_dropped:
                 try:
@@ -229,3 +252,38 @@ class IngestService:
                     db.rebuild_fts_indexes()
                 except sqlite3.OperationalError as e:
                     log.error("Failed to rebuild FTS indexes: %s", e)
+
+    def _write_aggregate_row(
+        self,
+        results: list[dict],
+        mode: str | None,
+        trigger: str | None,
+        started_iso: str,
+        elapsed_wall: float,
+    ) -> None:
+        """Insert a single ingests row (pipe='all') summing per-pipe results."""
+        any_errored = any(r.get("status") == "error" for r in results)
+        status = "failed" if any_errored else "completed"
+        metadata = json.dumps({"pipes": [r.get("stage") for r in results]})
+        self.conn.execute(
+            "INSERT INTO ingests ("
+            "pipe, started_at, completed_at, status, mode, trigger,"
+            " items_processed, items_new, items_updated, items_skipped,"
+            " errors, elapsed_seconds, metadata"
+            ") VALUES ('all', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                started_iso,
+                utc_now_iso(),
+                status,
+                mode,
+                trigger,
+                sum(r.get("items_processed", 0) or 0 for r in results),
+                sum(r.get("items_new", 0) or 0 for r in results),
+                sum(r.get("items_updated", 0) or 0 for r in results),
+                sum(r.get("items_skipped", 0) or 0 for r in results),
+                sum(r.get("errors", 0) or 0 for r in results),
+                round(elapsed_wall, 1),
+                metadata,
+            ),
+        )
+        self.conn.commit()
