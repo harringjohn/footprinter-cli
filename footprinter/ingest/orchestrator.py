@@ -112,7 +112,7 @@ class DataPipelineOrchestrator:
             pipe, mode=mode, trigger="cli", runner=self.runner, on_progress=on_progress,
         )
         return self.ingest_service.run_pipes(
-            pipes, runner=self.runner, full_mode=self.full_mode,
+            pipes, runner=self.runner, full_mode=self.full_mode, mode=mode, trigger="cli",
             on_pipe_start=on_pipe_start, on_pipe_end=on_pipe_end,
             on_progress=on_progress, pipe_hook=hook,
         )
