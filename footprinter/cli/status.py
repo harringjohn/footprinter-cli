@@ -197,18 +197,31 @@ def _query_all_counts(cursor, counts: dict) -> dict:
     except sqlite3.OperationalError:
         counts["recent_uploads"] = []
 
-    # Last ingest run (exclude 'running' and last-run-only rows which lack mode)
+    # Last ingest run — prefer the aggregate (pipe='all') row written by
+    # IngestService.run_pipes; fall back to the most recent per-pipe row for
+    # databases ingested before the aggregate was introduced.
     try:
         cursor.execute(
             """
             SELECT pipe, started_at, completed_at, mode,
                    items_processed, errors, status, elapsed_seconds
             FROM ingests
-            WHERE status != 'running' AND mode IS NOT NULL
+            WHERE pipe = 'all' AND status != 'running' AND mode IS NOT NULL
             ORDER BY completed_at DESC LIMIT 1
             """
         )
         row = cursor.fetchone()
+        if row is None:
+            cursor.execute(
+                """
+                SELECT pipe, started_at, completed_at, mode,
+                       items_processed, errors, status, elapsed_seconds
+                FROM ingests
+                WHERE status != 'running' AND mode IS NOT NULL
+                ORDER BY completed_at DESC LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
         if row:
             elapsed = row["elapsed_seconds"]
             if elapsed is None and row["started_at"] and row["completed_at"]:
