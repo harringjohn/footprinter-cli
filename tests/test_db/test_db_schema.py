@@ -2720,6 +2720,161 @@ class TestMigrateTableRenames:
         db.close()
 
 
+class TestChatsFtsRecreateBackfill:
+    """Regression tests for FPR-1638.
+
+    When the migration drops ``chats_fts`` (because legacy ``browser_visits``
+    is present), init must recreate AND repopulate the FTS inverted index.
+    The pre-fix gate ``SELECT COUNT(*) FROM chats_fts == 0`` is unreliable
+    for FTS5 external-content tables because ``COUNT(*)`` is delegated to
+    the content (``chats``) table.  Backfill therefore never ran, and the
+    ``chats_fts_au`` trigger DELETE on the empty index raised
+    ``sqlite3.DatabaseError: database disk image is malformed``.
+    """
+
+    @staticmethod
+    def _stage_legacy_browser_visits(temp_db: str) -> None:
+        """Insert a stale browser_visits table after a healthy first init.
+
+        Triggers the migration's drop-chats_fts guard on the next ``Database()``
+        open, simulating the production state described in FPR-1638.
+        """
+        conn = sqlite3.connect(temp_db)
+        conn.execute(
+            "CREATE TABLE browser_visits ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "url TEXT NOT NULL, "
+            "title TEXT, "
+            "visit_time DATETIME NOT NULL, "
+            "browser TEXT NOT NULL)"
+        )
+        conn.commit()
+        conn.close()
+
+    def test_chats_fts_repopulated_after_migration_drop(self, temp_db):
+        """After migration drops chats_fts, init backfills the inverted index."""
+        from footprinter.ingest.database import Database
+
+        # First init: full schema; insert a chat row (trigger populates FTS).
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, title, summary, message_count) "
+            "VALUES ('chat-canary', 'claude', 'Canary Chat', 'A unique canaryword summary', 1)"
+        )
+        db.conn.commit()
+        db.close()
+
+        # Stage the legacy table so migration drops chats_fts on next init.
+        self._stage_legacy_browser_visits(temp_db)
+
+        # Second init: migration drops chats_fts, schema recreates it empty,
+        # backfill must repopulate from chats.
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT rowid FROM chats_fts WHERE chats_fts MATCH 'canaryword'")
+        rows = cursor.fetchall()
+        assert len(rows) == 1, (
+            f"Expected chats_fts to contain the seeded chat after recreate+backfill; got {rows}"
+        )
+        db.close()
+
+    def test_update_chat_summary_after_recreate_does_not_raise(self, temp_db):
+        """UPDATE on chats.summary post-init must not raise malformed-image error."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, title, summary, message_count) "
+            "VALUES ('chat-update', 'claude', 'Update Chat', 'Original summary', 1)"
+        )
+        db.conn.commit()
+        db.close()
+
+        self._stage_legacy_browser_visits(temp_db)
+
+        db = Database(temp_db)
+        # Pre-fix: this UPDATE fires the chats_fts_au trigger which DELETEs
+        # from the empty FTS index → "database disk image is malformed".
+        db.conn.execute(
+            "UPDATE chats SET summary = 'updated freshword summary' WHERE external_id = 'chat-update'"
+        )
+        db.conn.commit()
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT rowid FROM chats_fts WHERE chats_fts MATCH 'freshword'")
+        assert cursor.fetchone() is not None, "Updated summary should be searchable in FTS"
+        db.close()
+
+    def test_mcp_view_filtering_preserved_in_recreate_backfill(self, temp_db):
+        """Opaque/hidden chat summaries must NOT appear in FTS after recreate.
+
+        Locks in that we use ``_fts_backfill_sql`` (which NULLs content for
+        opaque/hidden rows) rather than FTS5 ``rebuild`` (which would leak
+        content of opaque chats into the index).
+        """
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, title, summary, message_count, mcp_view) "
+            "VALUES ('chat-vis', 'claude', 'Visible Chat', 'Public summary visibleword', 1, 'visible')"
+        )
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, title, summary, message_count, mcp_view) "
+            "VALUES ('chat-opa', 'claude', 'Opaque Chat', 'Private summary opaqueword', 1, 'opaque')"
+        )
+        db.conn.commit()
+        db.close()
+
+        self._stage_legacy_browser_visits(temp_db)
+
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+
+        cursor.execute("SELECT rowid FROM chats_fts WHERE chats_fts MATCH 'visibleword'")
+        assert cursor.fetchone() is not None, "Visible chat summary should be in FTS after recreate"
+
+        cursor.execute("SELECT rowid FROM chats_fts WHERE chats_fts MATCH 'opaqueword'")
+        assert cursor.fetchone() is None, (
+            "Opaque chat summary must NOT be in FTS — backfill must apply mcp_view filtering"
+        )
+        db.close()
+
+    def test_backfill_idempotent_on_second_init(self, temp_db):
+        """Backfill must run only when the FTS table is freshly created.
+
+        After a healthy first init, re-opening the DB must not re-run backfill
+        (would either no-op or duplicate rows depending on implementation).
+        Verified via the FTS5 shadow ``_data`` table, which is not delegated
+        to the content table.
+        """
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, title, summary, message_count) "
+            "VALUES ('chat-idemp', 'claude', 'Idempotency Chat', 'Idempotency summary', 1)"
+        )
+        db.conn.commit()
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM chats_fts_data")
+        first_count = cursor.fetchone()[0]
+        db.close()
+
+        # Re-open without staging legacy artefacts: migration's chats_fts
+        # drop guard must NOT fire (browser_visits absent), and the init
+        # backfill must not re-run.
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM chats_fts_data")
+        second_count = cursor.fetchone()[0]
+        assert second_count == first_count, (
+            f"chats_fts_data row count changed across reopen: {first_count} → {second_count}; "
+            "backfill is not idempotent"
+        )
+        db.close()
+
+
 class TestMigrateDeadTableCleanup:
     """Verify _migrate_schema() drops dead tables and migrates their data."""
 

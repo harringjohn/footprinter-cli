@@ -670,6 +670,20 @@ class SchemaMixin:
         # ========================================
         # FTS5 Full-Text Search Indexes
         # ========================================
+        # Capture which FTS tables existed BEFORE the CREATE IF NOT EXISTS
+        # below.  COUNT(*) on an external-content FTS5 table is delegated
+        # to the content table and therefore unreliable as an emptiness
+        # check (FPR-1638).  Instead, backfill exactly the tables we just
+        # created — preserving _fts_backfill_sql's mcp_view filtering.
+        existing_fts_tables = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ({})".format(
+                    ", ".join("?" for _ in _FTS_DEFINITIONS)
+                ),
+                list(_FTS_DEFINITIONS.keys()),
+            ).fetchall()
+        }
         for fts_table in _FTS_DEFINITIONS:
             try:
                 cursor.execute(self._fts_create_sql(fts_table, if_not_exists=True))
@@ -695,8 +709,7 @@ class SchemaMixin:
         # ========================================
         try:
             for fts_table in _FTS_DEFINITIONS:
-                cursor.execute(f"SELECT COUNT(*) FROM {fts_table}")
-                if cursor.fetchone()[0] == 0:
+                if fts_table not in existing_fts_tables:
                     cursor.execute(self._fts_backfill_sql(fts_table))
         except sqlite3.OperationalError:
             logger.debug("FTS5 backfill skipped — FTS tables do not exist")
