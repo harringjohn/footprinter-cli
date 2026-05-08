@@ -227,13 +227,22 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
     cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='visits'")
     canonical_exists = cursor.fetchone() is not None
     if legacy_exists and canonical_exists:
-        # Use the column intersection — schema versions vary across the
-        # legacy and canonical tables, so we copy whatever overlaps.
-        # Column names come from PRAGMA table_info, so the f-string
-        # interpolation is safe (no user input).
+        # Column intersection from PRAGMA table_info handles schema drift;
+        # the names are from sqlite metadata, not user input, so the
+        # f-string interpolation below is safe.
+        #
+        # `id` is deliberately excluded: both tables AUTOINCREMENT from 1
+        # in the dual-table scenario, so carrying ids across would cause
+        # INSERT OR IGNORE to drop legacy rows on PK collision — silent
+        # data loss (the very thing this merge is meant to prevent).
+        # Letting `visits` assign fresh ids and relying on the
+        # `idx_visits_unique` UNIQUE INDEX on (url, visit_time, browser)
+        # as the conflict arbiter dedupes by the natural visit identity.
+        # Idempotent on retry: re-running the merge after a transient
+        # failure no-ops on already-merged rows via the same UNIQUE.
         legacy_cols = {row[1] for row in cursor.execute("PRAGMA table_info(browser_visits)").fetchall()}
         canonical_cols = {row[1] for row in cursor.execute("PRAGMA table_info(visits)").fetchall()}
-        shared_cols = sorted(legacy_cols & canonical_cols)
+        shared_cols = sorted((legacy_cols & canonical_cols) - {"id"})
         if shared_cols:
             col_list = ", ".join(shared_cols)
             cursor.execute(f"INSERT OR IGNORE INTO visits ({col_list}) SELECT {col_list} FROM browser_visits")

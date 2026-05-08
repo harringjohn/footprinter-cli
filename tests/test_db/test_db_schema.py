@@ -2720,13 +2720,18 @@ class TestMigrateTableRenames:
         db.close()
 
     def test_migrate_preserves_browser_visits_rows_in_dual_state(self, temp_db):
-        """Legacy rows in browser_visits must survive into visits when both tables exist.
+        """Legacy rows in browser_visits must survive into visits when both tables exist,
+        even when the two tables have OVERLAPPING low ids.
 
-        Production scenario: an earlier partial init created an empty ``visits`` table,
-        then the rename failed silently, leaving the user's actual visit history stranded
-        in ``browser_visits``.  The migration must merge those rows into ``visits`` (with
-        INSERT OR IGNORE so any newer rows already in ``visits`` win on PRIMARY KEY
-        collision) before dropping the legacy table.
+        Production scenario: an earlier partial init created an empty ``visits`` table;
+        the rename then failed silently and the user's pre-failure visit history sits
+        in ``browser_visits`` with ids 1..N, while ``visits`` accumulated post-failure
+        rows that also start from id=1.  Carrying ids across the merge would make
+        INSERT OR IGNORE silently drop legacy rows on PRIMARY KEY collision (the very
+        thing the merge is meant to prevent).  The fix excludes ``id`` from the
+        intersection, lets ``visits`` assign fresh AUTOINCREMENT ids, and uses
+        ``idx_visits_unique`` on ``(url, visit_time, browser)`` as the natural conflict
+        arbiter.
         """
         from footprinter.ingest.database import Database
 
@@ -2734,7 +2739,7 @@ class TestMigrateTableRenames:
         db.close()
 
         conn = sqlite3.connect(temp_db)
-        # Legacy table seeded with rows that exist ONLY in browser_visits.
+        # Legacy table: three rows with low ids matching what would exist in production.
         conn.execute(
             "CREATE TABLE browser_visits ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -2747,14 +2752,18 @@ class TestMigrateTableRenames:
         )
         conn.execute(
             "INSERT INTO browser_visits (id, url, title, visit_time, browser) VALUES "
-            "(101, 'https://legacy-only-1.example.com', 'Legacy One',   '2026-03-15 10:00:00', 'Safari'), "
-            "(102, 'https://legacy-only-2.example.com', 'Legacy Two',   '2026-03-15 11:00:00', 'Chrome')"
+            "(1, 'https://legacy-1.example.com', 'Legacy One',   '2026-01-10 10:00:00', 'Safari'), "
+            "(2, 'https://legacy-2.example.com', 'Legacy Two',   '2026-01-10 11:00:00', 'Safari'), "
+            "(3, 'https://shared.example.com',   'Shared',       '2026-02-01 09:00:00', 'Chrome')"
         )
-        # A row already in canonical visits with the same id as a legacy row should
-        # take precedence (INSERT OR IGNORE skips the conflict).
+        # Canonical visits has post-failure rows starting from id=1 — directly
+        # overlapping with the legacy ids above.  Includes one (url, visit_time,
+        # browser) tuple that ALSO appears in browser_visits so we can verify
+        # dedup via the unique index rather than via PK collision.
         conn.execute(
             "INSERT INTO visits (id, url, title, visit_time, browser) VALUES "
-            "(101, 'https://canonical.example.com', 'Canonical Wins', '2026-04-01 09:00:00', 'Firefox')"
+            "(1, 'https://canonical-1.example.com', 'Canonical One', '2026-04-01 09:00:00', 'Firefox'), "
+            "(2, 'https://shared.example.com',     'Canonical Shared (wins)', '2026-02-01 09:00:00', 'Chrome')"
         )
         conn.commit()
         conn.close()
@@ -2762,15 +2771,26 @@ class TestMigrateTableRenames:
         db = Database(temp_db)
         cursor = db.conn.cursor()
 
-        cursor.execute("SELECT id, url FROM visits ORDER BY id")
+        cursor.execute("SELECT url, title FROM visits ORDER BY url")
         rows = {row[0]: row[1] for row in cursor.fetchall()}
 
-        assert 101 in rows, "Canonical row at id=101 must survive"
-        assert rows[101] == "https://canonical.example.com", (
-            "Canonical row must win on PRIMARY KEY collision (INSERT OR IGNORE)"
+        # Both legacy-only rows must survive even though their original ids
+        # collided with canonical rows — the merge dropped the id column and
+        # AUTOINCREMENT assigned fresh ones.
+        assert "https://legacy-1.example.com" in rows, "Legacy row at id=1 must survive (no silent PK collision)"
+        assert "https://legacy-2.example.com" in rows, "Legacy row at id=2 must survive (no silent PK collision)"
+        assert "https://canonical-1.example.com" in rows, "Canonical row must remain"
+
+        # The shared (url, visit_time, browser) tuple is deduped by the
+        # UNIQUE INDEX — canonical title wins because INSERT OR IGNORE
+        # skips the legacy duplicate.
+        assert rows["https://shared.example.com"] == "Canonical Shared (wins)"
+
+        # Total: 3 legacy + 2 canonical, minus 1 (url, visit_time, browser) duplicate = 4.
+        cursor.execute("SELECT COUNT(*) FROM visits")
+        assert cursor.fetchone()[0] == 4, (
+            "Expected 4 distinct visits after merge (5 inputs minus 1 (url,time,browser) dupe)"
         )
-        assert 102 in rows, "Legacy-only row at id=102 must be merged into visits"
-        assert rows[102] == "https://legacy-only-2.example.com"
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='browser_visits'")
         assert cursor.fetchone() is None, "browser_visits should be dropped after merge"
@@ -2898,12 +2918,15 @@ class TestChatsFtsRecreateBackfill:
         db.close()
 
     def test_backfill_idempotent_on_second_init(self, temp_db):
-        """Backfill must run only when the FTS table is freshly created.
+        """Re-opening a healthy DB must NOT re-run the FTS backfill.
 
-        After a healthy first init, re-opening the DB must not re-run backfill
-        (would either no-op or duplicate rows depending on implementation).
-        Verified via the FTS5 shadow ``_data`` table, which is not delegated
-        to the content table.
+        The init-time backfill fires when EITHER the FTS table is freshly
+        created OR its inverted index is empty (per the spec at the top of
+        the FTS5 Backfill block in schema.py).  On a healthy reopen neither
+        gate triggers — the table exists from the first init AND its index
+        is non-empty — so the row count in the FTS5 shadow ``_data`` table
+        must match across opens.  Verified via ``_data`` (not the FTS view
+        itself) because that count is not delegated to the content table.
         """
         from footprinter.ingest.database import Database
 
