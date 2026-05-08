@@ -670,6 +670,19 @@ class SchemaMixin:
         # ========================================
         # FTS5 Full-Text Search Indexes
         # ========================================
+        # Capture which FTS tables existed BEFORE the CREATE IF NOT EXISTS
+        # below.  COUNT(*) on an external-content FTS5 table is delegated
+        # to the content table and therefore unreliable as an emptiness
+        # check (FPR-1638) — the prior gate `if COUNT(*) == 0` always
+        # short-circuited because the count came from the base table.
+        fts_placeholders = ", ".join("?" for _ in _FTS_DEFINITIONS)
+        existing_fts_tables = {
+            row[0]
+            for row in cursor.execute(
+                f"SELECT name FROM sqlite_master WHERE type='table' AND name IN ({fts_placeholders})",
+                list(_FTS_DEFINITIONS.keys()),
+            ).fetchall()
+        }
         for fts_table in _FTS_DEFINITIONS:
             try:
                 cursor.execute(self._fts_create_sql(fts_table, if_not_exists=True))
@@ -693,13 +706,37 @@ class SchemaMixin:
         # ========================================
         # FTS5 Backfill (idempotent)
         # ========================================
-        try:
-            for fts_table in _FTS_DEFINITIONS:
-                cursor.execute(f"SELECT COUNT(*) FROM {fts_table}")
+        # Backfill if EITHER the table was just created OR its inverted
+        # index is empty.  The second condition uses the FTS5 `_docsize`
+        # shadow table, which holds one row per indexed document and is
+        # NOT delegated to the content table — making it a reliable
+        # honest emptiness probe for external-content tables (unlike
+        # `SELECT COUNT(*) FROM <fts>`).  Together this preserves
+        # _fts_backfill_sql's mcp_view filtering and also self-heals
+        # any FTS table that exists but has an empty index (e.g. after
+        # a future migration drops it, or a manual SQL repair).
+        # Each iteration has its own try/except so a single failure
+        # doesn't silently abort the rest, and surprising errors (e.g.
+        # FTS5 internals changing in a future SQLite version) surface
+        # at WARNING rather than vanishing into a DEBUG log.
+        for fts_table in _FTS_DEFINITIONS:
+            try:
+                if fts_table not in existing_fts_tables:
+                    cursor.execute(self._fts_backfill_sql(fts_table))
+                    continue
+                cursor.execute(f"SELECT COUNT(*) FROM {fts_table}_docsize")
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(self._fts_backfill_sql(fts_table))
-        except sqlite3.OperationalError:
-            logger.debug("FTS5 backfill skipped — FTS tables do not exist")
+            except sqlite3.OperationalError as e:
+                msg = str(e)
+                if "no such table" in msg or "no such module: fts5" in msg:
+                    logger.debug("FTS5 backfill skipped for %s: %s", fts_table, msg)
+                else:
+                    logger.warning(
+                        "FTS5 backfill failed for %s: %s — search index may be incomplete",
+                        fts_table,
+                        msg,
+                    )
 
         # ========================================
         # display_name AFTER INSERT triggers
