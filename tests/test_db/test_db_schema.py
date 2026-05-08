@@ -2672,6 +2672,53 @@ class TestMigrateTableRenames:
         assert rows[1][1] == "Chrome"
         db.close()
 
+    def test_migrate_resolves_both_browser_visits_and_visits(self, temp_db):
+        """Legacy DBs where both browser_visits and visits exist resolve to a single
+        visits table after init.
+
+        Pre-fix: ``ALTER TABLE browser_visits RENAME TO visits`` raises
+        OperationalError("table visits already exists"), the bare ``except``
+        swallows it, and ``browser_visits`` survives — re-firing the
+        ``chats_fts`` drop guard on every subsequent init.
+        """
+        from footprinter.ingest.database import Database
+
+        # First init: produces the canonical visits table (and full schema).
+        db = Database(temp_db)
+        db.close()
+
+        # Re-introduce a stale browser_visits alongside the canonical visits to
+        # simulate the buggy state seen in production DBs that survived the
+        # silent-rename failure.
+        conn = sqlite3.connect(temp_db)
+        conn.execute(
+            "CREATE TABLE browser_visits ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "url TEXT NOT NULL, "
+            "title TEXT, "
+            "visit_time DATETIME NOT NULL, "
+            "browser TEXT NOT NULL, "
+            "visit_count INTEGER DEFAULT 1, "
+            "indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        conn.execute(
+            "INSERT INTO browser_visits (url, title, visit_time, browser) "
+            "VALUES ('https://legacy.example.com', 'Legacy', '2026-03-15 10:00:00', 'Safari')"
+        )
+        conn.commit()
+        conn.close()
+
+        # Second init: migration must drop the legacy table now that visits exists.
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='browser_visits'")
+        assert cursor.fetchone() is None, "browser_visits should be dropped when canonical visits already exists"
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='visits'")
+        assert cursor.fetchone() is not None, "canonical visits table should remain"
+        db.close()
+
 
 class TestMigrateDeadTableCleanup:
     """Verify _migrate_schema() drops dead tables and migrates their data."""

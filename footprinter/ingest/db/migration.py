@@ -215,6 +215,18 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
     except sqlite3.OperationalError:
         pass  # already renamed or fresh install
 
+    # If both tables now exist, the rename above failed silently because
+    # `visits` was already created by an earlier partial init or by the
+    # schema's CREATE TABLE IF NOT EXISTS.  Drop the legacy table so the
+    # `browser_visits`-based guard above stops re-firing on every init
+    # (which, pre-fix, dropped chats_fts each session).
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='browser_visits'")
+    legacy_exists = cursor.fetchone() is not None
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='visits'")
+    canonical_exists = cursor.fetchone() is not None
+    if legacy_exists and canonical_exists:
+        cursor.execute("DROP TABLE browser_visits")
+
     # clients/projects: add status_reason column
     for table in ("clients", "projects"):
         try:
