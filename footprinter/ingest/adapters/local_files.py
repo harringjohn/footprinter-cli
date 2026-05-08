@@ -48,6 +48,7 @@ class LocalFilesAdapter:
                 "local_files",
                 inserted=counts["inserted"],
                 updated=counts["updated"],
+                unchanged=counts["unchanged"],
                 skipped=counts["skipped"],
                 errors=counts["errors"],
                 mode="full" if ctx.full_mode else "incremental",
