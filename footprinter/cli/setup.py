@@ -725,8 +725,8 @@ def run_interactive_wizard():
     """
     existing = _load_existing_config()
 
-    # Phase 1: Welcome
-    _print_phase(1, 7, "Welcome")
+    # Welcome is intentionally unnumbered — the panel itself is the welcome,
+    # so a "Step 1 of N" rule above it would double-announce the same screen.
     welcome_extra = ""
     if existing is not None:
         welcome_extra = (
@@ -734,32 +734,35 @@ def run_interactive_wizard():
             "  Current settings will be shown as defaults. Only sections\n"
             "  you explicitly change will be updated."
         )
+    fda_prereq = (
+        "  - Full Disk Access for Safari history (System Settings > Privacy & Security)\n"
+        if sys.platform == "darwin"
+        else ""
+    )
     console.print(
         Panel(
             "[bold]Footprinter Setup Wizard[/bold]\n\n"
-            "Footprinter indexes your files, browser history, emails, and chat\n"
-            "exports for AI-powered search and analysis.\n\n"
-            "[bold]Phases:[/bold]\n"
-            "  1. Welcome — what Footprinter does\n"
-            "  2. Data Sources — directories, browsers, chat exports, CSV import\n"
-            "  3. Content & Search — snippets and semantic search\n"
-            "  4. Confirm & Write — preview and save configuration\n"
-            "  5. Claude Desktop — MCP integration\n"
-            "  6. Populate — index your data\n"
-            "  7. Summary — results and next steps"
-            + (
-                "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
-                "  - Full Disk Access for Safari history (System Settings > Privacy & Security)"
-                if sys.platform == "darwin"
-                else ""
-            )
+            "Footprinter indexes your files, browser history, emails, "
+            "and chat exports for AI-powered search and analysis.\n\n"
+            "[bold]Steps:[/bold]\n"
+            "  1. Data Sources — directories, browsers, chat exports, CSV import\n"
+            "  2. Content & Search — snippets and semantic search\n"
+            "  3. Confirm & Write — preview and save configuration\n"
+            "  4. Claude Desktop — MCP integration\n"
+            "  5. Populate — index your data\n"
+            "  6. Summary — results and next steps"
+            "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
+            + fda_prereq
+            + "  - Chat exports from Claude or ChatGPT (see reference/chat-export.md)\n"
+            "  - CSV import for clients/projects "
+            "(templates: reference/clients-template.csv, reference/projects-template.csv)"
             + welcome_extra,
             title="fp setup",
         )
     )
 
-    # Phase 2: Data Sources
-    _print_phase(2, 7, "Data Sources")
+    # Phase 1: Data Sources
+    _print_phase(1, 6, "Data Sources")
     if existing is not None:
         preset = None  # Skip preset choice in reconfigure mode
     else:
@@ -773,15 +776,15 @@ def run_interactive_wizard():
         connector_results = {}
         chat_export_path = collect_chat_export_path()
 
-    # Phase 3: Content & Search
-    _print_phase(3, 7, "Content & Search")
+    # Phase 2: Content & Search
+    _print_phase(2, 6, "Content & Search")
     if preset:
         semantic_answers = collect_vectorization_answers(directories=preset["directories"], quick=True)
     else:
         semantic_answers = collect_vectorization_answers(directories=answers["directories"], existing=existing)
 
-    # Phase 4: Confirm & Write
-    _print_phase(4, 7, "Confirm & Write")
+    # Phase 3: Confirm & Write
+    _print_phase(3, 6, "Confirm & Write")
     preview_config(
         answers,
         connectors=connector_results,
@@ -800,12 +803,12 @@ def run_interactive_wizard():
     # the helper is the only user-facing decision.
     seed_access_policies()
 
-    # Phase 5: Claude Desktop
-    _print_phase(5, 7, "Claude Desktop")
+    # Phase 4: Claude Desktop
+    _print_phase(4, 6, "Claude Desktop")
     mcp_configured = offer_setup_claude()
 
-    # Phase 6: Populate
-    _print_phase(6, 7, "Populate")
+    # Phase 5: Populate
+    _print_phase(5, 6, "Populate")
 
     # Truncate setup log before first orchestrator call
     setup_log = get_log_path()
@@ -842,8 +845,8 @@ def run_interactive_wizard():
     else:
         console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
 
-    # Phase 7: Summary
-    _print_phase(7, 7, "Summary")
+    # Phase 6: Summary
+    _print_phase(6, 6, "Summary")
     print_summary(
         chat_result=chat_result,
         mcp_configured=mcp_configured,
