@@ -206,10 +206,15 @@ class IngestService:
         trigger overhead during bulk ingest. FTS optimization requires
         ``get_db`` — silently skipped if constructed without it.
 
-        After all pipes complete (and only on success), writes a single
+        When ``runner.run_pipes`` returns without raising, writes a single
         aggregate ingests row with ``pipe='all'`` summing items_processed,
-        items_new, items_updated, items_skipped, and errors across pipes.
-        ``elapsed_seconds`` is wall-clock around ``runner.run_pipes``.
+        items_new, items_updated, items_skipped, and errors across the
+        per-pipe results. ``status`` is ``'failed'`` if any per-pipe result
+        has ``status == 'error'`` (including the fatal-error short-circuit
+        case in ``PipeRunner``), else ``'completed'``. ``elapsed_seconds``
+        is wall-clock around ``runner.run_pipes``. The aggregate write is
+        best-effort: a failure logs a warning and is swallowed so
+        successful pipe results still reach the caller.
         """
         self.ensure_fts_health(full_mode)
 
@@ -233,9 +238,12 @@ class IngestService:
                 pipe_hook=pipe_hook,
             )
             if pipes:
-                self._write_aggregate_row(
-                    results, mode, trigger, started_iso, time.monotonic() - t0
-                )
+                try:
+                    self._write_aggregate_row(
+                        results, mode, trigger, started_iso, time.monotonic() - t0
+                    )
+                except sqlite3.Error as e:
+                    log.warning("Failed to write aggregate ingest row: %s", e)
             return results
         finally:
             if fts_dropped:

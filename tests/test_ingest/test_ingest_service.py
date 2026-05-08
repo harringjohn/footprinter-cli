@@ -479,6 +479,74 @@ class TestRunPipesAggregateRow:
         ).fetchall()
         assert rows == []
 
+    def test_aggregate_row_handles_pipe_runner_short_circuit(self, tool_db):
+        """PipeRunner aborts on fatal database/config errors and returns a
+        partial results list (fewer entries than pipes requested). The
+        aggregate row should still be written with status='failed' and
+        sums reflecting only the pipes that ran."""
+        svc = IngestService(tool_db)
+        # Three pipes requested; runner short-circuits after the second
+        # with a fatal error, returning only two results.
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 100, "items_new": 80, "items_updated": 10,
+             "items_skipped": 10, "errors": 0, "elapsed_seconds": 5.0},
+            {"stage": "browser", "status": "error", "error_type": "database",
+             "error": "db locked", "errors": 1,
+             "items_processed": 0, "items_new": 0, "items_updated": 0,
+             "items_skipped": 0, "elapsed_seconds": 0.1},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        returned = svc.run_pipes(
+            ["local_files", "browser", "folder_stats"],
+            runner=runner,
+            full_mode=False,
+            mode="incremental",
+            trigger="cli",
+        )
+
+        # Caller still gets the partial results
+        assert len(returned) == 2
+        row = tool_db.execute(
+            "SELECT * FROM ingests WHERE pipe = 'all'"
+        ).fetchone()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert row["items_processed"] == 100
+        assert row["errors"] == 1
+        # metadata records the pipes that actually ran, not the requested list
+        assert json.loads(row["metadata"])["pipes"] == ["local_files", "browser"]
+
+    def test_aggregate_row_failure_swallowed(self, tool_db, caplog):
+        """An exception from the aggregate INSERT must not mask successful
+        pipe results — caller still receives the runner's results list."""
+        svc = IngestService(tool_db)
+        results = [
+            {"stage": "local_files", "status": "completed",
+             "items_processed": 42, "errors": 0, "elapsed_seconds": 1.0},
+        ]
+        runner = _MockBatchRunner(results=results)
+
+        # Force the aggregate write to fail by replacing the helper with one
+        # that raises a sqlite3 error.
+        def _boom(*args, **kwargs):
+            raise sqlite3.OperationalError("simulated INSERT failure")
+
+        svc._write_aggregate_row = _boom  # type: ignore[method-assign]
+
+        with caplog.at_level("WARNING"):
+            returned = svc.run_pipes(
+                ["local_files"],
+                runner=runner,
+                full_mode=False,
+                mode="incremental",
+                trigger="cli",
+            )
+
+        assert returned == results
+        assert any("aggregate ingest row" in rec.message for rec in caplog.records)
+
 
 # ── TestEnsureFtsHealth ─────────────────────────────────────────────
 

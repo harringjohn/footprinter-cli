@@ -677,8 +677,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # --last-run: per-stage breakdown from run_record.py (session-level JSON cache).
-    # Different from the footer's "Last ingest" which reads the ingests DB table
-    # for the most recent per-pipe record.
+    # Different from the footer's "Last ingest" which reads the ingests DB table —
+    # preferring the aggregate row (pipe='all') and falling back to the most
+    # recent per-pipe record for pre-aggregate databases.
     if getattr(args, "last_run", False):
         from footprinter.ingest.run_record import load_run_record
 
