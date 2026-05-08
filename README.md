@@ -41,6 +41,10 @@ Inside an existing venv, `pip` works as expected:
 ./venv/bin/pip install 'footprinter-cli[full]'
 ```
 
+> **zsh users:** the single quotes around `'footprinter-cli[full]'` are required. zsh treats `[...]` as a glob pattern and will otherwise fail with `zsh: no matches found: footprinter-cli[full]`. The same applies to `[semantic]` and `[parse]`.
+
+> **Heads-up for python.org Python:** running `pip install footprinter-cli` outside a venv on python.org-installed Python may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which is not on `PATH` by default. Use the install script or pipx (above) to avoid this.
+
 The base install includes the indexing pipeline, CLI, MCP server, HTTP API, and token encryption. Optional extras add more:
 
 | Extra | What it adds |
