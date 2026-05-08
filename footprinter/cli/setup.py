@@ -690,7 +690,10 @@ def _print_phase(step: int, total: int, name: str):
 
 def _choose_preset() -> dict | None:
     """Offer preset profiles. Returns preset dict or None for full/custom."""
-    console.print("  [bold]Quick start[/bold] — common directories, no email, browser or chat history (add more later)")
+    console.print(
+        "  [bold]Quick start[/bold] — common directories "
+        f"({', '.join(QUICK_START_CANDIDATES)}), no email, browser or chat history (add more later)"
+    )
     console.print("  [bold]Full setup[/bold]  — choose everything yourself")
     choice = Prompt.ask("  Profile", choices=["quick", "full"], default="full")
     if choice == "quick":
@@ -1183,14 +1186,14 @@ def collect_vectorization_answers(
     existing_excludes = existing_vec.get("exclude_patterns", [])
 
     console.print("\n[bold]Content Indexing[/bold]")
+    console.print("  [bold]1. Metadata only (default)[/bold]")
     console.print(
-        "  By default (Tier 0), Footprinter indexes metadata only —\n"
-        "  filenames, paths, timestamps, structure. Nothing is read from\n"
-        "  inside your files. The options below opt in to reading and\n"
-        "  storing file content for richer search.\n"
+        "  Footprinter indexes filenames, paths, timestamps, and structure.\n"
+        "  Nothing is read from inside your files. The option below opts in\n"
+        "  to reading and storing file content for richer search.\n"
     )
 
-    console.print("  [bold]Content snippets (Tier 1)[/bold]")
+    console.print("  [bold]2. Content snippets[/bold]")
     console.print(
         "  Reads each file during indexing and stores a short preview\n"
         "  (~1000 chars) in Footprinter's local database, so keyword\n"
@@ -1278,16 +1281,27 @@ def _collect_vectorization_full(
     existing_excludes: list[str],
     existing_semantic: dict,
 ) -> dict:
-    """Full-mode vectorization: enable decision first, then file types and exclusions.
+    """Full-mode vectorization: enable-files, file types, enable-chats, then scan.
 
-    Asking the enable Confirm before file-type/exclusion configuration avoids
-    the cost-up-front-then-decline anti-pattern where the user configures an
-    allowlist, watches a directory scan, and reviews exclusions before being
-    asked whether they want semantic search at all.
+    Question order: files → file types (only if files enabled) → chats. Asking
+    the file-enable Confirm before file-type configuration avoids the
+    cost-up-front-then-decline anti-pattern where the user configures an
+    allowlist before being asked whether they want file embedding at all.
+    File types belong with the file question, so they sit between files and
+    chats rather than after both Confirms.
     """
     file_default = existing_semantic.get("file_vectorization", False)
     chat_default = existing_semantic.get("chat_vectorization", False)
     file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
+
+    if file_vec:
+        # File type allowlist — only asked when file vectorization is on
+        console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
+        keep_types = Confirm.ask("  Keep these file types?", default=True)
+        if not keep_types:
+            raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
+            file_types = [t.strip() for t in raw.split(",") if t.strip()]
+
     chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
 
     if not file_vec and not chat_vec:
@@ -1305,13 +1319,6 @@ def _collect_vectorization_full(
             "file_types": file_types,
             "exclude_patterns": list(existing_excludes),
         }
-
-    # File type allowlist — only asked when semantic is being enabled
-    console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
-    keep_types = Confirm.ask("  Keep these file types?", default=True)
-    if not keep_types:
-        raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
-        file_types = [t.strip() for t in raw.split(",") if t.strip()]
 
     # Scan and show results
     scan = _scan_directories_for_vectorization(directories, file_types)
