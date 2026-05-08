@@ -121,7 +121,7 @@ class FolderIndexer:
         logger.info(f"Found {len(folders)} folders")
         return folders
 
-    def save_folders(self, folders: List[Dict]) -> Tuple[int, int]:
+    def save_folders(self, folders: List[Dict]) -> Tuple[int, int, int]:
         """
         Save folders to database.
 
@@ -129,12 +129,13 @@ class FolderIndexer:
             folders: List of folder dictionaries
 
         Returns:
-            Tuple of (inserted_count, updated_count)
+            Tuple of (inserted_count, updated_count, unchanged_count)
         """
         cursor = self.db.conn.cursor()
 
         inserted = 0
         updated = 0
+        unchanged = 0
 
         for folder in folders:
             try:
@@ -156,7 +157,23 @@ class FolderIndexer:
                 )
                 inserted += 1
             except sqlite3.IntegrityError:
-                # Update existing
+                # Fast path: skip the UPDATE when persistent identifying fields
+                # are unchanged. scanned_at is regenerated each scan, so it's
+                # excluded from the comparison. Mirrors files.py:486-508.
+                cursor.execute(
+                    "SELECT relative_path, name, parent_path FROM folders WHERE path = ?",
+                    (folder["path"],),
+                )
+                existing = cursor.fetchone()
+                if (
+                    existing is not None
+                    and existing["relative_path"] == folder["relative_path"]
+                    and existing["name"] == folder["name"]
+                    and existing["parent_path"] == folder["parent_path"]
+                ):
+                    unchanged += 1
+                    continue
+
                 cursor.execute(
                     """
                     UPDATE folders
@@ -179,8 +196,10 @@ class FolderIndexer:
 
         self.db.conn.commit()
 
-        logger.info(f"Saved folders: {inserted} inserted, {updated} updated")
-        return inserted, updated
+        logger.info(
+            f"Saved folders: {inserted} inserted, {updated} updated, {unchanged} unchanged"
+        )
+        return inserted, updated, unchanged
 
     def get_folder_stats(self) -> Dict:
         """Get statistics about indexed folders."""
@@ -214,7 +233,7 @@ def main():
     folders = indexer.scan_folders(root_paths)
 
     # Save to database
-    inserted, updated = indexer.save_folders(folders)
+    inserted, updated, unchanged = indexer.save_folders(folders)
 
     # Log stats
     stats = indexer.get_folder_stats()

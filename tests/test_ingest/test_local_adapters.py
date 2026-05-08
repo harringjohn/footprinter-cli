@@ -85,7 +85,7 @@ class TestLocalFoldersRun:
             {"path": "/b"},
             {"path": "/c"},
         ]
-        scanner_instance.save_folders.return_value = (2, 1)
+        scanner_instance.save_folders.return_value = (2, 1, 0)
 
         ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
         adapter = LocalFoldersAdapter()
@@ -101,7 +101,7 @@ class TestLocalFoldersRun:
 
         scanner_instance = MockScanner.return_value
         scanner_instance.scan_folders.return_value = [{"path": "/a"}, {"path": "/b"}]
-        scanner_instance.save_folders.return_value = (1, 1)
+        scanner_instance.save_folders.return_value = (1, 1, 3)
 
         ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
         adapter = LocalFoldersAdapter()
@@ -110,6 +110,7 @@ class TestLocalFoldersRun:
         assert result.data["folders_found"] == 2
         assert result.data["inserted"] == 1
         assert result.data["updated"] == 1
+        assert result.data["unchanged"] == 3
 
     @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
     def test_passes_db_to_scanner(self, MockScanner, mock_db, sample_config):
@@ -117,7 +118,7 @@ class TestLocalFoldersRun:
 
         scanner_instance = MockScanner.return_value
         scanner_instance.scan_folders.return_value = []
-        scanner_instance.save_folders.return_value = (0, 0)
+        scanner_instance.save_folders.return_value = (0, 0, 0)
 
         ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
         adapter = LocalFoldersAdapter()
@@ -135,7 +136,7 @@ class TestLocalFoldersOnProgress:
 
         scanner = MockIndexer.return_value
         scanner.scan_folders.return_value = []
-        scanner.save_folders.return_value = (0, 0)
+        scanner.save_folders.return_value = (0, 0, 0)
 
         ctx = PipeContext(source_config=sample_config, on_progress=lambda n: None)
         adapter = LocalFoldersAdapter()
