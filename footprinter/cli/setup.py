@@ -715,11 +715,11 @@ def _choose_preset() -> dict | None:
 def run_interactive_wizard():
     """Run the full interactive setup flow.
 
-    Structured as 7 phases: Welcome, Data Sources, Content & Search,
-    Confirm & Write, Claude Desktop, Populate, Summary.
+    An unnumbered Welcome panel precedes 6 numbered steps: Data Sources,
+    Content & Search, Confirm & Write, Claude Desktop, Populate, Summary.
 
     Access policies are seeded silently inside Confirm & Write (no
-    visible phase). Claude Desktop runs before Populate so the user can
+    visible step). Claude Desktop runs before Populate so the user can
     restart Claude Desktop while indexing finishes.
 
     PromptCancelled and KeyboardInterrupt propagate to the caller
