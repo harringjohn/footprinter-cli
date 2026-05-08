@@ -143,6 +143,7 @@ def _stage_detail_string(result: Dict) -> str:
         "emails_indexed": "emails",
         "inserted": "inserted",
         "updated": "updated",
+        "unchanged": "unchanged",
         "skipped": "skipped",
         "errors": "errors",
     }

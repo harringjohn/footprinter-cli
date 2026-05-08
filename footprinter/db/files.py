@@ -478,16 +478,14 @@ def insert_file(
     file_path = file_data.get("file_path") or file_data.get("path")
 
     cursor.execute(
-        "SELECT id, status, sha256_hash, size_bytes, project_id FROM files WHERE source = 'local' AND path = ?",
+        "SELECT id, status, sha256_hash, size_bytes FROM files WHERE source = 'local' AND path = ?",
         (file_path,),
     )
     existing = cursor.fetchone()
 
     # Fast path: unchanged active row → skip project/folder resolution and the UPDATE.
-    # Requires a non-None sha256 on both sides so missing hashes never short-circuit,
-    # and a non-NULL project_id so we don't strand files waiting on late-binding
-    # project detection (the UPDATE's CASE WHEN project_id IS NULL THEN ? backfill path).
-    if existing is not None and existing["status"] != "removed" and existing["project_id"] is not None:
+    # Requires a non-None sha256 on both sides so missing hashes never short-circuit.
+    if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
         incoming_size = file_data.get("file_size") or file_data.get("size_bytes")
         if (
