@@ -119,11 +119,11 @@ def _check_fda() -> Check:
 
 def _check_semantic_deps() -> Check:
     missing = []
-    for mod in ("chromadb", "sentence_transformers"):
+    for mod in ("chromadb", "onnxruntime"):
         if _find_spec(mod) is None:
             missing.append(mod)
     if not missing:
-        return Check("semantic_deps", "OK", "chromadb and sentence_transformers available")
+        return Check("semantic_deps", "OK", "chromadb and onnxruntime available")
     return Check(
         "semantic_deps",
         "WARN",
@@ -133,7 +133,7 @@ def _check_semantic_deps() -> Check:
 
 def _check_parse_deps() -> Check:
     missing = []
-    for mod in ("docx", "pdfplumber"):
+    for mod in ("docx", "pypdf"):
         if _find_spec(mod) is None:
             missing.append(mod)
     if not missing:
@@ -224,6 +224,7 @@ def _handle(args) -> None:
     if getattr(args, "json", False):
         output_json([asdict(c) for c in checks])
     else:
+        from rich.markup import escape
         from rich.table import Table
 
         table = Table(show_header=False, box=None, pad_edge=False)
@@ -238,7 +239,7 @@ def _handle(args) -> None:
                 status_cell = f"[yellow]{c.status}[/yellow]"
             else:
                 status_cell = f"[red]{c.status}[/red]"
-            table.add_row(c.name, status_cell, c.message)
+            table.add_row(c.name, status_cell, escape(c.message))
 
         console.print(table)
 
