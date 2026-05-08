@@ -34,16 +34,16 @@ pipx install footprinter-cli
 pipx install 'footprinter-cli[full]'   # with semantic + parse
 ```
 
-Inside an existing venv, `pip` works as expected:
+> **macOS install caveats:**
+> - **zsh** treats `[...]` as a glob, so keep the single quotes around any bracketed extras specifier (e.g. `'footprinter-cli[full]'`). Without quotes you'll see `zsh: no matches found`.
+> - **python.org-distributed Python** doesn't enforce PEP 668, so a bare `pip install footprinter-cli` outside pipx or a virtual environment may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which isn't on `PATH` by default. Use pipx (above) or the install script.
+
+Inside an existing virtual environment, `pip` works as expected:
 
 ```bash
 ./venv/bin/pip install footprinter-cli
 ./venv/bin/pip install 'footprinter-cli[full]'
 ```
-
-> **zsh users:** the single quotes around `'footprinter-cli[full]'` are required. zsh treats `[...]` as a glob pattern and will otherwise fail with `zsh: no matches found: footprinter-cli[full]`. The same applies to `[semantic]` and `[parse]`.
-
-> **Heads-up for python.org Python:** running `pip install footprinter-cli` outside a venv on python.org-installed Python may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which is not on `PATH` by default. Use the install script or pipx (above) to avoid this.
 
 The base install includes the indexing pipeline, CLI, MCP server, HTTP API, and token encryption. Optional extras add more:
 
