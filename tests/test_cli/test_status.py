@@ -245,6 +245,55 @@ class TestLastRunFromIngests:
         assert counts["last_run"] is None
 
 
+class TestLastRunPrefersAggregate:
+    """When pipe='all' rows exist they win over per-pipe rows (FPR-1627)."""
+
+    def _seed_per_pipe(self, conn):
+        conn.execute(
+            "INSERT INTO ingests "
+            "(pipe, started_at, completed_at, status, mode, items_processed, errors, elapsed_seconds) "
+            "VALUES ('local_files', '2026-04-01T10:00:00', '2026-04-01T10:05:00', "
+            "'completed', 'incremental', 100, 0, 300.0)"
+        )
+        # folder_stats finishes last — under the legacy query this would win
+        conn.execute(
+            "INSERT INTO ingests "
+            "(pipe, started_at, completed_at, status, mode, items_processed, errors, elapsed_seconds) "
+            "VALUES ('folder_stats', '2026-04-01T10:06:00', '2026-04-01T10:06:01', "
+            "'completed', 'incremental', 0, 0, 1.0)"
+        )
+
+    def test_aggregate_row_wins_over_per_pipe(self, status_db):
+        conn, db_path = status_db
+        self._seed_per_pipe(conn)
+        conn.execute(
+            "INSERT INTO ingests "
+            "(pipe, started_at, completed_at, status, mode, items_processed, errors, elapsed_seconds) "
+            "VALUES ('all', '2026-04-01T10:00:00', '2026-04-01T10:06:01', "
+            "'completed', 'incremental', 100, 0, 361.0)"
+        )
+        conn.commit()
+
+        counts = get_data_counts(db_path)
+        last_run = counts["last_run"]
+        assert last_run is not None
+        assert last_run["pipe"] == "all"
+        assert last_run["items_processed"] == 100
+        assert last_run["elapsed_seconds"] == 361.0
+
+    def test_falls_back_to_per_pipe_when_no_aggregate(self, status_db):
+        """Pre-fix DBs (only per-pipe rows) still render Last ingest via fallback."""
+        conn, db_path = status_db
+        self._seed_per_pipe(conn)
+        conn.commit()
+
+        counts = get_data_counts(db_path)
+        last_run = counts["last_run"]
+        assert last_run is not None
+        # No aggregate row exists, so legacy query selects most recent per-pipe row
+        assert last_run["pipe"] == "folder_stats"
+
+
 class TestMissingTables:
     """Verify OperationalError handled gracefully with bare :memory: DB."""
 
