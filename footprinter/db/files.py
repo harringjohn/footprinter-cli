@@ -483,11 +483,17 @@ def insert_file(
     )
     existing = cursor.fetchone()
 
-    # Fast path: unchanged active row → skip project/folder resolution and the UPDATE.
-    # Requires a non-None sha256 on both sides so missing hashes never short-circuit,
-    # and a non-NULL project_id so we don't strand files waiting on late-binding
-    # project detection (the UPDATE's CASE WHEN project_id IS NULL THEN ? backfill path).
-    if existing is not None and existing["status"] != "removed" and existing["project_id"] is not None:
+    proj_map = relationship_maps.get("project_prefix_map") if relationship_maps else None
+    fpath_map = relationship_maps.get("folder_path_map") if relationship_maps else None
+    fproj_map = relationship_maps.get("folder_project_map") if relationship_maps else None
+    dsn = relationship_maps.get("remote_source_names") if relationship_maps else None
+
+    # Fast path: unchanged active row → skip the UPDATE.
+    # Requires a non-None sha256 on both sides so missing hashes never short-circuit.
+    # When existing.project_id IS NULL we still consult _find_project_for_path: if a
+    # project would resolve, fall through so the UPDATE's `CASE WHEN project_id IS NULL
+    # THEN ?` backfill can run. If no project matches, NULL→NULL — fast-path is safe.
+    if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
         incoming_size = file_data.get("file_size") or file_data.get("size_bytes")
         if (
@@ -496,12 +502,10 @@ def insert_file(
             and incoming_sha == existing["sha256_hash"]
             and incoming_size == existing["size_bytes"]
         ):
-            return ("unchanged", existing["id"])
-
-    proj_map = relationship_maps.get("project_prefix_map") if relationship_maps else None
-    fpath_map = relationship_maps.get("folder_path_map") if relationship_maps else None
-    fproj_map = relationship_maps.get("folder_project_map") if relationship_maps else None
-    dsn = relationship_maps.get("remote_source_names") if relationship_maps else None
+            if existing["project_id"] is not None or _find_project_for_path(
+                conn, file_path, project_prefix_map=proj_map
+            ) is None:
+                return ("unchanged", existing["id"])
 
     project_id = _find_project_for_path(conn, file_path, project_prefix_map=proj_map)
     folder_id = _find_folder_for_path(

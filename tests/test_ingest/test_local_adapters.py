@@ -226,6 +226,7 @@ class TestLocalFilesRun:
             "inserted": 100,
             "updated": 50,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -246,6 +247,7 @@ class TestLocalFilesRun:
             "inserted": 50,
             "updated": 25,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -266,6 +268,7 @@ class TestLocalFilesRun:
             "inserted": 150,
             "updated": 50,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -286,6 +289,7 @@ class TestLocalFilesRun:
             "inserted": 0,
             "updated": 0,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -305,6 +309,7 @@ class TestLocalFilesRun:
             "inserted": 0,
             "updated": 0,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -330,6 +335,7 @@ class TestLocalFilesLastRun:
             "inserted": 0,
             "updated": 0,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
@@ -362,6 +368,7 @@ class TestLocalFilesLastRun:
             "inserted": 0,
             "updated": 0,
             "skipped": 0,
+            "unchanged": 0,
             "errors": 0,
         }
 
