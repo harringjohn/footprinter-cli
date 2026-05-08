@@ -2719,6 +2719,63 @@ class TestMigrateTableRenames:
         assert cursor.fetchone() is not None, "canonical visits table should remain"
         db.close()
 
+    def test_migrate_preserves_browser_visits_rows_in_dual_state(self, temp_db):
+        """Legacy rows in browser_visits must survive into visits when both tables exist.
+
+        Production scenario: an earlier partial init created an empty ``visits`` table,
+        then the rename failed silently, leaving the user's actual visit history stranded
+        in ``browser_visits``.  The migration must merge those rows into ``visits`` (with
+        INSERT OR IGNORE so any newer rows already in ``visits`` win on PRIMARY KEY
+        collision) before dropping the legacy table.
+        """
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.close()
+
+        conn = sqlite3.connect(temp_db)
+        # Legacy table seeded with rows that exist ONLY in browser_visits.
+        conn.execute(
+            "CREATE TABLE browser_visits ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "url TEXT NOT NULL, "
+            "title TEXT, "
+            "visit_time DATETIME NOT NULL, "
+            "browser TEXT NOT NULL, "
+            "visit_count INTEGER DEFAULT 1, "
+            "indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        conn.execute(
+            "INSERT INTO browser_visits (id, url, title, visit_time, browser) VALUES "
+            "(101, 'https://legacy-only-1.example.com', 'Legacy One',   '2026-03-15 10:00:00', 'Safari'), "
+            "(102, 'https://legacy-only-2.example.com', 'Legacy Two',   '2026-03-15 11:00:00', 'Chrome')"
+        )
+        # A row already in canonical visits with the same id as a legacy row should
+        # take precedence (INSERT OR IGNORE skips the conflict).
+        conn.execute(
+            "INSERT INTO visits (id, url, title, visit_time, browser) VALUES "
+            "(101, 'https://canonical.example.com', 'Canonical Wins', '2026-04-01 09:00:00', 'Firefox')"
+        )
+        conn.commit()
+        conn.close()
+
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+
+        cursor.execute("SELECT id, url FROM visits ORDER BY id")
+        rows = {row[0]: row[1] for row in cursor.fetchall()}
+
+        assert 101 in rows, "Canonical row at id=101 must survive"
+        assert rows[101] == "https://canonical.example.com", (
+            "Canonical row must win on PRIMARY KEY collision (INSERT OR IGNORE)"
+        )
+        assert 102 in rows, "Legacy-only row at id=102 must be merged into visits"
+        assert rows[102] == "https://legacy-only-2.example.com"
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='browser_visits'")
+        assert cursor.fetchone() is None, "browser_visits should be dropped after merge"
+        db.close()
+
 
 class TestChatsFtsRecreateBackfill:
     """Regression tests for FPR-1638.
@@ -2872,6 +2929,48 @@ class TestChatsFtsRecreateBackfill:
             f"chats_fts_data row count changed across reopen: {first_count} → {second_count}; "
             "backfill is not idempotent"
         )
+        db.close()
+
+    def test_empty_but_present_fts_index_is_repaired_on_init(self, temp_db):
+        """An FTS table that exists but has an empty inverted index must be backfilled.
+
+        Covers the latent regression in the table-creation-only gate: after a manual
+        repair (DELETE FROM <fts>) or a future migration that empties an FTS table
+        without dropping it, the next ``Database()`` open must repopulate the index.
+        Detection uses the FTS5 ``_docsize`` shadow table (one row per indexed doc,
+        not delegated to the content table — unlike ``COUNT(*)`` on the FTS view).
+        """
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
+            "VALUES ('readme.md', '/tmp/readme.md', 'local', 'active', 'markdown', 100)"
+        )
+        db.conn.commit()
+
+        # Force the empty-but-present state: drop the FTS triggers so the
+        # DELETE doesn't recurse, then DELETE everything from files_fts.
+        db.drop_fts_triggers()
+        db.conn.execute("DELETE FROM files_fts")
+        db.conn.commit()
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM files_fts_docsize")
+        assert cursor.fetchone()[0] == 0, "Precondition: files_fts inverted index should be empty"
+        db.close()
+
+        # Re-open: the table still exists, but the index is empty. The fix must
+        # detect this via _docsize and re-run backfill.
+        db = Database(temp_db)
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM files_fts_docsize")
+        assert cursor.fetchone()[0] == 1, (
+            "Empty-but-present files_fts must be backfilled on init "
+            "(detected via _docsize, which is not delegated to the content table)"
+        )
+        cursor.execute("SELECT rowid FROM files_fts WHERE files_fts MATCH 'readme'")
+        assert cursor.fetchone() is not None, "Repaired index must be searchable"
         db.close()
 
 

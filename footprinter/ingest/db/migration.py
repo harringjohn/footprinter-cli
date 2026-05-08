@@ -217,14 +217,26 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # If both tables now exist, the rename above failed silently because
     # `visits` was already created by an earlier partial init or by the
-    # schema's CREATE TABLE IF NOT EXISTS.  Drop the legacy table so the
-    # `browser_visits`-based guard above stops re-firing on every init
-    # (which, pre-fix, dropped chats_fts each session).
+    # schema's CREATE TABLE IF NOT EXISTS.  Merge any legacy rows into
+    # `visits` (INSERT OR IGNORE preserves existing visits on PRIMARY
+    # KEY collision) and drop the legacy table so the `browser_visits`
+    # guard above stops re-firing on every init (which, pre-fix,
+    # dropped chats_fts each session).
     cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='browser_visits'")
     legacy_exists = cursor.fetchone() is not None
     cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='visits'")
     canonical_exists = cursor.fetchone() is not None
     if legacy_exists and canonical_exists:
+        # Use the column intersection — schema versions vary across the
+        # legacy and canonical tables, so we copy whatever overlaps.
+        # Column names come from PRAGMA table_info, so the f-string
+        # interpolation is safe (no user input).
+        legacy_cols = {row[1] for row in cursor.execute("PRAGMA table_info(browser_visits)").fetchall()}
+        canonical_cols = {row[1] for row in cursor.execute("PRAGMA table_info(visits)").fetchall()}
+        shared_cols = sorted(legacy_cols & canonical_cols)
+        if shared_cols:
+            col_list = ", ".join(shared_cols)
+            cursor.execute(f"INSERT OR IGNORE INTO visits ({col_list}) SELECT {col_list} FROM browser_visits")
         cursor.execute("DROP TABLE browser_visits")
 
     # clients/projects: add status_reason column
