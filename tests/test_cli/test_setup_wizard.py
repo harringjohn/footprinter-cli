@@ -2709,11 +2709,11 @@ class TestCollectVectorizationFull:
         d.mkdir()
         (d / "code.py").write_text("print()")
 
-        # Confirm.ask order (enable-first):
-        # snippets? No, enable files? Yes, enable chats? Yes,
-        # keep defaults? No, accept exclusions? Yes
+        # Confirm.ask order (F20: files → file types → chats):
+        # snippets? No, enable files? Yes, keep defaults? No,
+        # enable chats? Yes, accept exclusions? Yes
         # Prompt.ask: custom extensions
-        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, True, True, False, True]):
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, True, False, True, True]):
             with patch("footprinter.cli.setup.Prompt.ask", return_value=".py, .rs"):
                 result = collect_vectorization_answers(directories=[str(d)])
 
