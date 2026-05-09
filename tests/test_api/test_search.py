@@ -38,3 +38,8 @@ class TestSearchEndpoint:
             api_client.get("/api/search", params={"query": "test"})
             _, kwargs = mock.call_args
             assert kwargs["role"] == Role.ADMIN
+
+    def test_search_limit_above_cap_returns_422(self, api_client):
+        """limit > MAX_LIMIT (200) returns 422."""
+        resp = api_client.get("/api/search", params={"query": "test", "limit": 201})
+        assert resp.status_code == 422

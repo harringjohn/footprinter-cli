@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from footprinter.api import MAX_LIMIT
 from footprinter.api.db import get_conn
 from footprinter.services import (
     chat_service,
@@ -36,7 +37,7 @@ def list_files(
     source: Optional[str] = Query(None, description="Comma-separated source filter"),
     status: Optional[str] = Query(None, description="Comma-separated status filter"),
     content_type: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     source_list = [s.strip() for s in source.split(",")] if source else None
@@ -71,7 +72,7 @@ def list_emails(
     has_attachments: Optional[bool] = None,
     sort_by: str = "received_at",
     order: str = "desc",
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     return email_service.list_(
@@ -105,7 +106,7 @@ def list_chats(
     sort_by: str = "modified_at",
     order: str = "desc",
     status: Optional[str] = Query(None, description="Comma-separated status filter"),
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     status_list = [s.strip() for s in status.split(",")] if status else None
@@ -137,7 +138,7 @@ def list_projects(
     status: Optional[str] = Query(None, description="Comma-separated status filter"),
     client: Optional[str] = None,
     project_type: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     include_list = [s.strip() for s in include.split(",")] if include else None
@@ -172,7 +173,7 @@ def list_clients(
     conn=Depends(get_conn),
     include: Optional[str] = Query(None, description="Comma-separated includes"),
     status: Optional[str] = Query(None, description="Comma-separated status filter"),
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     include_list = [s.strip() for s in include.split(",")] if include else None
@@ -217,7 +218,7 @@ def list_folders(
     depth: Optional[int] = 1,
     include_hidden: bool = False,
     sort_by: str = "size",
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
     return folder_service.list_(
@@ -241,7 +242,11 @@ def get_folder(folder_id: int, conn=Depends(get_conn)):
 
 
 @router.get("/visits")
-def list_visits(conn=Depends(get_conn), limit: int = 50, page: int = 1):
+def list_visits(
+    conn=Depends(get_conn),
+    limit: int = Query(50, ge=1, le=MAX_LIMIT),
+    page: int = 1,
+):
     return visit_service.list_(conn, role=Role.ADMIN, limit=limit, page=page)
 
 
