@@ -150,3 +150,26 @@ class TestVisitEndpoints:
         with patch(f"{_SVC}.visit_service.get", return_value=None):
             resp = api_client.get("/api/visits/9999")
             assert resp.status_code == 404
+
+
+class TestLimitCap:
+    """Pagination limit must be capped at MAX_LIMIT (200) on list endpoints."""
+
+    def test_files_limit_above_cap_returns_422(self, api_client):
+        resp = api_client.get("/api/files", params={"limit": 201})
+        assert resp.status_code == 422
+        body = resp.text.lower()
+        assert "limit" in body and "less than or equal" in body
+
+    def test_files_limit_at_cap_ok(self, api_client):
+        with patch(f"{_SVC}.file_service.list_", return_value={"items": [], "total": 0}):
+            resp = api_client.get("/api/files", params={"limit": 200})
+            assert resp.status_code == 200
+
+    def test_files_limit_zero_returns_422(self, api_client):
+        resp = api_client.get("/api/files", params={"limit": 0})
+        assert resp.status_code == 422
+
+    def test_projects_limit_above_cap_returns_422(self, api_client):
+        resp = api_client.get("/api/projects", params={"limit": 201})
+        assert resp.status_code == 422
