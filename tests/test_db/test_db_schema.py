@@ -106,6 +106,8 @@ EXPECTED_COLUMNS = {
         "mcp_view",
         "mcp_read",
         "status",
+        "status_reason",
+        "status_changed_at",
         "client_id",
         "indexed_at",
         "updated_at",

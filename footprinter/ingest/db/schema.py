@@ -269,6 +269,8 @@ class SchemaMixin:
                 -- Status tracking
                 status TEXT DEFAULT 'active'
                     CHECK (status IN ('active', 'hidden', 'removed')),
+                status_reason TEXT,
+                status_changed_at DATETIME,
 
                 -- Audit timestamps
                 indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,

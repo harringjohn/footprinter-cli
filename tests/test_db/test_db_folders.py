@@ -4,7 +4,7 @@ Verifies that list_folders() and get_folder() include both
 mcp_view and mcp_read in returned dicts.
 """
 
-from footprinter.db.folders import get_folder, list_folders
+from footprinter.db.folders import get_folder, list_folders, mark_removed_folders
 
 
 class TestFoldersAccessColumns:
@@ -37,3 +37,83 @@ class TestFoldersAccessColumns:
         assert folder is not None
         assert folder["mcp_view"] == "visible"
         assert folder["mcp_read"] == "allow"
+
+
+class TestMarkRemovedFolders:
+    """Test folders.mark_removed_folders() — phantom folder cleanup (FPR-1654)."""
+
+    def _insert_local(self, conn, path: str) -> int:
+        cursor = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source)
+               VALUES (?, ?, ?, 'local')""",
+            (path, path, path.rsplit("/", 1)[-1] or path),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+    def test_marks_missing_paths_as_removed(self, tool_db):
+        for p in ["/tmp/a", "/tmp/b", "/tmp/c"]:
+            self._insert_local(tool_db, p)
+
+        removed = mark_removed_folders(tool_db, {"/tmp/a", "/tmp/b"})
+        assert len(removed) == 1
+
+        cursor = tool_db.cursor()
+        cursor.execute(
+            "SELECT status, status_reason, status_changed_at FROM folders WHERE path = '/tmp/c'"
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "removed"
+        assert row["status_reason"] == "folder_deleted"
+        assert row["status_changed_at"] is not None
+        for p in ["/tmp/a", "/tmp/b"]:
+            cursor.execute("SELECT status FROM folders WHERE path = ?", (p,))
+            assert cursor.fetchone()["status"] == "active"
+
+    def test_returns_removed_ids(self, tool_db):
+        ids = [self._insert_local(tool_db, p) for p in ["/tmp/x", "/tmp/y", "/tmp/z"]]
+
+        removed = mark_removed_folders(tool_db, {"/tmp/x"})
+        assert isinstance(removed, list)
+        assert set(removed) == {ids[1], ids[2]}
+
+    def test_empty_paths_noop(self, tool_db):
+        fid = self._insert_local(tool_db, "/tmp/keep")
+        result = mark_removed_folders(tool_db, set())
+        assert result == []
+        cursor = tool_db.cursor()
+        cursor.execute("SELECT status FROM folders WHERE id = ?", (fid,))
+        assert cursor.fetchone()["status"] == "active"
+
+    def test_only_targets_local_source(self, tool_db):
+        local_id = self._insert_local(tool_db, "/tmp/local-only")
+        # Drive folder with the same path is permitted because the unique
+        # index on path is conditional (source='local').
+        tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, external_id, account)
+               VALUES ('/drive/shared', '/shared', 'shared', 'drive', 'd1', 'acct')"""
+        )
+        tool_db.commit()
+        drive_id = tool_db.execute(
+            "SELECT id FROM folders WHERE source = 'drive'"
+        ).fetchone()["id"]
+
+        # Scan reports a different local path — local-only should be removed,
+        # drive folder must stay active.
+        removed = mark_removed_folders(tool_db, {"/tmp/something-else"})
+        assert local_id in removed
+        assert drive_id not in removed
+
+        cursor = tool_db.cursor()
+        cursor.execute("SELECT status FROM folders WHERE id = ?", (drive_id,))
+        assert cursor.fetchone()["status"] == "active"
+
+    def test_skips_already_removed(self, tool_db):
+        fid = self._insert_local(tool_db, "/tmp/old-phantom")
+        tool_db.execute("UPDATE folders SET status = 'removed' WHERE id = ?", (fid,))
+        tool_db.commit()
+
+        # Non-overlapping scanned set — but the row is already removed,
+        # so it should not appear in the returned list.
+        removed = mark_removed_folders(tool_db, {"/tmp/something-else"})
+        assert fid not in removed

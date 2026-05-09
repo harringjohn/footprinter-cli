@@ -1,7 +1,7 @@
 """Folder queries and write operations."""
 
 import sqlite3
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from footprinter.db.sql_utils import paginate, paginated_response
 
@@ -548,6 +548,45 @@ def insert_drive_folder(conn: sqlite3.Connection, data: Dict[str, Any]) -> tuple
             ),
         )
         return "inserted", cursor.lastrowid
+
+
+def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[int]:
+    """Mark local folders as 'removed' if path not in scanned_paths.
+
+    Modeled on mark_removed_files() in db/files.py, with two intentional
+    differences:
+      * folders has no vectorization columns to clear
+      * the caller controls the transaction — this function does not
+        commit, so the cleanup can be rolled back if a later step in the
+        adapter fails
+
+    Returns:
+        List of folder IDs that were marked as removed
+    """
+    if not scanned_paths:
+        return []
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, path FROM folders WHERE source = 'local' AND status != 'removed'")
+
+    removed_ids = [row["id"] for row in cursor.fetchall() if row["path"] not in scanned_paths]
+
+    for i in range(0, len(removed_ids), 500):
+        batch = removed_ids[i : i + 500]
+        placeholders = ",".join("?" * len(batch))
+        cursor.execute(
+            f"""
+            UPDATE folders
+            SET status = 'removed',
+                status_reason = 'folder_deleted',
+                status_changed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """,
+            batch,
+        )
+
+    return removed_ids
 
 
 def update_drive_folder_parents(conn: sqlite3.Connection, source: str, folder_map: Dict[str, str]) -> int:
