@@ -547,7 +547,7 @@ def enrich_chat_visibility(
         return {}
     ph = ",".join("?" * len(chat_ids))
     rows = conn.execute(
-        f"SELECT id, account, mcp_view, mcp_read FROM chats WHERE id IN ({ph})",
+        f"SELECT id, account, mcp_view, mcp_read FROM chats WHERE id IN ({ph}) AND status = 'listed'",
         chat_ids,
     ).fetchall()
     return {row["id"]: dict(row) for row in rows}
