@@ -78,6 +78,103 @@ class TestAccessServiceGating:
         )
         assert result["status"] == "not_found"
 
+    def test_removed_file_returns_removed_for_viewer(self, service_db):
+        """File with status='removed' must be blocked for VIEWER."""
+        service_db.execute(
+            """INSERT INTO files (id, name, path, source, status, content_type,
+                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+               VALUES (20, 'gone.md', '/Users/u/Work/alpha/gone.md', 'local', 'removed',
+                       'markdown', 100, 1, 1, 'visible', 'allow')"""
+        )
+        service_db.commit()
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            20,
+            role=Role.VIEWER,
+        )
+        assert result["status"] == "removed"
+
+    def test_unlisted_file_returns_unlisted_for_viewer(self, service_db):
+        """File with status='unlisted' must be blocked for VIEWER."""
+        service_db.execute(
+            """INSERT INTO files (id, name, path, source, status, content_type,
+                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+               VALUES (21, 'shh.md', '/Users/u/Work/alpha/shh.md', 'local', 'unlisted',
+                       'markdown', 100, 1, 1, 'visible', 'allow')"""
+        )
+        service_db.commit()
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            21,
+            role=Role.VIEWER,
+        )
+        assert result["status"] == "unlisted"
+
+    def test_admin_bypasses_status_removed(self, service_db):
+        """ADMIN reads removed files; status rides along in metadata."""
+        service_db.execute(
+            """INSERT INTO files (id, name, path, source, status, content_type,
+                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+               VALUES (22, 'gone-admin.md', '/Users/u/Work/alpha/gone-admin.md', 'local',
+                       'removed', 'markdown', 100, 1, 1, 'visible', 'allow')"""
+        )
+        service_db.commit()
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            22,
+            role=Role.ADMIN,
+        )
+        assert result["status"] == "ok"
+        assert result["metadata"]["status"] == "removed"
+
+    def test_admin_bypasses_status_unlisted(self, service_db):
+        """ADMIN reads unlisted files; status rides along in metadata."""
+        service_db.execute(
+            """INSERT INTO files (id, name, path, source, status, content_type,
+                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+               VALUES (23, 'shh-admin.md', '/Users/u/Work/alpha/shh-admin.md', 'local',
+                       'unlisted', 'markdown', 100, 1, 1, 'visible', 'allow')"""
+        )
+        service_db.commit()
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            23,
+            role=Role.ADMIN,
+        )
+        assert result["status"] == "ok"
+        assert result["metadata"]["status"] == "unlisted"
+
+    def test_status_gate_runs_before_visibility(self, service_db):
+        """Status stage must run before visibility — removed+hidden returns 'removed'."""
+        service_db.execute(
+            """INSERT INTO files (id, name, path, source, status, content_type,
+                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+               VALUES (24, 'gone-hidden.md', '/Users/u/Work/alpha/gone-hidden.md', 'local',
+                       'removed', 'markdown', 100, 1, 1, 'hidden', 'allow')"""
+        )
+        service_db.commit()
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            24,
+            role=Role.VIEWER,
+        )
+        assert result["status"] == "removed"
+
+    def test_listed_file_passes_status_gate(self, service_db):
+        """Status='listed' (the default) must flow through to subsequent stages."""
+        result = access_service.gate_access(
+            service_db,
+            "file",
+            1,
+            role=Role.VIEWER,
+        )
+        assert result["status"] == "ok"
+
     def test_invalid_type(self, service_db):
         result = access_service.gate_access(
             service_db,
