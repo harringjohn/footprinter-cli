@@ -339,21 +339,6 @@ class TestResourceRegistration:
 
 
 # ---------------------------------------------------------------------------
-# TestClaudeMdGuidance — CLAUDE.md references Footprinter tooling (FPR-1681)
-# ---------------------------------------------------------------------------
-class TestClaudeMdGuidance:
-    """The project CLAUDE.md must point Claude Code at Footprinter's own tools."""
-
-    def test_claude_md_mentions_footprinter_tooling(self):
-        from pathlib import Path
-
-        content = Path(".claude/CLAUDE.md").read_text()
-        assert "footprinter_status" in content, "CLAUDE.md should reference the status MCP tool"
-        assert "fp" in content, "CLAUDE.md should reference the fp CLI"
-        assert "footprinter://context/" in content, "CLAUDE.md should point at the new context resources"
-
-
-# ---------------------------------------------------------------------------
 # TestMainEntryPoint — 2 tests
 # ---------------------------------------------------------------------------
 class TestMainEntryPoint:

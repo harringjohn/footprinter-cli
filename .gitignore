@@ -30,16 +30,12 @@ build/
 *.swo
 *~
 
-# Claude Code local settings
-.claude/settings.local.json
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Credentials
-*_token.json
-google_credentials.json
+# Claude Code
+.claude/
 
 # Configuration (use config.example.yaml as template)
 config/config.yaml
@@ -47,7 +43,3 @@ config/config.yaml
 # Logs
 *.log
 logs/
-
-# Chat exports
-chatgptchats/
-claudechats/
