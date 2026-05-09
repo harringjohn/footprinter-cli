@@ -323,12 +323,26 @@ class TestQueriesSubmoduleImports:
 
 
 # ---------------------------------------------------------------------------
-# 12. TestNoDeleteProject
+# 12. TestHardDeleteHelpers
 # ---------------------------------------------------------------------------
 
 
-class TestNoDeleteProject:
-    def test_db_projects_has_no_delete_project(self):
+class TestHardDeleteHelpers:
+    """Hard-delete helpers exist on db.projects and db.clients (FPR-1684).
+
+    Replaces the old "no delete_project" guardrail: the trichotomy work
+    splits soft-delete (fp upsert --status removed) from hard-delete
+    (fp delete → DELETE FROM ... blocked when dependents exist).
+    """
+
+    def test_db_projects_has_delete_project(self):
         import footprinter.db.projects as projects_mod
 
-        assert not hasattr(projects_mod, "delete_project")
+        assert hasattr(projects_mod, "delete_project")
+        assert callable(projects_mod.delete_project)
+
+    def test_db_clients_has_delete_client(self):
+        import footprinter.db.clients as clients_mod
+
+        assert hasattr(clients_mod, "delete_client")
+        assert callable(clients_mod.delete_client)
