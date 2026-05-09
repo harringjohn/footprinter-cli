@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
+from footprinter.ingest.file_scanner import _expand_home
 from footprinter.utils.time import utc_now_iso
 
 if TYPE_CHECKING:
@@ -56,6 +58,32 @@ class FolderIndexer:
         """
         self.config = config
         self.db = db
+        self.always_exclusions = self._compile_always_exclusions()
+
+    def _compile_always_exclusions(self) -> List[re.Pattern]:
+        """Compile 'always' exclusion patterns (apply to all folders).
+
+        Mirrors FileScanner._compile_always_exclusions so file and folder
+        scanners enforce the same config (FPR-1641).
+        """
+        patterns = []
+        exclusions = self.config.get("exclusions", {})
+
+        for pattern in exclusions.get("always", []):
+            patterns.append(re.compile(_expand_home(pattern)))
+
+        return patterns
+
+    def _dir_is_excluded(self, dirpath: str) -> bool:
+        """Return True when a hypothetical descendant of dirpath matches an always pattern.
+
+        Exclusion patterns are written against file paths and typically require
+        content after the directory name (e.g. ``.*/node_modules/.*``). Probing
+        a synthetic descendant — same trick as file_scanner.py:188-190 — lets us
+        prune the directory itself, not just its children.
+        """
+        probe = os.path.join(dirpath, "__probe__")
+        return any(p.search(probe) for p in self.always_exclusions)
 
     def should_skip_dir(self, dir_name: str) -> bool:
         """Check if directory should be skipped.
@@ -96,8 +124,20 @@ class FolderIndexer:
             logger.info(f"Scanning folders in {expanded_root}...")
 
             for dirpath, dirnames, _ in os.walk(expanded_root):
-                # Filter out directories to skip
-                dirnames[:] = [d for d in dirnames if not self.should_skip_dir(d)]
+                # Skip the current dir entirely (no emit, no descent) when it
+                # matches a config exclusion (FPR-1641).
+                if self._dir_is_excluded(dirpath):
+                    dirnames[:] = []
+                    continue
+
+                # Filter out child directories: by basename (SKIP_DIRS) and by
+                # config exclusion.
+                dirnames[:] = [
+                    d
+                    for d in dirnames
+                    if not self.should_skip_dir(d)
+                    and not self._dir_is_excluded(os.path.join(dirpath, d))
+                ]
 
                 # Get relative path from home
                 if dirpath.startswith(HOME):

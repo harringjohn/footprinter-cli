@@ -90,3 +90,59 @@ class TestSaveFoldersChangeDetection:
         result = indexer.save_folders([unchanged, changed, new])
 
         assert result == (1, 1, 1)
+
+
+class TestExclusionPatterns:
+    """FPR-1641: FolderIndexer must apply exclusions.always like FileScanner does."""
+
+    def test_compile_always_exclusions_from_config(self, folder_db):
+        """Indexer compiles exclusions.always patterns at construction."""
+        config = {
+            "exclusions": {
+                "always": [".*/node_modules/.*", "^~/\\.claude/.*"],
+            }
+        }
+        indexer = FolderIndexer(config, folder_db)
+
+        assert len(indexer.always_exclusions) == 2
+
+    def test_scan_prunes_excluded_subdirectory(self, folder_db, tmp_path):
+        """A directory matching exclusions.always is neither walked nor emitted."""
+        work = tmp_path / "Work"
+        (work / "proj" / "src").mkdir(parents=True)
+        (work / "proj" / "excluded_data" / "child").mkdir(parents=True)
+
+        config = {"exclusions": {"always": [".*/excluded_data/.*"]}}
+        indexer = FolderIndexer(config, folder_db)
+
+        folders = indexer.scan_folders([str(work)])
+        paths = [f["path"] for f in folders]
+
+        assert not any("excluded_data" in p for p in paths)
+        assert str(work / "proj" / "src") in paths
+
+    def test_scan_skips_root_when_root_matches_exclusion(self, folder_db, tmp_path):
+        """When the root path itself matches an exclusion, skip it and its descendants."""
+        target = tmp_path / ".claude" / "session-env" / "snap"
+        target.mkdir(parents=True)
+
+        # Pattern matches any path containing /.claude/session-env/
+        config = {"exclusions": {"always": [".*/\\.claude/session-env/.*"]}}
+        indexer = FolderIndexer(config, folder_db)
+
+        folders = indexer.scan_folders([str(tmp_path / ".claude" / "session-env")])
+        paths = [f["path"] for f in folders]
+
+        assert all("session-env" not in p for p in paths)
+
+    def test_scan_without_config_exclusions_still_works(self, folder_db, tmp_path):
+        """Empty/missing exclusions config doesn't break scan; SKIP_DIRS still applies."""
+        (tmp_path / "Work" / "proj").mkdir(parents=True)
+
+        indexer = FolderIndexer({}, folder_db)
+
+        assert indexer.always_exclusions == []
+
+        folders = indexer.scan_folders([str(tmp_path / "Work")])
+        paths = [f["path"] for f in folders]
+        assert str(tmp_path / "Work" / "proj") in paths
