@@ -262,10 +262,10 @@ class TestConsoleExport:
 
 
 class TestValidStatuses:
-    def test_contains_all_six_statuses(self):
+    def test_contains_all_statuses(self):
         from footprinter.cli._common import VALID_STATUSES
 
-        expected = {"active", "paused", "completed", "abandoned", "archived", "merged"}
+        expected = {"active", "paused", "completed", "abandoned", "archived"}
         assert VALID_STATUSES == expected
 
     def test_is_frozenset(self):

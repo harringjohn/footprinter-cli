@@ -320,7 +320,7 @@ def search_chats_keyword(
     Returns list of dicts with chat metadata including project/client joins.
     """
     params: list = []
-    where: list[str] = ["chat.status NOT IN ('removed', 'merged')"]
+    where: list[str] = ["chat.status != 'removed'"]
 
     if has_query:
         cond, cond_params = build_term_conditions(["chat.title"], list(terms))

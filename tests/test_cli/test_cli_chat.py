@@ -75,16 +75,6 @@ def chat_db_env(tmp_path, monkeypatch):
     # Seed chats
     _insert_chat(db.conn, id=1, external_id="conv-1", account="claude", title="First Chat", message_count=2)
     _insert_chat(db.conn, id=2, external_id="conv-2", account="chatgpt", title="Second Chat", message_count=1)
-    _insert_chat(
-        db.conn,
-        id=3,
-        external_id="conv-3",
-        account="claude",
-        title="Merged Chat",
-        message_count=0,
-        status="merged",
-        merged_into_id=1,
-    )
 
     # Seed messages
     _insert_message(db.conn, chat_id=1, role="user", content="Hello")
@@ -112,51 +102,10 @@ class TestListChats:
         assert len(chats) == 1
         assert chats[0]["title"] == "Active Chat"
 
-    def test_excludes_merged_by_default(self, chat_conn):
-        from footprinter.db.chats import list_chats
-
-        _insert_chat(chat_conn, id=1, external_id="c1", title="Active", message_count=1)
-        _insert_chat(
-            chat_conn, id=2, external_id="c2", title="Merged", message_count=0, status="merged", merged_into_id=1
-        )
-        chats = list_chats(chat_conn)["chats"]
-        assert len(chats) == 1
-        assert chats[0]["title"] == "Active"
-
-    def test_status_none_excludes_merged(self, chat_conn):
-        """Default (status=None) excludes merged chats."""
-        from footprinter.db.chats import list_chats
-
-        _insert_chat(chat_conn, id=1, external_id="c1", title="Active", message_count=1)
-        _insert_chat(
-            chat_conn, id=2, external_id="c2", title="Merged", message_count=0, status="merged", merged_into_id=1
-        )
-        chats = list_chats(chat_conn)["chats"]
-        assert len(chats) == 1
-        assert chats[0]["title"] == "Active"
-
-    def test_status_all_includes_merged(self, chat_conn):
-        """status="all" includes everything."""
-        from footprinter.db.chats import list_chats
-
-        _insert_chat(chat_conn, id=1, external_id="c1", title="Active", message_count=1)
-        _insert_chat(
-            chat_conn, id=2, external_id="c2", title="Merged", message_count=0, status="merged", merged_into_id=1
-        )
-        chats = list_chats(chat_conn, status="all")["chats"]
-        assert len(chats) == 2
-
-    def test_status_merged_only(self, chat_conn):
-        """status="merged" returns only merged chats."""
-        from footprinter.db.chats import list_chats
-
-        _insert_chat(chat_conn, id=1, external_id="c1", title="Active", message_count=1)
-        _insert_chat(
-            chat_conn, id=2, external_id="c2", title="Merged", message_count=0, status="merged", merged_into_id=1
-        )
-        chats = list_chats(chat_conn, status="merged")["chats"]
-        assert len(chats) == 1
-        assert chats[0]["title"] == "Merged"
+    def test_insert_merged_status_rejected(self, chat_conn):
+        """The chats CHECK constraint must reject status='merged'."""
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_chat(chat_conn, id=1, external_id="c1", title="Merged", status="merged")
 
     def test_filters_by_account(self, chat_conn):
         from footprinter.db.chats import list_chats
@@ -212,16 +161,13 @@ class TestListChats:
 
 
 class TestGetActiveChats:
-    """Tests for _get_active_chats() duplicate-detection helper."""
+    """Tests for _get_active_chats() helper."""
 
     def test_excludes_removed(self, chat_conn):
-        """Active chats only — merged and removed are excluded."""
+        """Active chats only — removed are excluded."""
         from footprinter.db.chats import _get_active_chats
 
         _insert_chat(chat_conn, id=1, external_id="c1", title="Active", message_count=1)
-        _insert_chat(
-            chat_conn, id=2, external_id="c2", title="Merged", message_count=0, status="merged", merged_into_id=1
-        )
         _insert_chat(chat_conn, id=3, external_id="c3", title="Removed", message_count=0, status="removed")
         chats = _get_active_chats(chat_conn)
         assert len(chats) == 1
@@ -304,11 +250,6 @@ class TestChatListCLI:
         output = stdout + stderr
         assert "First Chat" in output
         assert "Second Chat" in output
-
-    def test_excludes_merged(self, chat_db_env):
-        stdout, stderr, code = run_fp("view", "chats")
-        output = stdout + stderr
-        assert "Merged Chat" not in output
 
     def test_json_output(self, chat_db_env):
         stdout, _stderr, code = run_fp("view", "chats", "--json")
