@@ -1,10 +1,72 @@
 """Tests for footprinter.db.browser query functions.
 
 Verifies that list_visits() and get_visit() include
-mcp_view and mcp_read in returned dicts.
+mcp_view and mcp_read in returned dicts and that the
+standardized default_exclude=["removed"] filter is applied.
 """
 
 from footprinter.db.browser import get_visit, list_visits
+
+
+def _insert_visits_mixed_status(conn):
+    conn.execute(
+        """
+        INSERT INTO visits (id, url, title, visit_time, browser, status,
+                            mcp_view, mcp_read)
+        VALUES
+            (1, 'https://listed.example.com',   'Listed',   '2026-01-15 10:00:00',
+             'safari', 'listed',   'visible', 'allow'),
+            (2, 'https://unlisted.example.com', 'Unlisted', '2026-01-15 11:00:00',
+             'safari', 'unlisted', 'visible', 'allow'),
+            (3, 'https://removed.example.com',  'Removed',  '2026-01-15 12:00:00',
+             'safari', 'removed',  'visible', 'allow')
+        """
+    )
+    conn.commit()
+
+
+class TestListVisitsDefaultExclude:
+    """Default filter excludes ``removed`` only — unlisted is visible."""
+
+    def test_default_returns_listed_and_unlisted(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        result = list_visits(tool_db)
+        titles = {v["title"] for v in result["visits"]}
+        assert titles == {"Listed", "Unlisted"}
+
+    def test_default_excludes_removed(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        result = list_visits(tool_db)
+        titles = {v["title"] for v in result["visits"]}
+        assert "Removed" not in titles
+
+    def test_status_all_returns_everything(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        result = list_visits(tool_db, status="all")
+        titles = {v["title"] for v in result["visits"]}
+        assert titles == {"Listed", "Unlisted", "Removed"}
+
+    def test_explicit_status_filter(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        result = list_visits(tool_db, status="removed")
+        titles = [v["title"] for v in result["visits"]]
+        assert titles == ["Removed"]
+
+
+class TestGetVisitNoStatusFilter:
+    """Single-record getter returns regardless of status (matches get_email/get_chat)."""
+
+    def test_get_visit_returns_unlisted(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        visit = get_visit(tool_db, 2)
+        assert visit is not None
+        assert visit["title"] == "Unlisted"
+
+    def test_get_visit_returns_removed(self, tool_db):
+        _insert_visits_mixed_status(tool_db)
+        visit = get_visit(tool_db, 3)
+        assert visit is not None
+        assert visit["title"] == "Removed"
 
 
 class TestBrowserAccessColumns:
