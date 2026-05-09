@@ -63,6 +63,7 @@ Homepage = "https://github.com/swellcitygroup/footprinter"
 Repository = "https://github.com/swellcitygroup/footprinter"
 Issues = "https://github.com/swellcitygroup/footprinter/issues"
 Documentation = "https://github.com/swellcitygroup/footprinter/blob/main/README.md"
+Changelog = "https://github.com/swellcitygroup/footprinter/blob/main/CHANGELOG.md"
 
 [project.scripts]
 fp = "footprinter.cli:main"
