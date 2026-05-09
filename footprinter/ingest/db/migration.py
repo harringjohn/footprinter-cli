@@ -215,6 +215,39 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
     except sqlite3.OperationalError:
         pass  # already renamed or fresh install
 
+    # If both tables now exist, the rename above failed silently because
+    # `visits` was already created by an earlier partial init or by the
+    # schema's CREATE TABLE IF NOT EXISTS.  Merge any legacy rows into
+    # `visits` (INSERT OR IGNORE preserves existing visits on PRIMARY
+    # KEY collision) and drop the legacy table so the `browser_visits`
+    # guard above stops re-firing on every init (which, pre-fix,
+    # dropped chats_fts each session).
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='browser_visits'")
+    legacy_exists = cursor.fetchone() is not None
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='visits'")
+    canonical_exists = cursor.fetchone() is not None
+    if legacy_exists and canonical_exists:
+        # Column intersection from PRAGMA table_info handles schema drift;
+        # the names are from sqlite metadata, not user input, so the
+        # f-string interpolation below is safe.
+        #
+        # `id` is deliberately excluded: both tables AUTOINCREMENT from 1
+        # in the dual-table scenario, so carrying ids across would cause
+        # INSERT OR IGNORE to drop legacy rows on PK collision — silent
+        # data loss (the very thing this merge is meant to prevent).
+        # Letting `visits` assign fresh ids and relying on the
+        # `idx_visits_unique` UNIQUE INDEX on (url, visit_time, browser)
+        # as the conflict arbiter dedupes by the natural visit identity.
+        # Idempotent on retry: re-running the merge after a transient
+        # failure no-ops on already-merged rows via the same UNIQUE.
+        legacy_cols = {row[1] for row in cursor.execute("PRAGMA table_info(browser_visits)").fetchall()}
+        canonical_cols = {row[1] for row in cursor.execute("PRAGMA table_info(visits)").fetchall()}
+        shared_cols = sorted((legacy_cols & canonical_cols) - {"id"})
+        if shared_cols:
+            col_list = ", ".join(shared_cols)
+            cursor.execute(f"INSERT OR IGNORE INTO visits ({col_list}) SELECT {col_list} FROM browser_visits")
+        cursor.execute("DROP TABLE browser_visits")
+
     # clients/projects: add status_reason column
     for table in ("clients", "projects"):
         try:

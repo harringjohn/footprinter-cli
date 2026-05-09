@@ -690,7 +690,10 @@ def _print_phase(step: int, total: int, name: str):
 
 def _choose_preset() -> dict | None:
     """Offer preset profiles. Returns preset dict or None for full/custom."""
-    console.print("  [bold]Quick start[/bold] — common directories, no email, browser or chat history (add more later)")
+    console.print(
+        "  [bold]Quick start[/bold] — common directories "
+        f"({', '.join(QUICK_START_CANDIDATES)}), no email, browser or chat history (add more later)"
+    )
     console.print("  [bold]Full setup[/bold]  — choose everything yourself")
     choice = Prompt.ask("  Profile", choices=["quick", "full"], default="full")
     if choice == "quick":
@@ -712,11 +715,11 @@ def _choose_preset() -> dict | None:
 def run_interactive_wizard():
     """Run the full interactive setup flow.
 
-    Structured as 7 phases: Welcome, Data Sources, Content & Search,
-    Confirm & Write, Claude Desktop, Populate, Summary.
+    An unnumbered Welcome panel precedes 6 numbered steps: Data Sources,
+    Content & Search, Confirm & Write, Claude Desktop, Populate, Summary.
 
     Access policies are seeded silently inside Confirm & Write (no
-    visible phase). Claude Desktop runs before Populate so the user can
+    visible step). Claude Desktop runs before Populate so the user can
     restart Claude Desktop while indexing finishes.
 
     PromptCancelled and KeyboardInterrupt propagate to the caller
@@ -725,8 +728,8 @@ def run_interactive_wizard():
     """
     existing = _load_existing_config()
 
-    # Phase 1: Welcome
-    _print_phase(1, 7, "Welcome")
+    # Welcome is intentionally unnumbered — the panel itself is the welcome,
+    # so a "Step 1 of N" rule above it would double-announce the same screen.
     welcome_extra = ""
     if existing is not None:
         welcome_extra = (
@@ -734,32 +737,35 @@ def run_interactive_wizard():
             "  Current settings will be shown as defaults. Only sections\n"
             "  you explicitly change will be updated."
         )
+    fda_prereq = (
+        "  - Full Disk Access for Safari history (System Settings > Privacy & Security)\n"
+        if sys.platform == "darwin"
+        else ""
+    )
     console.print(
         Panel(
             "[bold]Footprinter Setup Wizard[/bold]\n\n"
-            "Footprinter indexes your files, browser history, emails, and chat\n"
-            "exports for AI-powered search and analysis.\n\n"
-            "[bold]Phases:[/bold]\n"
-            "  1. Welcome — what Footprinter does\n"
-            "  2. Data Sources — directories, browsers, chat exports, CSV import\n"
-            "  3. Content & Search — snippets and semantic search\n"
-            "  4. Confirm & Write — preview and save configuration\n"
-            "  5. Claude Desktop — MCP integration\n"
-            "  6. Populate — index your data\n"
-            "  7. Summary — results and next steps"
-            + (
-                "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
-                "  - Full Disk Access for Safari history (System Settings > Privacy & Security)"
-                if sys.platform == "darwin"
-                else ""
-            )
+            "Footprinter indexes your files, browser history, emails, "
+            "and chat exports for AI-powered search and analysis.\n\n"
+            "[bold]Steps:[/bold]\n"
+            "  1. Data Sources — directories, browsers, chat exports, CSV import\n"
+            "  2. Content & Search — snippets and semantic search\n"
+            "  3. Confirm & Write — preview and save configuration\n"
+            "  4. Claude Desktop — MCP integration\n"
+            "  5. Populate — index your data\n"
+            "  6. Summary — results and next steps"
+            "\n\n[dim]Prerequisites (optional, can add later):[/dim]\n"
+            + fda_prereq
+            + "  - Chat exports from Claude or ChatGPT (see reference/chat-export.md)\n"
+            "  - CSV import for clients/projects "
+            "(templates: reference/clients-template.csv, reference/projects-template.csv)"
             + welcome_extra,
             title="fp setup",
         )
     )
 
-    # Phase 2: Data Sources
-    _print_phase(2, 7, "Data Sources")
+    # Phase 1: Data Sources
+    _print_phase(1, 6, "Data Sources")
     if existing is not None:
         preset = None  # Skip preset choice in reconfigure mode
     else:
@@ -773,15 +779,15 @@ def run_interactive_wizard():
         connector_results = {}
         chat_export_path = collect_chat_export_path()
 
-    # Phase 3: Content & Search
-    _print_phase(3, 7, "Content & Search")
+    # Phase 2: Content & Search
+    _print_phase(2, 6, "Content & Search")
     if preset:
         semantic_answers = collect_vectorization_answers(directories=preset["directories"], quick=True)
     else:
         semantic_answers = collect_vectorization_answers(directories=answers["directories"], existing=existing)
 
-    # Phase 4: Confirm & Write
-    _print_phase(4, 7, "Confirm & Write")
+    # Phase 3: Confirm & Write
+    _print_phase(3, 6, "Confirm & Write")
     preview_config(
         answers,
         connectors=connector_results,
@@ -800,12 +806,12 @@ def run_interactive_wizard():
     # the helper is the only user-facing decision.
     seed_access_policies()
 
-    # Phase 5: Claude Desktop
-    _print_phase(5, 7, "Claude Desktop")
+    # Phase 4: Claude Desktop
+    _print_phase(4, 6, "Claude Desktop")
     mcp_configured = offer_setup_claude()
 
-    # Phase 6: Populate
-    _print_phase(6, 7, "Populate")
+    # Phase 5: Populate
+    _print_phase(5, 6, "Populate")
 
     # Truncate setup log before first orchestrator call
     setup_log = get_log_path()
@@ -842,8 +848,8 @@ def run_interactive_wizard():
     else:
         console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
 
-    # Phase 7: Summary
-    _print_phase(7, 7, "Summary")
+    # Phase 6: Summary
+    _print_phase(6, 6, "Summary")
     print_summary(
         chat_result=chat_result,
         mcp_configured=mcp_configured,
@@ -1180,14 +1186,14 @@ def collect_vectorization_answers(
     existing_excludes = existing_vec.get("exclude_patterns", [])
 
     console.print("\n[bold]Content Indexing[/bold]")
+    console.print("  [bold]1. Metadata only (default)[/bold]")
     console.print(
-        "  By default (Tier 0), Footprinter indexes metadata only —\n"
-        "  filenames, paths, timestamps, structure. Nothing is read from\n"
-        "  inside your files. The options below opt in to reading and\n"
-        "  storing file content for richer search.\n"
+        "  Footprinter indexes filenames, paths, timestamps, and structure.\n"
+        "  Nothing is read from inside your files. The option below opts in\n"
+        "  to reading and storing file content for richer search.\n"
     )
 
-    console.print("  [bold]Content snippets (Tier 1)[/bold]")
+    console.print("  [bold]2. Content snippets[/bold]")
     console.print(
         "  Reads each file during indexing and stores a short preview\n"
         "  (~1000 chars) in Footprinter's local database, so keyword\n"
@@ -1275,16 +1281,27 @@ def _collect_vectorization_full(
     existing_excludes: list[str],
     existing_semantic: dict,
 ) -> dict:
-    """Full-mode vectorization: enable decision first, then file types and exclusions.
+    """Full-mode vectorization: enable-files, file types, enable-chats, then scan.
 
-    Asking the enable Confirm before file-type/exclusion configuration avoids
-    the cost-up-front-then-decline anti-pattern where the user configures an
-    allowlist, watches a directory scan, and reviews exclusions before being
-    asked whether they want semantic search at all.
+    Question order: files → file types (only if files enabled) → chats. Asking
+    the file-enable Confirm before file-type configuration avoids the
+    cost-up-front-then-decline anti-pattern where the user configures an
+    allowlist before being asked whether they want file embedding at all.
+    File types belong with the file question, so they sit between files and
+    chats rather than after both Confirms.
     """
     file_default = existing_semantic.get("file_vectorization", False)
     chat_default = existing_semantic.get("chat_vectorization", False)
     file_vec = Confirm.ask("  Enable semantic search for files?", default=file_default)
+
+    if file_vec:
+        # File type allowlist — only asked when file vectorization is on
+        console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
+        keep_types = Confirm.ask("  Keep these file types?", default=True)
+        if not keep_types:
+            raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
+            file_types = [t.strip() for t in raw.split(",") if t.strip()]
+
     chat_vec = Confirm.ask("  Enable semantic search for chats?", default=chat_default)
 
     if not file_vec and not chat_vec:
@@ -1302,13 +1319,6 @@ def _collect_vectorization_full(
             "file_types": file_types,
             "exclude_patterns": list(existing_excludes),
         }
-
-    # File type allowlist — only asked when semantic is being enabled
-    console.print(f"\n  File types to embed: [bold]{', '.join(file_types)}[/bold]")
-    keep_types = Confirm.ask("  Keep these file types?", default=True)
-    if not keep_types:
-        raw = Prompt.ask("  Enter file types (comma-separated, e.g. .md, .txt, .py)")
-        file_types = [t.strip() for t in raw.split(",") if t.strip()]
 
     # Scan and show results
     scan = _scan_directories_for_vectorization(directories, file_types)
