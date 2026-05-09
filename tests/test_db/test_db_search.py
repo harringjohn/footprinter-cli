@@ -382,6 +382,13 @@ class TestEnrichChatVisibility:
         lookup = enrich_chat_visibility(db_conn, [999])
         assert 999 not in lookup
 
+    def test_excludes_removed(self, db_conn):
+        db_conn.execute("UPDATE chats SET status = 'removed' WHERE id = 2")
+        db_conn.commit()
+        lookup = enrich_chat_visibility(db_conn, [1, 2])
+        assert 1 in lookup
+        assert 2 not in lookup
+
 
 class TestEnrichFileMetadata:
     """Enrich file results with metadata from DB."""
