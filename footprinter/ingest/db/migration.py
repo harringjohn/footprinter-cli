@@ -255,6 +255,16 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
         except sqlite3.OperationalError:
             pass  # table doesn't exist yet or column already exists
 
+    # folders: add status_reason + status_changed_at (mirrors files pattern)
+    for col, col_def in [
+        ("status_reason", "TEXT"),
+        ("status_changed_at", "DATETIME"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE folders ADD COLUMN {col} {col_def}")
+        except sqlite3.OperationalError:
+            pass  # table doesn't exist yet or column already exists
+
     # ── standard entity column set ──
 
     # folders: add status, client_id, indexed_at

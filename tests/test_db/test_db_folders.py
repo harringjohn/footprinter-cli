@@ -59,8 +59,13 @@ class TestMarkRemovedFolders:
         assert len(removed) == 1
 
         cursor = tool_db.cursor()
-        cursor.execute("SELECT status FROM folders WHERE path = '/tmp/c'")
-        assert cursor.fetchone()["status"] == "removed"
+        cursor.execute(
+            "SELECT status, status_reason, status_changed_at FROM folders WHERE path = '/tmp/c'"
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "removed"
+        assert row["status_reason"] == "folder_deleted"
+        assert row["status_changed_at"] is not None
         for p in ["/tmp/a", "/tmp/b"]:
             cursor.execute("SELECT status FROM folders WHERE path = ?", (p,))
             assert cursor.fetchone()["status"] == "active"

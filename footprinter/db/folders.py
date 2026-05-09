@@ -554,8 +554,8 @@ def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[i
     """Mark local folders as 'removed' if path not in scanned_paths.
 
     Mirrors mark_removed_files() in db/files.py. The folders schema has no
-    status_reason or vectorization columns, so the update is a simple
-    status + updated_at bump.
+    vectorization columns, so the update is a status + status_reason +
+    status_changed_at + updated_at bump.
 
     Returns:
         List of folder IDs that were marked as removed
@@ -576,6 +576,8 @@ def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[i
                 f"""
                 UPDATE folders
                 SET status = 'removed',
+                    status_reason = 'folder_deleted',
+                    status_changed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id IN ({placeholders})
             """,
