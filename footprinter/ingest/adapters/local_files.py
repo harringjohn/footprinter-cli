@@ -27,7 +27,12 @@ class LocalFilesAdapter:
         """Index local files into files table."""
         try:
             last_run = None if ctx.full_mode else ctx.last_run
-            indexer = FileIndexer(config_path=ctx.config_path, last_run=last_run, db=db)
+            indexer = FileIndexer(
+                config_path=ctx.config_path,
+                last_run=last_run,
+                db=db,
+                scan_roots=ctx.scan_roots,
+            )
 
             # Build in-memory maps once before ingest
             registry = SourceRegistry(db.conn)

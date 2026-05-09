@@ -127,6 +127,36 @@ class TestLocalFoldersRun:
         MockScanner.assert_called_once_with(ctx.source_config, mock_db)
 
 
+class TestLocalFoldersScanRoots:
+    """ctx.scan_roots scopes the scan to an explicit list, bypassing config[directories]."""
+
+    @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
+    def test_scan_roots_overrides_config_directories(self, MockScanner, mock_db, sample_config):
+        from footprinter.ingest.adapters.local_folders import LocalFoldersAdapter
+
+        scanner_instance = MockScanner.return_value
+        scanner_instance.scan_folders.return_value = []
+        scanner_instance.save_folders.return_value = (0, 0, 0)
+
+        ctx = PipeContext(source_config=sample_config, scan_roots=["/tmp/only-this"])
+        LocalFoldersAdapter().run(mock_db, ctx)
+
+        scanner_instance.scan_folders.assert_called_once_with(["/tmp/only-this"])
+
+    @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
+    def test_no_scan_roots_falls_back_to_config(self, MockScanner, mock_db, sample_config):
+        from footprinter.ingest.adapters.local_folders import LocalFoldersAdapter
+
+        scanner_instance = MockScanner.return_value
+        scanner_instance.scan_folders.return_value = []
+        scanner_instance.save_folders.return_value = (0, 0, 0)
+
+        ctx = PipeContext(source_config=sample_config)
+        LocalFoldersAdapter().run(mock_db, ctx)
+
+        scanner_instance.scan_folders.assert_called_once_with(["~/Work", "~/Personal"])
+
+
 class TestLocalFoldersOnProgress:
     """_on_progress must not leak into FolderIndexer's source_config."""
 
@@ -298,7 +328,9 @@ class TestLocalFilesRun:
         adapter = LocalFilesAdapter()
         adapter.run(mock_db, ctx)
 
-        MockFileIndexer.assert_called_once_with(config_path="/tmp/config.yaml", last_run=None, db=mock_db)
+        MockFileIndexer.assert_called_once_with(
+            config_path="/tmp/config.yaml", last_run=None, db=mock_db, scan_roots=None
+        )
 
     @patch("footprinter.ingest.adapters.local_files.FileIndexer")
     def test_does_not_close_db(self, MockFileIndexer, mock_db, sample_config):
@@ -355,6 +387,7 @@ class TestLocalFilesLastRun:
             config_path="/tmp/config.yaml",
             last_run=cutoff,
             db=mock_db,
+            scan_roots=None,
         )
 
     @patch("footprinter.ingest.adapters.local_files.FileIndexer")
@@ -387,6 +420,61 @@ class TestLocalFilesLastRun:
             config_path="/tmp/config.yaml",
             last_run=None,
             db=mock_db,
+            scan_roots=None,
+        )
+
+
+class TestLocalFilesScanRoots:
+    """ctx.scan_roots is forwarded to FileIndexer to scope the scan."""
+
+    @patch("footprinter.ingest.adapters.local_files.FileIndexer")
+    def test_scan_roots_passed_to_file_indexer(self, MockFileIndexer, mock_db, sample_config):
+        from footprinter.ingest.adapters.local_files import LocalFilesAdapter
+
+        indexer_instance = MockFileIndexer.return_value
+        indexer_instance.index_files.return_value = {
+            "inserted": 0,
+            "updated": 0,
+            "skipped": 0,
+            "unchanged": 0,
+            "errors": 0,
+        }
+
+        ctx = PipeContext(
+            source_config=sample_config,
+            config_path="/tmp/config.yaml",
+            scan_roots=["/tmp/only-this"],
+        )
+        LocalFilesAdapter().run(mock_db, ctx)
+
+        MockFileIndexer.assert_called_once_with(
+            config_path="/tmp/config.yaml",
+            last_run=None,
+            db=mock_db,
+            scan_roots=["/tmp/only-this"],
+        )
+
+    @patch("footprinter.ingest.adapters.local_files.FileIndexer")
+    def test_no_scan_roots_passes_none(self, MockFileIndexer, mock_db, sample_config):
+        from footprinter.ingest.adapters.local_files import LocalFilesAdapter
+
+        indexer_instance = MockFileIndexer.return_value
+        indexer_instance.index_files.return_value = {
+            "inserted": 0,
+            "updated": 0,
+            "skipped": 0,
+            "unchanged": 0,
+            "errors": 0,
+        }
+
+        ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
+        LocalFilesAdapter().run(mock_db, ctx)
+
+        MockFileIndexer.assert_called_once_with(
+            config_path="/tmp/config.yaml",
+            last_run=None,
+            db=mock_db,
+            scan_roots=None,
         )
 
 

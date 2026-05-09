@@ -118,6 +118,7 @@ class IngestService:
         trigger: str | None = None,
         runner,
         on_progress=None,
+        scan_roots=None,
     ) -> dict:
         """Wrap a PipeRunner.run_pipe call with ingest tracking.
 
@@ -126,7 +127,12 @@ class IngestService:
         """
         ingest_id = self.begin(pipe, mode=mode, trigger=trigger)
         try:
-            result = runner.run_pipe(pipe, on_progress=on_progress, last_run=self.last_run(pipe))
+            result = runner.run_pipe(
+                pipe,
+                on_progress=on_progress,
+                last_run=self.last_run(pipe),
+                scan_roots=scan_roots,
+            )
             if result.get("status") == "error":
                 self.fail(ingest_id, error=result.get("error", "unknown"))
             else:
@@ -198,6 +204,7 @@ class IngestService:
         on_pipe_end: Optional[Callable] = None,
         on_progress: Optional[Callable] = None,
         pipe_hook: Optional[Callable] = None,
+        scan_roots: Optional[List[str]] = None,
     ) -> List[dict]:
         """Run multiple pipes with FTS optimization around the batch.
 
@@ -236,6 +243,7 @@ class IngestService:
                 on_pipe_end=on_pipe_end,
                 on_progress=on_progress,
                 pipe_hook=pipe_hook,
+                scan_roots=scan_roots,
             )
             if pipes:
                 try:
