@@ -253,15 +253,24 @@ def delete(
     *,
     role: Role = Role.ADMIN,
 ) -> dict | None:
-    """Soft-delete a client by setting status to 'removed'.
+    """Hard-delete a client row.
 
-    Returns ``{"id", "status"}`` on success, ``None`` if not found.
-    Raises PermissionError if role cannot write.
+    Returns ``{"id", "deleted": True}`` on success, ``None`` if not found.
+    Raises ``ValueError`` (with a per-table dependent count summary) when the
+    client has dependent records — callers must reassign or remove children
+    first. Soft-delete is available via ``fp upsert --status removed``.
+    Raises ``PermissionError`` if role cannot write.
     """
     if not role.can_write:
         raise PermissionError("Role does not permit write operations")
 
-    result = db.update_client(conn, client_id, status="removed", status_reason="cli:delete")
+    result = db.delete_client(conn, client_id)
     if result is None:
         return None
-    return {"id": client_id, "status": "removed"}
+    if result.get("blocked"):
+        deps = result["dependents"]
+        summary = ", ".join(f"{n} {table}" for table, n in deps.items() if n > 0)
+        raise ValueError(
+            f"client {client_id} has dependents ({summary}); reassign or delete them first"
+        )
+    return {"id": client_id, "deleted": True}

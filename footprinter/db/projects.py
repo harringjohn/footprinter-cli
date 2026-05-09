@@ -584,6 +584,45 @@ def update_project(conn: sqlite3.Connection, project_id: int, **fields) -> Optio
     return True
 
 
+PROJECT_DEPENDENT_TABLES = ("files", "folders", "chats", "emails", "visits")
+
+
+def count_project_dependents(conn: sqlite3.Connection, project_id: int) -> dict[str, int]:
+    """Return per-table counts of records with ``project_id = ?``.
+
+    Tables included: ``PROJECT_DEPENDENT_TABLES``. Zero counts are kept so
+    callers can render "0 files, 2 folders" verbatim.
+    """
+    counts: dict[str, int] = {}
+    for table in PROJECT_DEPENDENT_TABLES:
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        counts[table] = row[0] if row else 0
+    return counts
+
+
+def delete_project(conn: sqlite3.Connection, project_id: int) -> Optional[dict]:
+    """Hard-delete a project row.
+
+    Returns ``None`` if the project does not exist. If any dependent records
+    point at the project, returns ``{"blocked": True, "dependents": {...}}``
+    without deleting. Otherwise issues ``DELETE FROM projects`` and returns
+    ``{"deleted": True}``.
+    """
+    if not fetch_project(conn, project_id):
+        return None
+
+    counts = count_project_dependents(conn, project_id)
+    if any(c > 0 for c in counts.values()):
+        return {"blocked": True, "dependents": counts}
+
+    conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    conn.commit()
+    return {"deleted": True}
+
+
 def link_files(conn: sqlite3.Connection, project_id: int, file_ids: list[int]) -> Optional[dict]:
     """Link files to a project.
 
