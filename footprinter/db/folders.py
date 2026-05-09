@@ -3,7 +3,7 @@
 import sqlite3
 from typing import Any, Dict, List
 
-from footprinter.db.sql_utils import paginate, paginated_response
+from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
 
 def list_folders(
@@ -12,6 +12,7 @@ def list_folders(
     project_id: int | None = None,
     depth: int | None = None,
     include_hidden: bool = False,
+    status: "str | list[str] | None" = None,
     sort_by: str = "size",
     limit: int = 50,
     page: int = 1,
@@ -30,6 +31,11 @@ def list_folders(
         triggers descendant rollup via correlated subqueries.
     include_hidden : bool
         If False, exclude folders with hidden segments (``/.``).
+    status : str, list[str], or None
+        ``None`` → exclude removed (default).
+        ``"all"`` → no status filter.
+        Single string → exact match (``"active"``, ``"hidden"``, ``"removed"``).
+        List of strings → ``WHERE status IN (...)``.
     sort_by : str
         ``'size'`` (DESC), ``'files'`` (DESC), or ``'path'`` (ASC).
     limit : int
@@ -44,6 +50,13 @@ def list_folders(
     """
     where = "1=1"
     params: list = []
+
+    status_conds, status_params = build_status_filter(
+        status, column="folder.status", default_exclude=["removed"]
+    )
+    for cond in status_conds:
+        where += f" AND {cond}"
+    params.extend(status_params)
 
     if project_id is not None:
         if project_id == 0:
