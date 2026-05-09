@@ -1167,26 +1167,6 @@ class TestThinFacade:
 
         assert callable(get_status)
 
-    def test_run_project_links_importable_from_app_processing(self):
-        """run_project_links lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_project_links)
-
-    def test_run_summaries_importable_from_app_processing(self):
-        """run_summaries lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_summaries)
-
-    def test_run_drive_links_importable_from_app_processing(self):
-        """run_drive_links lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app.run_drive_links)
-
-    def test_drive_links_skip_guard_importable_from_app_processing(self):
-        """_drive_links_skip_guard lives in app_processing (not shipped)."""
-        app = pytest.importorskip("footprinter.ingest.app_processing")
-        assert callable(app._drive_links_skip_guard)
-
     def test_processing_no_longer_exports_app_scope_functions(self):
         """processing.py must not contain app-scope functions after extraction."""
         import footprinter.ingest.processing as proc

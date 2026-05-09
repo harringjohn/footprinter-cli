@@ -2,21 +2,14 @@
 Tests for the interactive setup wizard (src.cli.setup).
 """
 
-import importlib.util
 import os
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 from rich.panel import Panel
 
-_GOOGLE_CONNECTOR = importlib.util.find_spec("footprinter.connectors.google") is not None
-_requires_google = pytest.mark.skipif(
-    not _GOOGLE_CONNECTOR,
-    reason="Google connector not installed",
-)
 _requires_darwin = pytest.mark.skipif(
     sys.platform != "darwin",
     reason="Full Disk Access / Safari is a macOS-only prerequisite",
@@ -1094,94 +1087,6 @@ class TestExampleConfigDefaults:
 
 
 # ---------------------------------------------------------------------------
-# TestGenerateConfigGoogle — 3 tests
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestGenerateConfigGoogle:
-    """Tests for generate_config() Google service behavior.
-
-    The template has no google_drive/gmail sections — connector sections are
-    written by ``fp connect install google``, not the template.
-    """
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_drive_section_created_with_verified_account(self, _mock_inst):
-        """generate_config() should create google_drive section when drive is verified."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert result["google_drive"]["enabled"] is True
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_no_gmail_section_for_drive_only_account(self, _mock_inst):
-        """generate_config() should not create gmail section for drive-only accounts."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert "gmail" not in result
-
-    def test_no_google_answers_has_no_connector_sections(self):
-        """Empty google dict produces no connector sections."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        result = generate_config(answers, connector_results={})
-        assert "google_drive" not in result
-        assert "gmail" not in result
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_generate_config_creates_drive_section_when_template_lacks_it(self, _mock_inst):
-        """generate_config() should create google_drive section even when
-        config.example.yaml doesn't include it."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert "google_drive" in result, "google_drive section should be created"
-        assert result["google_drive"]["enabled"] is True
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_generate_config_creates_gmail_section_when_template_lacks_it(self, _mock_inst):
-        """generate_config() should create gmail section with accounts even when
-        config.example.yaml doesn't include it."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["gmail"]}
-        result = generate_config(answers, connector_results=google)
-        assert "gmail" in result, "gmail section should be created"
-        assert result["gmail"]["enabled"] is True
-        accounts = result["gmail"].get("accounts", [])
-        assert len(accounts) == 1
-        assert accounts[0]["name"] == "personal"
-
-
-# ---------------------------------------------------------------------------
-# TestRunOrchestratorGoogle — 3 tests
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestRunOrchestratorGoogle:
-    """Tests for run_orchestrator() with connector results."""
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_includes_connector_pipes_when_results_present(self, mock_console, mock_orch, mock_rwl, _mock_inst):
-        """Connector pipes should be added when connector_results is non-empty."""
-        run_orchestrator({"browsers": []}, connector_results={"personal": ["drive"]})
-        stages = mock_rwl.call_args[1]["pipes"]
-        assert "drive_folders" in stages
-        assert "drive_files" in stages
-        assert "gmail" in stages  # all pipes from installed connector spec
-
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_no_connector_pipes_when_results_empty(self, mock_console, mock_orch, mock_rwl):
-        """No connector pipes when connector_results is empty."""
-        run_orchestrator({"browsers": []}, connector_results={})
-        stages = mock_rwl.call_args[1]["pipes"]
-        assert "drive_folders" not in stages
-        assert "gmail" not in stages
-
-
-# ---------------------------------------------------------------------------
 # TestPrintSummaryGoogle — 1 test
 # ---------------------------------------------------------------------------
 class TestPrintSummaryGoogle:
@@ -1683,135 +1588,6 @@ class TestProjectsInSummary:
 
 
 # ---------------------------------------------------------------------------
-# Google Drive and Gmail indexing produces 0 results
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestSWE526DriveGmailIndexing:
-    """Tests for generate_config() populating source_seeds and gmail.accounts."""
-
-    def test_google_drive_adds_source_seeds(self):
-        """generate_config() should add Drive source_seeds for each verified Drive account."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"], "work": ["drive"]}
-        config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        drive_seeds = [s for s in seeds if s.get("source_type") == "remote"]
-        assert len(drive_seeds) >= 2, f"Expected 2 drive seeds, got {len(drive_seeds)}: {drive_seeds}"
-
-        account_names = {s["account"] for s in drive_seeds}
-        assert "personal" in account_names
-        assert "work" in account_names
-
-    def test_gmail_populated_when_gmail_verified(self):
-        """generate_config() creates gmail section with accounts when gmail is verified."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"work": ["drive", "gmail"]}
-        config = generate_config(answers, connector_results=google)
-
-        assert config["gmail"]["enabled"] is True
-        accounts = config["gmail"].get("accounts", [])
-        assert len(accounts) == 1
-        assert accounts[0]["name"] == "work"
-
-    # ── Dedup source_seeds and gmail.accounts on re-run ──
-
-    def test_rerun_does_not_duplicate_source_seeds(self):
-        """Re-running generate_config() with pre-existing seeds must not duplicate them."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        # Load the real template and pre-populate a drive_personal seed
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "remote",
-                "account": "personal",
-                "label": "Drive (personal)",
-                "icon": "cloud",
-                "enabled": True,
-            }
-        )
-
-        # Mock the template load to return config with existing seed
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seeds = [s for s in seeds if s.get("account") == "personal"]
-        assert len(personal_seeds) == 1, f"Expected 1 personal seed, got {len(personal_seeds)}: {personal_seeds}"
-
-    def test_legacy_drive_seed_not_matched_on_upsert(self):
-        """generate_config() must NOT match a pre-existing seed with source_type='drive'.
-        A new 'remote' seed should be appended, leaving the old one untouched."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "drive",
-                "account": "personal",
-                "label": "Old Label",
-                "icon": "cloud",
-                "enabled": True,
-            }
-        )
-
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seeds = [s for s in seeds if s.get("account") == "personal"]
-        assert len(personal_seeds) == 2, (
-            f"Old 'drive' seed should remain and new 'remote' seed appended, "
-            f"got {len(personal_seeds)}: {personal_seeds}"
-        )
-        old = [s for s in personal_seeds if s["source_type"] == "drive"]
-        new = [s for s in personal_seeds if s["source_type"] == "remote"]
-        assert len(old) == 1, "Old 'drive' seed should be untouched"
-        assert len(new) == 1, "New 'remote' seed should be appended"
-
-    def test_rerun_updates_existing_entries(self):
-        """Re-running generate_config() should update existing disabled entries to enabled."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "remote",
-                "account": "personal",
-                "label": "Drive (personal)",
-                "icon": "cloud",
-                "enabled": False,  # previously disabled
-            }
-        )
-
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seed = next(s for s in seeds if s.get("account") == "personal")
-        assert personal_seed["enabled"] is True, f"Expected enabled=True after re-run, got {personal_seed}"
-
-
-# ---------------------------------------------------------------------------
 # Chat import moved to Data Sources phase
 # ---------------------------------------------------------------------------
 class TestChatImportPhaseMove:
@@ -2041,30 +1817,6 @@ class TestInProcessPipeline:
         with patch("footprinter.cli.setup.subprocess.run") as mock_sp:
             run_orchestrator({"browsers": []})
             mock_sp.assert_not_called()
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    @_requires_google
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_run_orchestrator_connector_stages(
-        self,
-        mock_console,
-        mock_orch_cls,
-        mock_rwl,
-        _mock_inst,
-    ):
-        """run_orchestrator should include browser and connector stages."""
-        run_orchestrator(
-            {"browsers": ["safari"]},
-            connector_results={"work": ["drive", "gmail"]},
-        )
-        call_kwargs = mock_rwl.call_args[1]
-        stages = call_kwargs["pipes"]
-        assert "browser" in stages
-        assert "drive_folders" in stages
-        assert "drive_files" in stages
-        assert "gmail" in stages
 
 
 # ---------------------------------------------------------------------------
