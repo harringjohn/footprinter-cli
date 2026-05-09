@@ -126,9 +126,9 @@ All commands use the `fp` entry point.
 | `fp mcp` | MCP server and access policies |
 | `fp api` | Start the HTTP API server |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
-| `fp upsert` | Create or update records and assign relationships |
+| `fp upsert` | Create/update records, assign relationships, or soft-delete via `--status removed` |
 | `fp data` | Export data, generate templates, or import metadata corrections |
-| `fp delete` | Soft-delete a record |
+| `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp vectorize` | Manage per-record vectorization control |
 | `fp doctor` | Post-install health check (Python version, install location, FDA, MCP wiring) |
 | `fp uninstall` | Remove Footprinter — MCP entry, user data, package |

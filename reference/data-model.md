@@ -1031,7 +1031,7 @@ The same pattern applies to `name_source` on the `projects` table: user-set proj
 
 ### Status Model Lifecycle
 
-See [Status & Exclusion Model](#status--exclusion-model) for the full behavioral contract: valid values per table, soft-delete semantics, default query filtering (`WHERE status != 'removed'`), re-indexing implications, and `status_reason` codes.
+See [Status & Exclusion Model](#status--exclusion-model) for the full behavioral contract: valid values per table, soft-delete semantics (`fp upsert --status removed`), default query filtering via `build_status_filter()` with `default_exclude=["removed"]`, re-indexing implications, and `status_reason` codes.
 
 The three exclusion mechanisms operate at different pipeline stages — config exclusions prevent scanning, hidden-file detection marks records at index time, and manual status changes update records after the fact. All three converge on the `status` column as the single source of truth for record visibility.
 
@@ -1102,31 +1102,34 @@ Regex patterns in `config.yaml` under `exclusions.always` and `exclusions.sensit
 
 **Effect:** Invisible. No database record exists. No way to know the file was skipped without comparing disk to database.
 
-### 2. Hidden-file detection — scanned, marked hidden
+### 2. Dot-file detection — scanned, marked unlisted
 
-Files and directories starting with `.` (dot-files, dot-directories) are indexed into the database with `status='hidden'`. This logic is hardcoded in the file scanner's `_determine_file_status()` function — it is not config-driven.
+Files and directories starting with `.` (dot-files, dot-directories) are indexed into the database with `status='unlisted'`. This logic is hardcoded in the file scanner's `_determine_file_status()` function — it is not config-driven.
 
 **Use case:** IDE configuration (.vscode, .idea), version control metadata (.gitignore), and tool state (.claude/) that should be cataloged but excluded from connector-driven sync and some views.
 
-**Effect:** File is in the database with full metadata. The `status_reason` column records why: `dot_file` or `in_dot_folder`. Hidden files **are included** in the standard query filter `WHERE status != 'removed'` — only removed files are excluded by default.
+**Effect:** File is in the database with full metadata. The `status_reason` column records why: `dot_file` or `in_dot_folder`. Unlisted files **are included** in the standard query filter (default excludes only `removed`) — they appear alongside `listed` records by default.
 
 ### 3. Manual status changes — post-hoc updates
 
-Direct database updates or CLI commands that set `status` and `status_reason` on existing records. The `fp delete` command sets `status='removed'` with `status_reason='cli:delete'`.
+Direct database updates or CLI commands that set `status` and `status_reason` on existing records. Soft-delete is performed by `fp upsert <noun> <id> --status removed` (records stay in the database with `status='removed'`).
 
 **Use case:** Retroactively excluding content that was already indexed, soft-deleting entities via CLI.
 
 **Effect:** Same as mechanism 2 — the record stays in the database, status controls visibility.
 
+`fp delete`, by contrast, performs a hard `DELETE FROM` and refuses to run when dependent rows exist; see [Data scoping operations](interfaces.md#data-scoping-operations) for the full lifecycle.
+
 ### Default query filter
 
-The standard query filter is `WHERE status != 'removed'`. This means:
+The standard query filter excludes `removed` only and is built via `build_status_filter()` (see `footprinter/db/sql_utils.py`). This means:
 
-- `active` files — **included** in queries
-- `hidden` files — **included** in queries (they appear alongside active files)
-- `removed` files — **excluded** from queries
+- `listed` records — **included** in queries
+- `unlisted` records — **included** in queries (they appear alongside listed)
+- `removed` records — **excluded** from queries
+- Any new status values added in the future — **included** by default unless explicitly excluded (the exclude pattern is forward-compatible)
 
-MCP tools, CLI commands, and `fp ingest status` all use this filter. To query only active files, use `WHERE status = 'active'`.
+MCP tools, CLI commands, and `fp ingest status` all use this filter. To query only listed records, pass `status="listed"`; to bypass filtering, pass `status="all"`.
 
 ### `status_reason` column
 
@@ -1136,7 +1139,7 @@ Records why an entity has its current status. Present on `files`, `clients`, and
 |-------|---------|--------|
 | `dot_file` | File name starts with `.` | `_determine_file_status()` |
 | `in_dot_folder` | File is inside a dot-directory | `_determine_file_status()` |
-| `cli:delete` | Soft-deleted via `fp delete` | Service layer `delete()` |
+| `cli:delete` | Soft-deleted via `fp upsert --status removed` | CLI / service `upsert()` |
 | `regeneratable_cache` | node_modules, venv, build artifacts | Manual |
 | `system_excluded` | Downloads, app caches, system dotfiles | Manual |
 | `removed_from_disk` | File no longer exists locally | Manual |
