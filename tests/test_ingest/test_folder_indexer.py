@@ -121,19 +121,20 @@ class TestExclusionPatterns:
         assert not any("excluded_data" in p for p in paths)
         assert str(work / "proj" / "src") in paths
 
-    def test_scan_skips_root_when_root_matches_exclusion(self, folder_db, tmp_path):
-        """When the root path itself matches an exclusion, skip it and its descendants."""
-        target = tmp_path / ".claude" / "session-env" / "snap"
-        target.mkdir(parents=True)
+    def test_scan_prunes_excluded_descendant_under_configured_root(self, folder_db, tmp_path):
+        """Excluded subtree beneath a configured root is pruned (the FPR-1641 case)."""
+        claude = tmp_path / ".claude"
+        (claude / "session-env" / "snap").mkdir(parents=True)
+        (claude / "projects" / "keep").mkdir(parents=True)
 
-        # Pattern matches any path containing /.claude/session-env/
         config = {"exclusions": {"always": [".*/\\.claude/session-env/.*"]}}
         indexer = FolderIndexer(config, folder_db)
 
-        folders = indexer.scan_folders([str(tmp_path / ".claude" / "session-env")])
+        folders = indexer.scan_folders([str(claude)])
         paths = [f["path"] for f in folders]
 
         assert all("session-env" not in p for p in paths)
+        assert str(claude / "projects" / "keep") in paths
 
     def test_scan_without_config_exclusions_still_works(self, folder_db, tmp_path):
         """Empty/missing exclusions config doesn't break scan; SKIP_DIRS still applies."""
@@ -142,7 +143,55 @@ class TestExclusionPatterns:
         indexer = FolderIndexer({}, folder_db)
 
         assert indexer.always_exclusions == []
+        assert indexer.sensitive_exclusions == []
 
         folders = indexer.scan_folders([str(tmp_path / "Work")])
         paths = [f["path"] for f in folders]
         assert str(tmp_path / "Work" / "proj") in paths
+
+    def test_sensitive_pattern_excludes_folder(self, folder_db, tmp_path):
+        """Folders matching exclusions.sensitive (e.g. ~/.ssh) are pruned."""
+        (tmp_path / ".ssh" / "keys").mkdir(parents=True)
+        (tmp_path / "Work" / "proj").mkdir(parents=True)
+
+        config = {"exclusions": {"sensitive": [".*/\\.ssh/.*"]}}
+        indexer = FolderIndexer(config, folder_db)
+
+        folders = indexer.scan_folders([str(tmp_path)])
+        paths = [f["path"] for f in folders]
+
+        assert all(".ssh" not in p for p in paths)
+        assert str(tmp_path / "Work" / "proj") in paths
+
+    def test_sensitive_not_overridable_by_configured_root(self, folder_db, tmp_path):
+        """Even when a sensitive-matching path is configured as a root, it stays excluded.
+
+        Mirrors FileScanner intent at file_scanner.py:99-100: sensitive
+        patterns must never be dropped by the opt-in mechanism.
+        """
+        (tmp_path / ".aws" / "creds").mkdir(parents=True)
+
+        config = {"exclusions": {"sensitive": [".*/\\.aws/.*"]}}
+        indexer = FolderIndexer(config, folder_db)
+
+        folders = indexer.scan_folders([str(tmp_path / ".aws")])
+        paths = [f["path"] for f in folders]
+
+        assert paths == []
+
+    def test_configured_root_opts_past_always_pattern(self, folder_db, tmp_path):
+        """Explicitly configuring a root drops always-patterns that would zero it out.
+
+        Mirrors FileScanner.scan_directory at file_scanner.py:182-196.
+        """
+        sample = tmp_path / "Downloads" / "sample-data"
+        (sample / "src").mkdir(parents=True)
+
+        config = {"exclusions": {"always": [".*/Downloads/.*"]}}
+        indexer = FolderIndexer(config, folder_db)
+
+        folders = indexer.scan_folders([str(sample)])
+        paths = [f["path"] for f in folders]
+
+        assert str(sample) in paths
+        assert str(sample / "src") in paths

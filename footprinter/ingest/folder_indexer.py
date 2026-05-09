@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import sqlite3
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from footprinter.ingest.file_scanner import _expand_home
 from footprinter.utils.time import utc_now_iso
@@ -59,6 +59,7 @@ class FolderIndexer:
         self.config = config
         self.db = db
         self.always_exclusions = self._compile_always_exclusions()
+        self.sensitive_exclusions = self._compile_sensitive_exclusions()
 
     def _compile_always_exclusions(self) -> List[re.Pattern]:
         """Compile 'always' exclusion patterns (apply to all folders).
@@ -66,24 +67,40 @@ class FolderIndexer:
         Mirrors FileScanner._compile_always_exclusions so file and folder
         scanners enforce the same config (FPR-1641).
         """
-        patterns = []
+        return self._compile_pattern_list("always")
+
+    def _compile_sensitive_exclusions(self) -> List[re.Pattern]:
+        """Compile 'sensitive' exclusion patterns (credentials — never overridable).
+
+        Mirrors FileScanner._compile_sensitive_exclusions. These apply even
+        when a directory is explicitly configured as a scan root.
+        """
+        return self._compile_pattern_list("sensitive")
+
+    def _compile_pattern_list(self, key: str) -> List[re.Pattern]:
         exclusions = self.config.get("exclusions", {})
+        return [re.compile(_expand_home(p)) for p in exclusions.get(key, [])]
 
-        for pattern in exclusions.get("always", []):
-            patterns.append(re.compile(_expand_home(pattern)))
-
-        return patterns
-
-    def _dir_is_excluded(self, dirpath: str) -> bool:
-        """Return True when a hypothetical descendant of dirpath matches an always pattern.
+    def _dir_is_excluded(
+        self,
+        dirpath: str,
+        active_always: Optional[List[re.Pattern]] = None,
+    ) -> bool:
+        """Return True when a hypothetical descendant of dirpath matches a config pattern.
 
         Exclusion patterns are written against file paths and typically require
         content after the directory name (e.g. ``.*/node_modules/.*``). Probing
         a synthetic descendant — same trick as file_scanner.py:188-190 — lets us
         prune the directory itself, not just its children.
+
+        ``active_always`` lets the caller substitute a relaxed always-list for
+        an opted-in scan root. Sensitive patterns are never overridable.
         """
+        always = self.always_exclusions if active_always is None else active_always
         probe = os.path.join(dirpath, "__probe__")
-        return any(p.search(probe) for p in self.always_exclusions)
+        return any(p.search(probe) for p in always) or any(
+            p.search(probe) for p in self.sensitive_exclusions
+        )
 
     def should_skip_dir(self, dir_name: str) -> bool:
         """Check if directory should be skipped.
@@ -121,12 +138,26 @@ class FolderIndexer:
                 logger.warning(f"Root path does not exist: {expanded_root}")
                 continue
 
+            # Explicitly configuring a directory opts in: drop any always-patterns
+            # that would exclude every descendant of this root (mirrors
+            # file_scanner.py:182-196). Sensitive patterns are never dropped.
+            probe_descendant = os.path.join(expanded_root, "__probe__")
+            active_always = [
+                p for p in self.always_exclusions if not p.search(probe_descendant)
+            ]
+            deactivated = len(self.always_exclusions) - len(active_always)
+            if deactivated:
+                logger.info(
+                    f"Configured root {expanded_root} opts in past "
+                    f"{deactivated} always-exclusion pattern(s) for this scan"
+                )
+
             logger.info(f"Scanning folders in {expanded_root}...")
 
             for dirpath, dirnames, _ in os.walk(expanded_root):
                 # Skip the current dir entirely (no emit, no descent) when it
                 # matches a config exclusion (FPR-1641).
-                if self._dir_is_excluded(dirpath):
+                if self._dir_is_excluded(dirpath, active_always=active_always):
                     dirnames[:] = []
                     continue
 
@@ -136,7 +167,9 @@ class FolderIndexer:
                     d
                     for d in dirnames
                     if not self.should_skip_dir(d)
-                    and not self._dir_is_excluded(os.path.join(dirpath, d))
+                    and not self._dir_is_excluded(
+                        os.path.join(dirpath, d), active_always=active_always
+                    )
                 ]
 
                 # Get relative path from home
