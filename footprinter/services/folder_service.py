@@ -58,7 +58,7 @@ def list_(
     *,
     role: Role = Role.ADMIN,
     project_id: Optional[int] = None,
-    depth: Optional[int] = 1,
+    depth: Optional[int] = None,
     include_hidden: bool = False,
     sort_by: str = "size",
     limit: int = 50,

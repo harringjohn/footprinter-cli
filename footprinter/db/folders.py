@@ -10,7 +10,7 @@ def list_folders(
     conn: sqlite3.Connection,
     *,
     project_id: int | None = None,
-    depth: int | None = 1,
+    depth: int | None = None,
     include_hidden: bool = False,
     sort_by: str = "size",
     limit: int = 50,
@@ -25,7 +25,9 @@ def list_folders(
         Filter by project. ``0`` means 'no project assigned'.
     depth : int or None
         Max path depth (segments below home).
-        ``1`` = top-level + one below, ``None`` = no filter.
+        ``None`` = no filter (default; reads pre-computed counts and scales
+        to 100k+ folders). ``1`` = top-level + one below; any explicit value
+        triggers descendant rollup via correlated subqueries.
     include_hidden : bool
         If False, exclude folders with hidden segments (``/.``).
     sort_by : str
@@ -57,17 +59,19 @@ def list_folders(
     if not include_hidden:
         where += " AND folder.relative_path NOT LIKE '%/.%'"
 
-    # When depth filtering is active, roll up descendant files.
-    # Otherwise count only direct children (folder_id match).
+    # When depth is explicitly set, roll up descendant files via correlated
+    # subqueries. When depth is None, read the pre-computed columns the
+    # folders table already maintains (refresh_folder_counts), which scales
+    # to 100k+ rows where the per-row subqueries do not.
     if depth is not None:
-        count_sub = """(
+        count_expr = """(
             SELECT COUNT(*) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
             WHERE file.status != 'removed'
               AND (ancestor_folder.id = folder_cte.id
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
-        sum_sub = """(
+        size_expr = """(
             SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
             WHERE file.status != 'removed'
@@ -75,14 +79,8 @@ def list_folders(
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
     else:
-        count_sub = """(
-            SELECT COUNT(*) FROM files file
-            WHERE file.folder_id = folder_cte.id AND file.status != 'removed'
-        )"""
-        sum_sub = """(
-            SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-            WHERE file.folder_id = folder_cte.id AND file.status != 'removed'
-        )"""
+        count_expr = "COALESCE(folder_cte.direct_file_count, 0)"
+        size_expr = "COALESCE(folder_cte.total_size_bytes, 0)"
 
     sort_map = {
         "size": "live_size_bytes DESC",
@@ -95,15 +93,16 @@ def list_folders(
     fetch_sql = f"""
         WITH folder_cte AS (
             SELECT folder.id, folder.path, folder.relative_path, folder.name, folder.source,
-                   folder.project_id, folder.mcp_view, folder.mcp_read
+                   folder.project_id, folder.mcp_view, folder.mcp_read,
+                   folder.direct_file_count, folder.total_size_bytes
             FROM folders folder
             WHERE {where}
         )
         SELECT
             folder_cte.*,
             project.project_name AS project_name,
-            {count_sub} AS live_file_count,
-            {sum_sub} AS live_size_bytes
+            {count_expr} AS live_file_count,
+            {size_expr} AS live_size_bytes
         FROM folder_cte
         LEFT JOIN projects project ON folder_cte.project_id = project.id
         ORDER BY {order_clause}
