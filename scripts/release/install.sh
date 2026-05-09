@@ -39,6 +39,4 @@ echo ""
 ensure_python_3_11
 pip_install_footprinter ""
 verify_fp
-
-echo ""
-echo "==> Done! Run 'fp setup' to get started."
+# verify_fp owns the closing message — see UAT F3 in _install_common.sh.
