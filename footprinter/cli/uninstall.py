@@ -19,7 +19,12 @@ from rich.rule import Rule
 
 from footprinter.cli._common import FORMATTER, console
 from footprinter.cli._prompt import SafeConfirm
-from footprinter.cli.mcp_setup import detect_config_path, unregister_mcp_server
+from footprinter.cli.mcp_setup import (
+    detect_config_path,
+    has_footprinter_entry,
+    read_mcp_config,
+    unregister_mcp_server,
+)
 from footprinter.paths import get_home
 
 PACKAGE_NAME = "footprinter-cli"
@@ -78,20 +83,18 @@ def _phase_mcp() -> bool:
     if path is None:
         console.print("[yellow]Unsupported platform — skipping MCP config cleanup.[/yellow]")
         return False
-    if not path.exists():
-        console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
-        return False
 
     try:
-        with open(path, "r") as f:
-            existing = json.load(f)
+        config = read_mcp_config(path)
     except (json.JSONDecodeError, OSError) as e:
         console.print(f"  [red]Cannot read existing config:[/red] {e}")
         return False
 
-    # Hand-edited configs may have ``"mcpServers": null`` — coerce to {}.
-    servers = existing.get("mcpServers") or {}
-    if "footprinter" not in servers:
+    if config is None:
+        console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
+        return False
+
+    if not has_footprinter_entry(config):
         console.print(f"  [dim]No footprinter entry in {path} — nothing to remove.[/dim]")
         return False
 

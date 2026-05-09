@@ -101,6 +101,61 @@ class TestUnregisterMcpServer:
 
 
 # ---------------------------------------------------------------------------
+# Shared helpers — read_mcp_config / has_footprinter_entry
+# ---------------------------------------------------------------------------
+
+
+class TestReadMcpConfig:
+    """read_mcp_config returns parsed dict, None for missing, raises on parse error."""
+
+    def test_returns_none_when_file_missing(self, tmp_path):
+        from footprinter.cli.mcp_setup import read_mcp_config
+
+        assert read_mcp_config(tmp_path / "missing.json") is None
+
+    def test_returns_parsed_dict(self, tmp_path):
+        from footprinter.cli.mcp_setup import read_mcp_config
+
+        cfg = tmp_path / "claude_desktop_config.json"
+        cfg.write_text(json.dumps({"mcpServers": {"footprinter": {"command": "fp"}}}))
+        result = read_mcp_config(cfg)
+        assert result == {"mcpServers": {"footprinter": {"command": "fp"}}}
+
+    def test_raises_on_invalid_json(self, tmp_path):
+        from footprinter.cli.mcp_setup import read_mcp_config
+
+        cfg = tmp_path / "bad.json"
+        cfg.write_text("{not valid json")
+        with pytest.raises(json.JSONDecodeError):
+            read_mcp_config(cfg)
+
+
+class TestHasFootprinterEntry:
+    """has_footprinter_entry detects the footprinter key under mcpServers."""
+
+    def test_present(self):
+        from footprinter.cli.mcp_setup import has_footprinter_entry
+
+        assert has_footprinter_entry({"mcpServers": {"footprinter": {}}}) is True
+
+    def test_absent_other_servers(self):
+        from footprinter.cli.mcp_setup import has_footprinter_entry
+
+        assert has_footprinter_entry({"mcpServers": {"other": {}}}) is False
+
+    def test_no_mcp_servers_key(self):
+        from footprinter.cli.mcp_setup import has_footprinter_entry
+
+        assert has_footprinter_entry({}) is False
+
+    def test_null_mcp_servers_coerced(self):
+        from footprinter.cli.mcp_setup import has_footprinter_entry
+
+        # Hand-edited configs may have ``"mcpServers": null``.
+        assert has_footprinter_entry({"mcpServers": None}) is False
+
+
+# ---------------------------------------------------------------------------
 # Router registration
 # ---------------------------------------------------------------------------
 
