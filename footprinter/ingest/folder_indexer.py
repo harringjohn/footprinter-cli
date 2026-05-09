@@ -202,7 +202,9 @@ class FolderIndexer:
             folders: List of folder dictionaries
 
         Returns:
-            Tuple of (inserted_count, updated_count, unchanged_count)
+            Tuple of (inserted_count, updated_count, unchanged_count).
+            A row that was previously status='removed' and is reactivated by
+            this scan is bucketed as ``inserted`` (mirrors files.py:609-612).
         """
         cursor = self.db.conn.cursor()
 
@@ -233,13 +235,16 @@ class FolderIndexer:
                 # Fast path: skip the UPDATE when persistent identifying fields
                 # are unchanged. scanned_at is regenerated each scan, so it's
                 # excluded from the comparison. Mirrors files.py:486-508.
+                # A status='removed' row never takes the fast path — reactivation
+                # is itself a meaningful change (FPR-1708).
                 cursor.execute(
-                    "SELECT relative_path, name, parent_path FROM folders WHERE path = ?",
+                    "SELECT relative_path, name, parent_path, status FROM folders WHERE path = ?",
                     (folder["path"],),
                 )
                 existing = cursor.fetchone()
                 if (
                     existing is not None
+                    and existing["status"] != "removed"
                     and existing["relative_path"] == folder["relative_path"]
                     and existing["name"] == folder["name"]
                     and existing["parent_path"] == folder["parent_path"]
@@ -254,7 +259,12 @@ class FolderIndexer:
                         name = ?,
                         parent_path = ?,
                         scanned_at = ?,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = CURRENT_TIMESTAMP,
+                        status = CASE WHEN status = 'removed' THEN 'active' ELSE status END,
+                        status_reason = CASE WHEN status = 'removed' THEN NULL ELSE status_reason END,
+                        status_changed_at = CASE WHEN status = 'removed'
+                                                 THEN CURRENT_TIMESTAMP
+                                                 ELSE status_changed_at END
                     WHERE path = ?
                 """,
                     (
@@ -265,7 +275,10 @@ class FolderIndexer:
                         folder["path"],
                     ),
                 )
-                updated += 1
+                if existing is not None and existing["status"] == "removed":
+                    inserted += 1
+                else:
+                    updated += 1
 
         self.db.conn.commit()
 

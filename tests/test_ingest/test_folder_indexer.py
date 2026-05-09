@@ -92,6 +92,98 @@ class TestSaveFoldersChangeDetection:
         assert result == (1, 1, 1)
 
 
+class TestSaveFoldersReactivation:
+    """FPR-1708: save_folders() must reactivate folders previously marked status='removed'.
+
+    Mirrors the file indexer's CASE-based reactivation in db/files.py:575-588.
+    """
+
+    def _mark_removed(self, db, path, reason="scan:missing"):
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE folders
+            SET status = 'removed',
+                status_reason = ?,
+                status_changed_at = '2020-01-01T00:00:00Z'
+            WHERE path = ?
+            """,
+            (reason, path),
+        )
+        db.conn.commit()
+
+    def _status_row(self, db, path):
+        cursor = db.conn.cursor()
+        cursor.execute(
+            "SELECT status, status_reason, status_changed_at FROM folders WHERE path = ?",
+            (path,),
+        )
+        return cursor.fetchone()
+
+    def test_removed_folder_reactivates_on_resave(self, folder_db):
+        """A status='removed' folder rescanned with identical fields flips back to active."""
+        indexer = FolderIndexer({}, folder_db)
+        folder = _make_folder("/Users/test/Work/proj")
+        indexer.save_folders([folder])
+        self._mark_removed(folder_db, folder["path"])
+        before = self._status_row(folder_db, folder["path"])
+        assert before["status"] == "removed"
+
+        indexer.save_folders([folder])
+
+        after = self._status_row(folder_db, folder["path"])
+        assert after["status"] == "active"
+        assert after["status_reason"] is None
+        assert after["status_changed_at"] != before["status_changed_at"]
+
+    def test_reactivated_folder_counted_as_inserted(self, folder_db):
+        """Reactivation buckets as 'inserted' (matches files.py:609-612 convention)."""
+        indexer = FolderIndexer({}, folder_db)
+        folder = _make_folder("/Users/test/Work/proj")
+        indexer.save_folders([folder])
+        self._mark_removed(folder_db, folder["path"])
+
+        result = indexer.save_folders([folder])
+
+        assert result == (1, 0, 0)
+
+    def test_active_folder_unaffected_by_reactivation_logic(self, folder_db):
+        """An already-active folder retains its status_reason; CASE only fires on removed rows."""
+        indexer = FolderIndexer({}, folder_db)
+        folder = _make_folder("/Users/test/Work/proj")
+        indexer.save_folders([folder])
+        cursor = folder_db.conn.cursor()
+        cursor.execute(
+            "UPDATE folders SET status_reason = 'scan:hidden' WHERE path = ?",
+            (folder["path"],),
+        )
+        folder_db.conn.commit()
+
+        result = indexer.save_folders([folder])
+
+        after = self._status_row(folder_db, folder["path"])
+        assert result == (0, 0, 1)
+        assert after["status"] == "active"
+        assert after["status_reason"] == "scan:hidden"
+
+    def test_removed_folder_with_field_change_also_reactivates(self, folder_db):
+        """Reactivation + rename in the same UPDATE: rename lands and counter is 'inserted'."""
+        indexer = FolderIndexer({}, folder_db)
+        folder = _make_folder("/Users/test/Work/proj", name="proj")
+        indexer.save_folders([folder])
+        self._mark_removed(folder_db, folder["path"])
+
+        renamed = dict(folder, name="renamed")
+        result = indexer.save_folders([renamed])
+
+        after_status = self._status_row(folder_db, folder["path"])
+        after_name = _row(folder_db, folder["path"])["name"]
+        assert result == (1, 0, 0)
+        assert after_status["status"] == "active"
+        assert after_status["status_reason"] is None
+        assert after_name == "renamed"
+
+
 class TestExclusionPatterns:
     """FPR-1641: FolderIndexer must apply exclusions.always like FileScanner does."""
 
