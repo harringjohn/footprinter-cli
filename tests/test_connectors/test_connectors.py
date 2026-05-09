@@ -807,16 +807,6 @@ class TestConfigUtils:
             assert result["source_type"] == source_type
 
 
-# ---------------------------------------------------------------------------
-# RED 7 — connectors/google/ placeholder package exists
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# RED 8 — apply_google_config() consolidates config mutation
-# ---------------------------------------------------------------------------
-
-
 class TestRegisterConnectorSchema:
     def _make_db(self, tables: dict[str, str]) -> "sqlite3.Connection":
         """Create an in-memory DB with the given tables (name → column SQL)."""
@@ -958,11 +948,6 @@ class TestAccountLabel:
         from footprinter.connectors.config_utils import account_label
 
         assert account_label({"name": "work", "label": ""}) == "work"
-
-
-# ---------------------------------------------------------------------------
-# RED — apply_google_config() label propagation
-# ---------------------------------------------------------------------------
 
 
 class TestStatusDictLabel:

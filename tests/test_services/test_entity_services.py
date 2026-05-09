@@ -580,6 +580,15 @@ class TestFileService:
         assert result is not None
         assert result["project_id"] == 1
 
+    def test_assign_stamps_assignment_source(self, service_db):
+        """assign() writes assignment_source='user' when the column exists."""
+        service_db.execute("ALTER TABLE files ADD COLUMN assignment_source TEXT")
+        file_service.assign(service_db, 1, project_id=1)
+        row = service_db.execute(
+            "SELECT assignment_source FROM files WHERE id = 1"
+        ).fetchone()
+        assert row["assignment_source"] == "user"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Folder service
