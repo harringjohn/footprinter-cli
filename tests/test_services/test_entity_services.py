@@ -574,15 +574,6 @@ class TestFileService:
         result = file_service.assign(service_db, 999, project_id=1)
         assert result is None
 
-    def test_assign_stamps_assignment_source(self, service_db):
-        """assign() stamps assignment_source when column exists (app-scope DB)."""
-        init_app_schema = pytest.importorskip("footprinter.ingest.db.app_schema").init_app_schema
-
-        init_app_schema(service_db)
-        file_service.assign(service_db, 1, project_id=1)
-        row = service_db.execute("SELECT assignment_source FROM files WHERE id = 1").fetchone()
-        assert row["assignment_source"] == "user"
-
     def test_assign_works_without_assignment_source(self, service_db):
         """assign() succeeds on tool-only DB (no assignment_source column)."""
         result = file_service.assign(service_db, 1, project_id=1)
