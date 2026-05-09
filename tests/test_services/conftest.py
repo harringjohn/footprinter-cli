@@ -38,9 +38,9 @@ def service_db(tmp_path):
         """INSERT INTO clients (id, name, slug, client_type, path_pattern, status,
                                 mcp_view, mcp_read)
            VALUES
-               (1, 'Acme Corp',    'acme',   'external', '~/Work/clients/acme/',   'active', 'visible', 'allow'),
-               (2, 'Hidden Inc',   'hidden', 'external', '~/Work/clients/hidden/', 'active', 'hidden',  'allow'),
-               (3, 'Opaque Ltd',   'opaque', 'internal', '~/Work/clients/opaque/', 'active', 'opaque',  'allow')"""
+               (1, 'Acme Corp',    'acme',   'external', '~/Work/clients/acme/',   'listed', 'visible', 'allow'),
+               (2, 'Hidden Inc',   'hidden', 'external', '~/Work/clients/hidden/', 'listed', 'hidden',  'allow'),
+               (3, 'Opaque Ltd',   'opaque', 'internal', '~/Work/clients/opaque/', 'listed', 'opaque',  'allow')"""
     )
 
     # -- Projects: visible(1), hidden(2), opaque(3) -------------------------
@@ -48,9 +48,9 @@ def service_db(tmp_path):
         """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                  client_id, mcp_view, mcp_read)
            VALUES
-               (1, 'Alpha',   'python', '/Users/u/Work/alpha',   'active', 1, 'visible', 'allow'),
-               (2, 'Beta',    'node',   '/Users/u/Work/beta',    'active', 2, 'hidden',  'allow'),
-               (3, 'Gamma',   'rust',   '/Users/u/Work/gamma',   'active', 3, 'opaque',  'allow')"""
+               (1, 'Alpha',   'python', '/Users/u/Work/alpha',   'listed', 1, 'visible', 'allow'),
+               (2, 'Beta',    'node',   '/Users/u/Work/beta',    'listed', 2, 'hidden',  'allow'),
+               (3, 'Gamma',   'rust',   '/Users/u/Work/gamma',   'listed', 3, 'opaque',  'allow')"""
     )
 
     # -- Folders: visible(1), hidden(2), opaque(3) --------------------------
@@ -68,11 +68,11 @@ def service_db(tmp_path):
         """INSERT INTO files (id, name, path, source, status, content_type, size_bytes,
                               project_id, folder_id, mcp_view, mcp_read)
            VALUES
-               (1, 'readme.md', '/Users/u/Work/alpha/readme.md', 'local', 'active', 'markdown', 1000,
+               (1, 'readme.md', '/Users/u/Work/alpha/readme.md', 'local', 'listed', 'markdown', 1000,
                 1, 1, 'visible', 'allow'),
-               (2, 'secret.py', '/Users/u/Work/beta/secret.py',  'local', 'active', 'python',   2000,
+               (2, 'secret.py', '/Users/u/Work/beta/secret.py',  'local', 'listed', 'python',   2000,
                 2, 2, 'hidden',  'allow'),
-               (3, 'config.rs', '/Users/u/Work/gamma/config.rs', 'local', 'active', 'rust',     500,
+               (3, 'config.rs', '/Users/u/Work/gamma/config.rs', 'local', 'listed', 'rust',     500,
                 3, 3, 'opaque',  'deny')"""
     )
 
@@ -102,11 +102,11 @@ def service_db(tmp_path):
                                subject, received_at, status, mcp_view, mcp_read)
            VALUES
                (1, 'msg-1', 'thr-1', 'work',     'alice@example.com',
-                'Visible Email', '2026-01-15T10:00:00', 'active', 'visible', 'allow'),
+                'Visible Email', '2026-01-15T10:00:00', 'listed', 'visible', 'allow'),
                (2, 'msg-2', 'thr-2', 'work',     'bob@example.com',
-                'Hidden Email',  '2026-01-15T11:00:00', 'active', 'hidden',  'allow'),
+                'Hidden Email',  '2026-01-15T11:00:00', 'listed', 'hidden',  'allow'),
                (3, 'msg-3', 'thr-3', 'personal', 'eve@example.com',
-                'Opaque Email',  '2026-01-15T12:00:00', 'active', 'opaque',  'deny')"""
+                'Opaque Email',  '2026-01-15T12:00:00', 'listed', 'opaque',  'deny')"""
     )
 
     # -- Visits: visible(1), hidden(2), opaque(3) ---------------------------

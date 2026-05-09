@@ -11,7 +11,7 @@ from footprinter.db.sql_utils import build_status_filter, paginate, paginated_re
 from footprinter.utils.text import _make_slug
 
 VALID_CLIENT_TYPES = {"external", "internal", "personal"}
-VALID_STATUSES = frozenset({"active", "hidden", "removed"})
+VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 
 def list_clients(
@@ -43,7 +43,7 @@ def list_clients(
     status_conds, status_params = build_status_filter(
         status,
         column="client.status",
-        default_include=["active"],
+        default_include=["listed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
@@ -57,7 +57,7 @@ def list_clients(
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
-                WHERE project.client_id = client.id AND file.status != 'removed') as file_count
+                WHERE project.client_id = client.id AND file.status = 'listed') as file_count
         FROM clients client
         {where}
         ORDER BY client.name
@@ -161,7 +161,7 @@ def create_client(conn: sqlite3.Connection, *, name: str, client_type: str, path
     try:
         cursor.execute(
             """INSERT INTO clients (name, slug, client_type, path_pattern, status)
-               VALUES (?, ?, ?, ?, 'active')""",
+               VALUES (?, ?, ?, ?, 'listed')""",
             (name, slug, client_type, path_pattern),
         )
         conn.commit()
@@ -218,7 +218,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor.execute(
         """SELECT COUNT(*) as cnt FROM files file
            JOIN projects project ON file.project_id = project.id
-           WHERE project.client_id = ? AND file.status != 'removed'""",
+           WHERE project.client_id = ? AND file.status = 'listed'""",
         (client_id,),
     )
     client["file_count"] = cursor.fetchone()["cnt"]
@@ -265,7 +265,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
             FROM files
-            WHERE project_id IN ({ph}) AND status != 'removed' {_nh}""",
+            WHERE project_id IN ({ph}) AND status = 'listed' {_nh}""",
         project_ids,
     ).fetchone()
 
@@ -275,15 +275,15 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     ).fetchone()[0]
 
     email_count = conn.execute(
-        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
+        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
         project_ids,
     ).fetchone()[0]
     chat_count = conn.execute(
-        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
+        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
         project_ids,
     ).fetchone()[0]
     browser_count = conn.execute(
-        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
+        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
         project_ids,
     ).fetchone()[0]
 

@@ -23,12 +23,12 @@ def get_status(db_path: str = None) -> Dict:
 
     status = {}
 
-    # Files - status != 'removed' means active files (includes
-    # 'active' and 'hidden')
+    # Files - status = 'listed' means default-visible files
+    # (excludes 'unlisted' dotfiles and 'removed' tombstones)
     cursor.execute(
         """
         SELECT source, COUNT(*) as count, SUM(size_bytes) as size
-        FROM files WHERE status != 'removed'
+        FROM files WHERE status = 'listed'
         GROUP BY source
     """
     )
@@ -40,14 +40,14 @@ def get_status(db_path: str = None) -> Dict:
         for row in cursor.fetchall()
     }
 
-    cursor.execute("SELECT COUNT(*) FROM files WHERE status != 'removed'")
+    cursor.execute("SELECT COUNT(*) FROM files WHERE status = 'listed'")
     status["files_total"] = cursor.fetchone()[0]
 
     # Indexed folders
     cursor.execute(
         """
         SELECT source, COUNT(*) as count
-        FROM folders WHERE status != 'removed'
+        FROM folders WHERE status = 'listed'
         GROUP BY source
     """
     )
@@ -80,9 +80,9 @@ def get_status(db_path: str = None) -> Dict:
         try:
             where = "mcp_view IS NOT NULL"
             if table == "files":
-                where += " AND status != 'removed'"
+                where += " AND status = 'listed'"
             stamped = cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}").fetchone()[0]
-            total_where = "status != 'removed'" if table == "files" else "1=1"
+            total_where = "status = 'listed'" if table == "files" else "1=1"
             total = cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {total_where}").fetchone()[0]
             access[table] = {"stamped": stamped, "total": total}
         except sqlite3.OperationalError:

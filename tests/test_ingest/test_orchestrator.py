@@ -166,7 +166,7 @@ class TestOrchestratorStatus:
                 id INTEGER PRIMARY KEY,
                 source TEXT,
                 size_bytes INTEGER,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'listed'
             )
         """)
         cursor.execute("CREATE TABLE folders (id INTEGER PRIMARY KEY, source TEXT)")
@@ -614,12 +614,12 @@ class TestRebuildVectorsFileEnabled:
         conn.execute(
             "CREATE TABLE messages (id INTEGER PRIMARY KEY, chat_id INTEGER, "
             "role TEXT, content TEXT, created_at TEXT, vectorized_at TEXT, metadata TEXT, "
-            "status TEXT DEFAULT 'active', vectorized_chunks INTEGER)"
+            "status TEXT DEFAULT 'listed', vectorized_chunks INTEGER)"
         )
         conn.execute(
             "CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT, "
             "summary TEXT, account TEXT, created_at TEXT, message_count INTEGER, "
-            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'active')"
+            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'listed')"
         )
         if extra_sql:
             for sql in extra_sql:
@@ -656,7 +656,7 @@ class TestRebuildVectorsFileEnabled:
         test_file.write_text("test content")
 
         conn = self._make_db(
-            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'active')"]
+            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'listed')"]
         )
 
         mock_extractor = MagicMock()
@@ -675,7 +675,7 @@ class TestRebuildVectorsFileEnabled:
         test_file.write_text("test content")
 
         conn = self._make_db(
-            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'active')"]
+            extra_sql=[f"INSERT INTO files (id, path, source, status) VALUES (1, '{test_file}', 'local', 'listed')"]
         )
 
         mock_extractor = MagicMock()

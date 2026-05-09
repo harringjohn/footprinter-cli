@@ -42,7 +42,7 @@ def _set_vectorize_flag(
     cursor = conn.execute(
         f"UPDATE {table} SET metadata = json_set("
         f"COALESCE(metadata, '{{}}'), '$.vectorize', ?) "
-        f"WHERE id IN ({placeholders}) AND status != 'removed'",
+        f"WHERE id IN ({placeholders}) AND status = 'listed'",
         [value, *ids],
     )
     conn.commit()
@@ -112,9 +112,9 @@ def _handle_review(
             excluded = conn.execute(
                 f"SELECT COUNT(*) as n FROM {table_name} "
                 f"WHERE json_extract(metadata, '$.vectorize') = 0 "
-                f"AND status != 'removed'"
+                f"AND status = 'listed'"
             ).fetchone()["n"]
-            total = conn.execute(f"SELECT COUNT(*) as n FROM {table_name} WHERE status != 'removed'").fetchone()["n"]
+            total = conn.execute(f"SELECT COUNT(*) as n FROM {table_name} WHERE status = 'listed'").fetchone()["n"]
             table.add_row(entity_name, str(excluded), str(total))
 
     out.print(table)

@@ -1053,13 +1053,13 @@ class TestIncrementalMode:
         mock_vs_cls, mock_inst = _mock_store()
         # Mix of new, modified, and removed files
         files = [
-            {"id": 1, "file_path": "/new.txt", "vectorized_at": None, "modified_at": "2026-04-01", "status": "active"},
+            {"id": 1, "file_path": "/new.txt", "vectorized_at": None, "modified_at": "2026-04-01", "status": "listed"},
             {
                 "id": 2,
                 "file_path": "/modified.txt",
                 "vectorized_at": "2026-03-01",
                 "modified_at": "2026-04-01",
-                "status": "active",
+                "status": "listed",
             },
             {
                 "id": 3,
@@ -1318,7 +1318,7 @@ class TestSyncVerifyChunkCounting:
             if "vectorized_chunks = 0" in sql:
                 # If the query filters removed messages, no stale rows.
                 # If it doesn't filter, 3 removed messages look stale.
-                if "status != 'removed'" in sql:
+                if "status = 'listed'" in sql:
                     return [0]
                 return [3]
             if "COUNT" in sql and "chats" in sql:
@@ -1411,7 +1411,7 @@ def _make_preflight_db(files=None, messages=None, chats=None):
             (
                 f["id"],
                 f.get("source", "local"),
-                f.get("status", "active"),
+                f.get("status", "listed"),
                 f.get("path", f"/tmp/f{f['id']}"),
                 f.get("metadata"),
                 f.get("vectorized_at"),
@@ -1425,7 +1425,7 @@ def _make_preflight_db(files=None, messages=None, chats=None):
                 m["id"],
                 m.get("chat_id", 1),
                 m.get("content", "hello"),
-                m.get("status", "active"),
+                m.get("status", "listed"),
                 m.get("metadata"),
                 m.get("vectorized_at"),
             ),
@@ -1433,7 +1433,7 @@ def _make_preflight_db(files=None, messages=None, chats=None):
     for c in chats or []:
         conn.execute(
             "INSERT INTO chats (id, status, metadata, metadata_vectorized_at) VALUES (?, ?, ?, ?)",
-            (c["id"], c.get("status", "active"), c.get("metadata"), c.get("metadata_vectorized_at")),
+            (c["id"], c.get("status", "listed"), c.get("metadata"), c.get("metadata_vectorized_at")),
         )
     conn.commit()
     return conn

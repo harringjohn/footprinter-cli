@@ -69,6 +69,6 @@ class LocalFilesAdapter:
     def status(self, db: Any) -> Dict[str, Any]:
         """Return local file count."""
         cursor = db.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM files WHERE source = 'local' AND status != 'removed'")
+        cursor.execute("SELECT COUNT(*) FROM files WHERE source = 'local' AND status = 'listed'")
         count = cursor.fetchone()[0]
         return {"local_files": count}

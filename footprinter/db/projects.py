@@ -9,17 +9,7 @@ from typing import Optional
 
 from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
-VALID_STATUSES = frozenset(
-    {
-        "active",
-        "hidden",
-        "removed",
-        "paused",
-        "completed",
-        "abandoned",
-        "archived",
-    }
-)
+VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +104,7 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
                   SUM(CASE WHEN source = 'local' THEN 1 ELSE 0 END) as local_count,
                   SUM(CASE WHEN source != 'local' THEN 1 ELSE 0 END) as drive_count
            FROM files
-           WHERE project_id = ? AND status != 'removed' {_not_hidden}""",
+           WHERE project_id = ? AND status = 'listed' {_not_hidden}""",
         (project_id,),
     ).fetchone()
 
@@ -122,7 +112,7 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     types = conn.execute(
         f"""SELECT content_type, COUNT(*) as count
            FROM files
-           WHERE project_id = ? AND status != 'removed' AND content_type IS NOT NULL
+           WHERE project_id = ? AND status = 'listed' AND content_type IS NOT NULL
                  {_not_hidden}
            GROUP BY content_type ORDER BY count DESC LIMIT 10""",
         (project_id,),
@@ -140,15 +130,15 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
 
     # Entity counts (hidden excluded)
     email_count = conn.execute(
-        f"SELECT COUNT(*) FROM emails WHERE project_id = ? AND status != 'removed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM emails WHERE project_id = ? AND status = 'listed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
     chat_count = conn.execute(
-        f"SELECT COUNT(*) FROM chats WHERE project_id = ? AND status != 'removed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM chats WHERE project_id = ? AND status = 'listed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
     browser_count = conn.execute(
-        f"SELECT COUNT(*) FROM visits WHERE project_id = ? AND status != 'removed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM visits WHERE project_id = ? AND status = 'listed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
 
@@ -258,7 +248,7 @@ def list_projects(
     cursor.execute(
         """
         SELECT project_id, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
-        FROM files WHERE status != 'removed'
+        FROM files WHERE status = 'listed'
         GROUP BY project_id
         """
     )
@@ -276,7 +266,7 @@ def list_projects(
                 "type": row["project_type"] or "unknown",
                 "client": row["client"] or "",
                 "root_path": row["root_path"] or "",
-                "status": row["status"] or "active",
+                "status": row["status"] or "listed",
                 "description": row["description"] or "",
                 "github_url": row["github_url"] or "",
                 "file_count": stats["count"],
@@ -305,7 +295,7 @@ def list_projects(
         """
         SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
         FROM files
-        WHERE project_id IS NULL AND status != 'removed'
+        WHERE project_id IS NULL AND status = 'listed'
         """
     )
     no_project_stats = cursor.fetchone()
@@ -338,9 +328,9 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
                project.created_at, project.updated_at,
                client.name AS client_name,
                (SELECT COUNT(*) FROM files file
-                WHERE file.project_id = project.id AND file.status != 'removed') AS file_count,
+                WHERE file.project_id = project.id AND file.status = 'listed') AS file_count,
                (SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-                WHERE file.project_id = project.id AND file.status != 'removed') AS total_size,
+                WHERE file.project_id = project.id AND file.status = 'listed') AS total_size,
                (SELECT COUNT(*) FROM folders folder
                 WHERE folder.project_id = project.id) AS folder_count
         FROM projects project
@@ -360,7 +350,7 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
         "type": row["project_type"] or "unknown",
         "client": row["client_name"] or row["client"] or "",
         "root_path": root_path,
-        "status": row["status"] or "active",
+        "status": row["status"] or "listed",
         "description": row["description"] or "",
         "github_url": row["github_url"] or "",
         "file_count": row["file_count"],
@@ -415,12 +405,12 @@ def list_project_files(
     order_sql = "DESC" if order == "desc" else "ASC"
     sort_col = sort if sort in ("modified_at", "name", "size_bytes", "content_type") else "modified_at"
 
-    count_sql = "SELECT COUNT(*) FROM files WHERE project_id = ? AND status != 'removed'"
+    count_sql = "SELECT COUNT(*) FROM files WHERE project_id = ? AND status = 'listed'"
     fetch_sql = f"""
         SELECT id, source, account, name, path, content_type, size_bytes,
                modified_at, status, status_reason
         FROM files
-        WHERE project_id = ? AND status != 'removed'
+        WHERE project_id = ? AND status = 'listed'
         ORDER BY {sort_col} {order_sql}
         LIMIT ? OFFSET ?
     """
@@ -440,7 +430,7 @@ def list_project_files(
                 "modified_at": row["modified_at"] or "",
                 "source": row["source"],
                 "account": row["account"] or "",
-                "status": row["status"] or "active",
+                "status": row["status"] or "listed",
                 "status_reason": row["status_reason"] or "",
             }
         )
@@ -450,7 +440,7 @@ def list_project_files(
         "name": project["project_name"],
         "type": project["project_type"],
         "root_path": root_path,
-        "status": project["status"] or "active",
+        "status": project["status"] or "listed",
         "description": project["description"] or "",
         "client": project["client"] or "",
     }
@@ -471,7 +461,7 @@ def create_project(
     project_type: Optional[str] = None,
     description: Optional[str] = None,
     github_url: Optional[str] = None,
-    status: str = "active",
+    status: str = "listed",
 ) -> dict:
     """Create a new project.
 
@@ -606,7 +596,7 @@ def link_files(conn: sqlite3.Connection, project_id: int, file_ids: list[int]) -
     cursor = conn.cursor()
     placeholders = ",".join("?" * len(file_ids))
     cursor.execute(
-        f"UPDATE files SET project_id = ? WHERE id IN ({placeholders}) AND status != 'removed'",
+        f"UPDATE files SET project_id = ? WHERE id IN ({placeholders}) AND status = 'listed'",
         [project_id] + list(file_ids),
     )
     conn.commit()

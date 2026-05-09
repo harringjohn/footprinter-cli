@@ -68,7 +68,7 @@ class TestMarkRemovedFolders:
         assert row["status_changed_at"] is not None
         for p in ["/tmp/a", "/tmp/b"]:
             cursor.execute("SELECT status FROM folders WHERE path = ?", (p,))
-            assert cursor.fetchone()["status"] == "active"
+            assert cursor.fetchone()["status"] == "listed"
 
     def test_returns_removed_ids(self, tool_db):
         ids = [self._insert_local(tool_db, p) for p in ["/tmp/x", "/tmp/y", "/tmp/z"]]
@@ -83,7 +83,7 @@ class TestMarkRemovedFolders:
         assert result == []
         cursor = tool_db.cursor()
         cursor.execute("SELECT status FROM folders WHERE id = ?", (fid,))
-        assert cursor.fetchone()["status"] == "active"
+        assert cursor.fetchone()["status"] == "listed"
 
     def test_only_targets_local_source(self, tool_db):
         local_id = self._insert_local(tool_db, "/tmp/local-only")
@@ -106,7 +106,7 @@ class TestMarkRemovedFolders:
 
         cursor = tool_db.cursor()
         cursor.execute("SELECT status FROM folders WHERE id = ?", (drive_id,))
-        assert cursor.fetchone()["status"] == "active"
+        assert cursor.fetchone()["status"] == "listed"
 
     def test_skips_already_removed(self, tool_db):
         fid = self._insert_local(tool_db, "/tmp/old-phantom")
@@ -122,7 +122,7 @@ class TestMarkRemovedFolders:
 class TestListFoldersStatusFilter:
     """list_folders() must exclude status='removed' by default and accept overrides (FPR-1707)."""
 
-    def _insert(self, conn, path: str, status: str = "active") -> int:
+    def _insert(self, conn, path: str, status: str = "listed") -> int:
         cursor = conn.execute(
             """INSERT INTO folders (path, relative_path, name, source, status)
                VALUES (?, ?, ?, 'local', ?)""",
@@ -132,7 +132,7 @@ class TestListFoldersStatusFilter:
         return cursor.lastrowid
 
     def test_default_excludes_removed(self, tool_db):
-        active_id = self._insert(tool_db, "/tmp/keep", status="active")
+        active_id = self._insert(tool_db, "/tmp/keep", status="listed")
         self._insert(tool_db, "/tmp/gone", status="removed")
 
         result = list_folders(tool_db)
@@ -141,27 +141,27 @@ class TestListFoldersStatusFilter:
         assert ids == [active_id]
 
     def test_status_all_includes_removed(self, tool_db):
-        self._insert(tool_db, "/tmp/keep", status="active")
+        self._insert(tool_db, "/tmp/keep", status="listed")
         self._insert(tool_db, "/tmp/gone", status="removed")
 
         result = list_folders(tool_db, status="all")
         assert result["pagination"]["total"] == 2
 
     def test_status_exact_match(self, tool_db):
-        self._insert(tool_db, "/tmp/keep", status="active")
+        self._insert(tool_db, "/tmp/keep", status="listed")
         removed_id = self._insert(tool_db, "/tmp/gone", status="removed")
-        self._insert(tool_db, "/tmp/quiet", status="hidden")
+        self._insert(tool_db, "/tmp/quiet", status="unlisted")
 
         result = list_folders(tool_db, status="removed")
         assert result["pagination"]["total"] == 1
         assert result["folders"][0]["id"] == removed_id
 
     def test_status_list(self, tool_db):
-        active_id = self._insert(tool_db, "/tmp/keep", status="active")
+        active_id = self._insert(tool_db, "/tmp/keep", status="listed")
         self._insert(tool_db, "/tmp/gone", status="removed")
-        hidden_id = self._insert(tool_db, "/tmp/quiet", status="hidden")
+        hidden_id = self._insert(tool_db, "/tmp/quiet", status="unlisted")
 
-        result = list_folders(tool_db, status=["active", "hidden"])
+        result = list_folders(tool_db, status=["listed", "unlisted"])
         assert result["pagination"]["total"] == 2
         assert {f["id"] for f in result["folders"]} == {active_id, hidden_id}
 
@@ -233,7 +233,7 @@ class TestListFoldersDepthExplicitStillRollsUp:
 
         tool_db.execute(
             """INSERT INTO files (name, path, source, status, size_bytes, folder_id)
-               VALUES ('a.py', '/Users/u/Work/alpha/src/lib/a.py', 'local', 'active', 123, ?)""",
+               VALUES ('a.py', '/Users/u/Work/alpha/src/lib/a.py', 'local', 'listed', 123, ?)""",
             (deep_id,),
         )
         tool_db.commit()

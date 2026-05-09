@@ -40,13 +40,13 @@ class TestDefaultInclude:
         conds, params = build_status_filter(
             None,
             column="client.status",
-            default_include=["active"],
+            default_include=["listed"],
         )
         assert len(conds) == 1
         assert "IN" in conds[0]
         assert "NOT" not in conds[0]
         assert "client.status" in conds[0]
-        assert params == ["active"]
+        assert params == ["listed"]
 
 
 class TestNoDefaults:
@@ -77,7 +77,7 @@ class TestAllBypass:
         conds, params = build_status_filter(
             "all",
             column="client.status",
-            default_include=["active"],
+            default_include=["listed"],
         )
         assert conds == []
         assert params == []
@@ -109,13 +109,13 @@ class TestListInClause:
 
     def test_multiple_values(self):
         conds, params = build_status_filter(
-            ["active", "hidden"],
+            ["listed", "hidden"],
             column="file.status",
         )
         assert len(conds) == 1
         assert "IN" in conds[0]
         assert "?,?" in conds[0]
-        assert params == ["active", "hidden"]
+        assert params == ["listed", "hidden"]
 
     def test_empty_list_no_filter(self):
         conds, params = build_status_filter(
@@ -134,7 +134,7 @@ class TestBothDefaultsProvided:
             None,
             column="x.status",
             default_exclude=["removed"],
-            default_include=["active"],
+            default_include=["listed"],
         )
         assert len(conds) == 1
         assert "NOT IN" in conds[0]
@@ -165,7 +165,7 @@ class TestColumnName:
 
     def test_column_in_exact_match(self):
         conds, _ = build_status_filter(
-            "active",
+            "listed",
             column="y.status",
         )
         assert "y.status" in conds[0]

@@ -259,7 +259,7 @@ class TestFoldersRemove:
         home = os.path.expanduser("~")
         conn = sqlite3.connect(str(test_db))
         conn.execute(
-            "INSERT INTO files (source, name, path, size_bytes, status) VALUES ('local', 'test.py', ?, 100, 'active')",
+            "INSERT INTO files (source, name, path, size_bytes, status) VALUES ('local', 'test.py', ?, 100, 'listed')",
             (f"{home}/Work/test.py",),
         )
         conn.commit()

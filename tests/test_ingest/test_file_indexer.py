@@ -410,7 +410,7 @@ class TestInsertFileResultType:
             "SELECT status, status_reason, modified_at, size_bytes FROM files WHERE id = ?",
             (original_id,),
         ).fetchone()
-        assert row["status"] == "active", f"Status should be 'active', got '{row['status']}'"
+        assert row["status"] == "listed", f"Status should be 'listed', got '{row['status']}'"
         assert row["modified_at"] == "2025-06-15"
 
 

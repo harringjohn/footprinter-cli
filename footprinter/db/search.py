@@ -74,7 +74,7 @@ def search_files(
         JOIN files_fts fts ON fts.rowid = file.id
         WHERE files_fts MATCH ?
         AND file.{source_filter}
-        AND file.status != 'removed'
+        AND file.status = 'listed'
         {ext_clause}
     """
     fetch_sql = f"""
@@ -84,7 +84,7 @@ def search_files(
         JOIN files_fts fts ON fts.rowid = file.id
         WHERE files_fts MATCH ?
         AND file.{source_filter}
-        AND file.status != 'removed'
+        AND file.status = 'listed'
         {ext_clause}
         ORDER BY fts.rank
         LIMIT ? OFFSET ?
@@ -139,7 +139,7 @@ def search_files_keyword(
     Returns list of dicts with file metadata including project/client joins.
     """
     params: list = []
-    where = ["file.status != 'removed'"]
+    where = ["file.status = 'listed'"]
     fts_join = ""
 
     if has_query:
@@ -231,7 +231,7 @@ def search_emails_keyword(
     Returns list of dicts with email metadata including project/client joins.
     """
     params: list = []
-    where: list[str] = ["email.status != 'removed'"]
+    where: list[str] = ["email.status = 'listed'"]
     fts_join = ""
 
     if has_query:
@@ -320,7 +320,7 @@ def search_chats_keyword(
     Returns list of dicts with chat metadata including project/client joins.
     """
     params: list = []
-    where: list[str] = ["chat.status != 'removed'"]
+    where: list[str] = ["chat.status = 'listed'"]
 
     if has_query:
         cond, cond_params = build_term_conditions(["chat.title"], list(terms))
@@ -392,7 +392,7 @@ def search_browser_keyword(
     gating is handled by the service layer, not here.
     """
     params: list = []
-    where: list[str] = ["status != 'removed'"]
+    where: list[str] = ["status = 'listed'"]
 
     if has_query:
         cond, cond_params = build_term_conditions(["url", "title"], list(terms))
@@ -454,7 +454,7 @@ def chat_fts5_fallback(
            FROM chats_fts fts
            JOIN chats chat ON chat.id = fts.rowid
            WHERE chats_fts MATCH ?
-             AND chat.status != 'removed'
+             AND chat.status = 'listed'
            ORDER BY fts.rank
            LIMIT ?""",
         (fts_query, limit),
@@ -501,7 +501,7 @@ def file_fts5_fallback(
         "file.content_preview "
         "FROM files file "
         "JOIN files_fts fts ON fts.rowid = file.id "
-        "WHERE files_fts MATCH ? AND file.status != 'removed' "
+        "WHERE files_fts MATCH ? AND file.status = 'listed' "
         "LIMIT ?",
         (match_str, limit),
     ).fetchall()
@@ -567,7 +567,7 @@ def enrich_file_metadata(
     rows = conn.execute(
         f"SELECT id, source, name, path, content_type, size_bytes, "
         f"modified_at, mcp_view, mcp_read "
-        f"FROM files WHERE id IN ({ph}) AND status != 'removed'",
+        f"FROM files WHERE id IN ({ph}) AND status = 'listed'",
         file_ids,
     ).fetchall()
     return {row["id"]: dict(row) for row in rows}

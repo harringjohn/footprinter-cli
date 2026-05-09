@@ -81,11 +81,11 @@ class TestFootprinterStatus:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, source, status, indexed_at)"
-            " VALUES (1, 'a.txt', 'local', 'active', '2024-01-01')"
+            " VALUES (1, 'a.txt', 'local', 'listed', '2024-01-01')"
         )
         cursor.execute(
             "INSERT INTO files (id, name, source, status, indexed_at)"
-            " VALUES (2, 'b.txt', 'local', 'active', '2024-01-02')"
+            " VALUES (2, 'b.txt', 'local', 'listed', '2024-01-02')"
         )
         cursor.execute(
             "INSERT INTO files (id, name, source, status, indexed_at)"
@@ -99,7 +99,7 @@ class TestFootprinterStatus:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, source, status, indexed_at)"
-            " VALUES (1, 'a.txt', 'local', 'active', '2024-06-15T12:00:00')"
+            " VALUES (1, 'a.txt', 'local', 'listed', '2024-06-15T12:00:00')"
         )
         mcp_db.commit()
         result = self._call(mcp_db)
@@ -196,11 +196,11 @@ class TestFootprinterStatus:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO visits (id, url, title, visit_time, browser, visit_count, status) "
-            "VALUES (1, 'https://a.com', 'A', '2024-01-01', 'safari', 1, 'active')"
+            "VALUES (1, 'https://a.com', 'A', '2024-01-01', 'safari', 1, 'listed')"
         )
         cursor.execute(
             "INSERT INTO visits (id, url, title, visit_time, browser, visit_count, status) "
-            "VALUES (2, 'https://b.com', 'B', '2024-01-02', 'chrome', 1, 'active')"
+            "VALUES (2, 'https://b.com', 'B', '2024-01-02', 'chrome', 1, 'listed')"
         )
         cursor.execute(
             "INSERT INTO visits (id, url, title, visit_time, browser, visit_count, status) "
@@ -362,13 +362,13 @@ class TestFootprinterStatus:
     def test_files_by_source(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (1, 'a.bin', 'local', 'active', 100)"
+            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (1, 'a.bin', 'local', 'listed', 100)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (2, 'b.bin', 'local', 'active', 200)"
+            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (2, 'b.bin', 'local', 'listed', 200)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (3, 'c.bin', 'drive', 'active', 500)"
+            "INSERT INTO files (id, name, source, status, size_bytes) VALUES (3, 'c.bin', 'drive', 'listed', 500)"
         )
         mcp_db.commit()
         result = self._call(mcp_db)
@@ -506,7 +506,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'readme.md', '/test/readme.md', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'readme.md', '/test/readme.md', 'listed', '2024-01-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -579,7 +579,7 @@ class TestContexterSearch:
         for i in range(5):
             cursor.execute(
                 "INSERT INTO files (id, source, name, path, status, modified_at) "
-                f"VALUES ({i + 1}, 'local', 'file{i}.txt', '/test/file{i}.txt', 'active', '2024-01-0{i + 1}')"
+                f"VALUES ({i + 1}, 'local', 'file{i}.txt', '/test/file{i}.txt', 'listed', '2024-01-0{i + 1}')"
             )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -812,7 +812,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'listed', '2024-01-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -832,7 +832,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'listed', '2024-01-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -851,7 +851,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'Project-Alpha-Report', '/test/Project-Alpha-Report', 'listed', '2024-01-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -870,7 +870,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'readme.md', '/test/readme.md', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'readme.md', '/test/readme.md', 'listed', '2024-01-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -930,11 +930,11 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'report.pdf', '/test/report.pdf', 'active', '2024-01-01')"
+            "VALUES (1, 'local', 'report.pdf', '/test/report.pdf', 'listed', '2024-01-01')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (2, 'local', 'report_v2.pdf', '/test/report_v2.pdf', 'active', '2024-01-02')"
+            "VALUES (2, 'local', 'report_v2.pdf', '/test/report_v2.pdf', 'listed', '2024-01-02')"
         )
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, received_at) "
@@ -977,11 +977,11 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, mcp_view) "
-            "VALUES (1, 'local', 'visible.txt', '/test/visible.txt', 'active', '2024-01-01', 'visible')"
+            "VALUES (1, 'local', 'visible.txt', '/test/visible.txt', 'listed', '2024-01-01', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, mcp_view) "
-            "VALUES (2, 'local', 'hidden.txt', '/test/hidden.txt', 'active', '2024-01-02', 'hidden')"
+            "VALUES (2, 'local', 'hidden.txt', '/test/hidden.txt', 'listed', '2024-01-02', 'hidden')"
         )
         mcp_db.commit()
 
@@ -1037,11 +1037,11 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, mcp_view) "
-            "VALUES (1, 'local', 'visible.txt', '/test/visible.txt', 'active', '2024-01-01', 'visible')"
+            "VALUES (1, 'local', 'visible.txt', '/test/visible.txt', 'listed', '2024-01-01', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, mcp_view) "
-            "VALUES (2, 'local', 'hidden.txt', '/test/hidden.txt', 'active', '2024-01-02', 'hidden')"
+            "VALUES (2, 'local', 'hidden.txt', '/test/hidden.txt', 'listed', '2024-01-02', 'hidden')"
         )
         mcp_db.commit()
 
@@ -1062,7 +1062,7 @@ class TestContexterSearch:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, mcp_view) "
-            "VALUES (1, 'local', 'vis.txt', '/test/vis.txt', 'active', '2024-01-01', 'visible')"
+            "VALUES (1, 'local', 'vis.txt', '/test/vis.txt', 'listed', '2024-01-01', 'visible')"
         )
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, received_at, mcp_view) "
@@ -1146,7 +1146,7 @@ class TestContexterSearch:
         cursor.execute(
             "INSERT INTO files (id, source, name, path, account, mime_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'visible', 'allow')",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'listed', 'visible', 'allow')",
             (id, source, name, path, account, mime_type, size_bytes, modified_at),
         )
         cursor.execute(
@@ -1423,7 +1423,7 @@ class TestContexterSearchFTS5:
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, "
             "mcp_view, mcp_read, content_preview) "
-            "VALUES (1, 'local', 'data.csv', '/test/data.csv', 'active', '2024-01-01', "
+            "VALUES (1, 'local', 'data.csv', '/test/data.csv', 'listed', '2024-01-01', "
             "'visible', 'allow', 'quarterly revenue breakdown by region')"
         )
         mcp_db.commit()
@@ -1449,7 +1449,7 @@ class TestContexterSearchFTS5:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, summary) "
-            "VALUES (1, 'local', 'notes.txt', '/test/notes.txt', 'active', '2024-01-01', "
+            "VALUES (1, 'local', 'notes.txt', '/test/notes.txt', 'listed', '2024-01-01', "
             "'authentication architecture design decisions')"
         )
         self._set_visible(mcp_db, "source:files")
@@ -1494,7 +1494,7 @@ class TestContexterSearchFTS5:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at) "
-            "VALUES (1, 'local', 'recent.txt', '/test/recent.txt', 'active', '2024-06-01')"
+            "VALUES (1, 'local', 'recent.txt', '/test/recent.txt', 'listed', '2024-06-01')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -1566,7 +1566,7 @@ class TestContexterSearchFTS5:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, content_preview) "
-            "VALUES (1, 'local', 'hello.txt', '/test/hello.txt', 'active', '2024-01-01', "
+            "VALUES (1, 'local', 'hello.txt', '/test/hello.txt', 'listed', '2024-01-01', "
             "'he said hello to everyone')"
         )
         self._set_visible(mcp_db, "source:files")
@@ -1611,14 +1611,14 @@ class TestFtsOpaqueVisibility:
             "INSERT INTO files (id, source, name, path, status, modified_at, "
             "content_type, mcp_view) "
             "VALUES (1, 'local', 'earnings-report.xlsx', '/test/earnings-report.xlsx', "
-            "'active', '2024-01-01', 'spreadsheet', 'opaque')"
+            "'listed', '2024-01-01', 'spreadsheet', 'opaque')"
         )
         # Visible file sharing the search term in its name
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, "
             "content_type, mcp_view) "
             "VALUES (2, 'local', 'earnings-summary.txt', '/test/earnings-summary.txt', "
-            "'active', '2024-01-01', 'text', 'visible')"
+            "'listed', '2024-01-01', 'text', 'visible')"
         )
         self._set_visible(mcp_db, "source:files")
         mcp_db.commit()
@@ -1650,11 +1650,11 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'Footprinter', 'python', '/test/footprinter', 'active', 'visible')"
+            "VALUES (1, 'Footprinter', 'python', '/test/footprinter', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (1, 'local', 'app.py', 'active', 1000, 1)"
+            "VALUES (1, 'local', 'app.py', 'listed', 1000, 1)"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'visible')")
         mcp_db.commit()
@@ -1685,15 +1685,15 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'TestProject', '/test/project', 'active', 'visible')"
+            "VALUES (1, 'TestProject', '/test/project', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (1, 'local', 'a.py', 'active', 500, 1)"
+            "VALUES (1, 'local', 'a.py', 'listed', 500, 1)"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (2, 'drive', 'b.py', 'active', 300, 1)"
+            "VALUES (2, 'drive', 'b.py', 'listed', 300, 1)"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
@@ -1719,7 +1719,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'MyProject', '/test/myproject', 'active', 'visible')"
+            "VALUES (1, 'MyProject', '/test/myproject', 'listed', 'visible')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'visible')")
         mcp_db.commit()
@@ -1738,11 +1738,11 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'active', 'visible')"
+            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'active', 'visible')"
+            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -1763,11 +1763,11 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'active', 'visible')"
+            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'active', 'opaque')"
+            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'listed', 'opaque')"
         )
         mcp_db.commit()
 
@@ -1794,15 +1794,15 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'App', 'python', '/test/app', 'active', 'visible')"
+            "VALUES (1, 'App', 'python', '/test/app', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'AppExchange', 'python', '/test/appexchange', 'active', 'visible')"
+            "VALUES (2, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (1, 'local', 'main.py', 'active', 500, 1)"
+            "VALUES (1, 'local', 'main.py', 'listed', 500, 1)"
         )
         mcp_db.commit()
 
@@ -1821,22 +1821,22 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'HiddenTest', '/test/hidden', 'active', 'visible')"
+            "VALUES (1, 'HiddenTest', '/test/hidden', 'listed', 'visible')"
         )
         # Visible local file
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id, content_type) "
-            "VALUES (1, 'local', 'visible.py', 'active', 500, 1, 'code')"
+            "VALUES (1, 'local', 'visible.py', 'listed', 500, 1, 'code')"
         )
         # Visible drive file
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id, content_type) "
-            "VALUES (2, 'drive', 'also_visible.py', 'active', 300, 1, 'code')"
+            "VALUES (2, 'drive', 'also_visible.py', 'listed', 300, 1, 'code')"
         )
         # Hidden local file — should be excluded from all stats
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id, content_type, mcp_view) "
-            "VALUES (3, 'local', 'secret.env', 'active', 200, 1, 'config', 'hidden')"
+            "VALUES (3, 'local', 'secret.env', 'listed', 200, 1, 'config', 'hidden')"
         )
         mcp_db.commit()
 
@@ -1860,7 +1860,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'NavProject', '/test/nav', 'active', 'visible')"
+            "VALUES (1, 'NavProject', '/test/nav', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO folders (id, name, path, relative_path, source, direct_file_count, "
@@ -1893,7 +1893,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'EntityProject', '/test/entity', 'active', 'visible')"
+            "VALUES (1, 'EntityProject', '/test/entity', 'listed', 'visible')"
         )
         # 3 emails
         for i in range(1, 4):
@@ -1927,7 +1927,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'EmptyProject', '/test/empty', 'active', 'visible')"
+            "VALUES (1, 'EmptyProject', '/test/empty', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -1945,7 +1945,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'VisProject', '/test/vis', 'active', 'visible')"
+            "VALUES (1, 'VisProject', '/test/vis', 'listed', 'visible')"
         )
         # 2 visible emails + 1 hidden
         for i in range(1, 3):
@@ -1992,7 +1992,7 @@ class TestContexterProject:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'HiddenFolderProject', '/test/hfp', 'active', 'visible')"
+            "VALUES (1, 'HiddenFolderProject', '/test/hfp', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO folders (id, name, path, relative_path, source, direct_file_count, "
@@ -2028,15 +2028,15 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'Acme Corp', 'acme', 'company', 'active', 'visible')"
+            "VALUES (1, 'Acme Corp', 'acme', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'AcmeWeb', '/test/acmeweb', 'active', 1, 'visible')"
+            "VALUES (1, 'AcmeWeb', '/test/acmeweb', 'listed', 1, 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (1, 'local', 'index.html', 'active', 1000, 1)"
+            "VALUES (1, 'local', 'index.html', 'listed', 1000, 1)"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:1', 'visible')")
         mcp_db.commit()
@@ -2070,7 +2070,7 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'Solo Client', 'solo', 'individual', 'active', 'visible')"
+            "VALUES (1, 'Solo Client', 'solo', 'individual', 'listed', 'visible')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:1', 'visible')")
         mcp_db.commit()
@@ -2090,11 +2090,11 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'Acme Corp', 'acme-corp', 'company', 'active', 'visible')"
+            "VALUES (1, 'Acme Corp', 'acme-corp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (2, 'Acme Inc', 'acme-inc', 'company', 'active', 'visible')"
+            "VALUES (2, 'Acme Inc', 'acme-inc', 'company', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -2115,11 +2115,11 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'Acme Corp', 'acme-corp', 'company', 'active', 'visible')"
+            "VALUES (1, 'Acme Corp', 'acme-corp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (2, 'Acme Inc', 'acme-inc', 'company', 'active', 'opaque')"
+            "VALUES (2, 'Acme Inc', 'acme-inc', 'company', 'listed', 'opaque')"
         )
         mcp_db.commit()
 
@@ -2146,11 +2146,11 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'Acme', 'acme', 'company', 'active', 'visible')"
+            "VALUES (1, 'Acme', 'acme', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (2, 'Acme Corp', 'acme-corp', 'company', 'active', 'visible')"
+            "VALUES (2, 'Acme Corp', 'acme-corp', 'company', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -2169,21 +2169,21 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'SecretCorp', 'secret', 'company', 'active', 'visible')"
+            "VALUES (1, 'SecretCorp', 'secret', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'SecretWeb', '/test/secretweb', 'active', 1, 'visible')"
+            "VALUES (1, 'SecretWeb', '/test/secretweb', 'listed', 1, 'visible')"
         )
         # Visible file
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
-            "VALUES (1, 'local', 'public.html', 'active', 1000, 1)"
+            "VALUES (1, 'local', 'public.html', 'listed', 1000, 1)"
         )
         # Hidden file — should be excluded from aggregate stats
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id, mcp_view) "
-            "VALUES (2, 'local', 'secrets.env', 'active', 500, 1, 'hidden')"
+            "VALUES (2, 'local', 'secrets.env', 'listed', 500, 1, 'hidden')"
         )
         mcp_db.commit()
 
@@ -2203,22 +2203,22 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'VisibleCorp', 'visible', 'company', 'active', 'visible')"
+            "VALUES (1, 'VisibleCorp', 'visible', 'company', 'listed', 'visible')"
         )
         # Project A: visible — full details expected
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (1, 'PublicWeb', '/test/publicweb', 'active', 1, 'visible', 'web')"
+            "VALUES (1, 'PublicWeb', '/test/publicweb', 'listed', 1, 'visible', 'web')"
         )
         # Project B: opaque — minimal metadata only
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (2, 'InternalTool', '/test/internal', 'active', 1, 'opaque', 'tool')"
+            "VALUES (2, 'InternalTool', '/test/internal', 'listed', 1, 'opaque', 'tool')"
         )
         # Project C: hidden — excluded entirely
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (3, 'SecretProject', '/test/secret', 'active', 1, 'hidden', 'api')"
+            "VALUES (3, 'SecretProject', '/test/secret', 'listed', 1, 'hidden', 'api')"
         )
         mcp_db.commit()
 
@@ -2245,7 +2245,7 @@ class TestContexterClient:
         opaque = projects_by_type["tool"]
         assert opaque["id"] == 2
         assert opaque.get("type") == "tool" or opaque.get("project_type") == "tool"
-        assert opaque["status"] == "active"
+        assert opaque["status"] == "listed"
         assert "name" not in opaque
         assert "root_path" not in opaque
 
@@ -2253,15 +2253,15 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'FolderCorp', 'foldercorp', 'company', 'active', 'visible')"
+            "VALUES (1, 'FolderCorp', 'foldercorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'ProjA', '/test/a', 'active', 1, 'visible')"
+            "VALUES (1, 'ProjA', '/test/a', 'listed', 1, 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (2, 'ProjB', '/test/b', 'active', 1, 'visible')"
+            "VALUES (2, 'ProjB', '/test/b', 'listed', 1, 'visible')"
         )
         # 2 folders in ProjA
         cursor.execute(
@@ -2297,11 +2297,11 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'EntityCorp', 'entitycorp', 'company', 'active', 'visible')"
+            "VALUES (1, 'EntityCorp', 'entitycorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'Proj1', '/test/proj1', 'active', 1, 'visible')"
+            "VALUES (1, 'Proj1', '/test/proj1', 'listed', 1, 'visible')"
         )
         # 5 emails
         for i in range(1, 6):
@@ -2332,7 +2332,7 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'EmptyCorp', 'emptycorp', 'company', 'active', 'visible')"
+            "VALUES (1, 'EmptyCorp', 'emptycorp', 'company', 'listed', 'visible')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:1', 'visible')")
         mcp_db.commit()
@@ -2352,11 +2352,11 @@ class TestContexterClient:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO clients (id, name, slug, client_type, status, mcp_view) "
-            "VALUES (1, 'HiddenCorp', 'hiddencorp', 'company', 'active', 'visible')"
+            "VALUES (1, 'HiddenCorp', 'hiddencorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'CorpProj', '/test/corp', 'active', 1, 'visible')"
+            "VALUES (1, 'CorpProj', '/test/corp', 'listed', 1, 'visible')"
         )
         # 3 visible emails + 2 hidden
         for i in range(1, 4):
@@ -2413,11 +2413,11 @@ class TestContexterFolder:
         )
         cursor.execute(
             "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id) "
-            "VALUES (1, 'file1.py', 'code', 500, '2024-01-01', 'local', 'active', 1)"
+            "VALUES (1, 'file1.py', 'code', 500, '2024-01-01', 'local', 'listed', 1)"
         )
         cursor.execute(
             "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id) "
-            "VALUES (2, 'file2.txt', 'text', 1000, '2024-01-02', 'local', 'active', 1)"
+            "VALUES (2, 'file2.txt', 'text', 1000, '2024-01-02', 'local', 'listed', 1)"
         )
         # Folder and file visibility must be set to visible (baseline is opaque)
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'visible')")
@@ -2473,12 +2473,12 @@ class TestContexterFolder:
         # Visible file
         cursor.execute(
             "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id, mcp_view) "
-            "VALUES (1, 'visible.py', 'code', 100, '2024-01-01', 'local', 'active', 1, 'visible')"
+            "VALUES (1, 'visible.py', 'code', 100, '2024-01-01', 'local', 'listed', 1, 'visible')"
         )
         # Hidden file (excluded by SQL WHERE)
         cursor.execute(
             "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id, mcp_view) "
-            "VALUES (2, 'hidden.py', 'code', 200, '2024-01-02', 'local', 'active', 1, 'hidden')"
+            "VALUES (2, 'hidden.py', 'code', 200, '2024-01-02', 'local', 'listed', 1, 'hidden')"
         )
         mcp_db.commit()
 
@@ -2505,7 +2505,7 @@ class TestContexterFolder:
         cursor.execute(
             "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, "
             "folder_id, mcp_view) "
-            "VALUES (1, 'file.py', 'code', 100, '2024-01-01', 'local', 'active', 1, 'visible')"
+            "VALUES (1, 'file.py', 'code', 100, '2024-01-01', 'local', 'listed', 1, 'visible')"
         )
         mcp_db.commit()
 
@@ -2549,24 +2549,24 @@ class TestContexterFolder:
         )
         # 2 files in root
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'a.py', 'local', 'active', 1)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'a.py', 'local', 'listed', 1)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (2, 'b.py', 'local', 'active', 1)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (2, 'b.py', 'local', 'listed', 1)"
         )
         # 3 files in sub
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (3, 'c.py', 'local', 'active', 2)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (3, 'c.py', 'local', 'listed', 2)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (4, 'd.py', 'local', 'active', 2)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (4, 'd.py', 'local', 'listed', 2)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (5, 'e.py', 'local', 'active', 2)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (5, 'e.py', 'local', 'listed', 2)"
         )
         # 1 file in deep
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (6, 'f.py', 'local', 'active', 3)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (6, 'f.py', 'local', 'listed', 3)"
         )
         mcp_db.commit()
 
@@ -2591,13 +2591,13 @@ class TestContexterFolder:
             "VALUES (2, 'sub', '/test/root/sub', 'test/root/sub', 'local', 1, 'visible')"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'a.py', 'local', 'active', 1)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'a.py', 'local', 'listed', 1)"
         )
         cursor.execute(
             "INSERT INTO files (id, name, source, status, folder_id) VALUES (2, 'b.py', 'local', 'removed', 2)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (3, 'c.py', 'local', 'active', 2)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (3, 'c.py', 'local', 'listed', 2)"
         )
         mcp_db.commit()
 
@@ -2618,10 +2618,10 @@ class TestContexterFolder:
             "VALUES (1, 'leaf', '/test/leaf', 'test/leaf', 'local', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'x.py', 'local', 'active', 1)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (1, 'x.py', 'local', 'listed', 1)"
         )
         cursor.execute(
-            "INSERT INTO files (id, name, source, status, folder_id) VALUES (2, 'y.py', 'local', 'active', 1)"
+            "INSERT INTO files (id, name, source, status, folder_id) VALUES (2, 'y.py', 'local', 'listed', 1)"
         )
         mcp_db.commit()
 
@@ -3000,7 +3000,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'report.txt', '/Users/test/Work/report.txt', "
-            "'text', 1024, '2026-02-15', 'active', 'visible', 'allow')"
+            "'text', 1024, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         mcp_db.commit()
 
@@ -3033,7 +3033,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, content_preview, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'revenue.txt', '/Users/test/Work/revenue.txt', "
-            "'text', 512, '2026-02-15', 'active', 'Revenue data for Q3', 'visible', 'allow')"
+            "'text', 512, '2026-02-15', 'listed', 'Revenue data for Q3', 'visible', 'allow')"
         )
         cursor.execute(
             "INSERT INTO files_fts (rowid, name, content_preview, summary) "
@@ -3083,7 +3083,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'big.txt', '/Users/test/Work/big.txt', 'text', 2048, "
-            "'2026-02-15', 'active', 'visible', 'allow')"
+            "'2026-02-15', 'listed', 'visible', 'allow')"
         )
         mcp_db.commit()
 
@@ -3131,13 +3131,13 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'visible.txt', '/Users/test/Work/visible.txt', 'text', "
-            "512, '2026-02-15', 'active', 'visible', 'allow')"
+            "512, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view) "
             "VALUES (2, 'local', 'hidden.txt', '/Users/test/Work/hidden.txt', 'text', "
-            "512, '2026-02-15', 'active', 'hidden')"
+            "512, '2026-02-15', 'listed', 'hidden')"
         )
         mcp_db.commit()
 
@@ -3177,7 +3177,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'secret.txt', '/Users/test/Work/secret.txt', "
-            "'text', 1024, '2026-02-15', 'active', 'visible', 'deny')"
+            "'text', 1024, '2026-02-15', 'listed', 'visible', 'deny')"
         )
         mcp_db.commit()
 
@@ -3217,7 +3217,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'report.txt', '/Users/test/Work/report.txt', 'text', "
-            "1024, '2026-02-15', 'active', 'visible', 'allow')"
+            "1024, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         mcp_db.commit()
 
@@ -3320,7 +3320,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'opaque.txt', '/Users/test/Work/opaque.txt', "
-            "'text', 1024, '2026-02-15', 'active', 'opaque', 'allow')"
+            "'text', 1024, '2026-02-15', 'listed', 'opaque', 'allow')"
         )
         mcp_db.commit()
 
@@ -3350,7 +3350,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, content_preview, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'opaque.txt', '/Users/test/Work/opaque.txt', "
-            "'text', 512, '2026-02-15', 'active', 'Opaque content here', 'opaque', 'allow')"
+            "'text', 512, '2026-02-15', 'listed', 'Opaque content here', 'opaque', 'allow')"
         )
         cursor.execute(
             "INSERT INTO files_fts (rowid, name, content_preview, summary) "
@@ -3457,13 +3457,13 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'visible.txt', '/Users/test/Work/visible.txt', 'text', "
-            "512, '2026-02-15', 'active', 'visible', 'allow')"
+            "512, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (2, 'local', 'opaque.txt', '/Users/test/Work/opaque.txt', 'text', "
-            "512, '2026-02-15', 'active', 'opaque', 'allow')"
+            "512, '2026-02-15', 'listed', 'opaque', 'allow')"
         )
         mcp_db.commit()
 
@@ -3563,13 +3563,13 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'visible.txt', '/Users/test/Work/visible.txt', 'text', "
-            "512, '2026-02-15', 'active', 'visible', 'allow')"
+            "512, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view) "
             "VALUES (2, 'local', 'hidden.txt', '/Users/test/Work/hidden.txt', 'text', "
-            "512, '2026-02-15', 'active', 'hidden')"
+            "512, '2026-02-15', 'listed', 'hidden')"
         )
         mcp_db.commit()
 
@@ -3625,7 +3625,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'file.txt', '/Users/test/Work/file.txt', 'text', "
-            "512, '2026-02-15', 'active', 'visible', 'allow')"
+            "512, '2026-02-15', 'listed', 'visible', 'allow')"
         )
         mcp_db.commit()
 
@@ -3679,7 +3679,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, content_preview, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'secret.txt', '/Users/test/Work/secret.txt', "
-            "'text', 512, '2026-02-15', 'active', 'Confidential data here', 'visible', 'deny')"
+            "'text', 512, '2026-02-15', 'listed', 'Confidential data here', 'visible', 'deny')"
         )
         cursor.execute(
             "INSERT INTO files_fts (rowid, name, content_preview, summary) "
@@ -3758,7 +3758,7 @@ class TestFootprinterSemantic:
             "INSERT INTO files (id, source, name, path, content_type, size_bytes, "
             "modified_at, status, mcp_view, mcp_read) "
             "VALUES (1, 'local', 'unresolved.txt', '/Users/test/Work/unresolved.txt', "
-            "'text', 512, '2026-02-15', 'active', 'visible', NULL)"
+            "'text', 512, '2026-02-15', 'listed', 'visible', NULL)"
         )
         mcp_db.commit()
 

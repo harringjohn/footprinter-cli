@@ -93,7 +93,7 @@ class TestFileEditRecalculate:
         # Status edit goes through db layer only — no recalculate wiring
         from footprinter.db.files import update_file_status
 
-        update_file_status(conn, 1, "hidden")
+        update_file_status(conn, 1, "unlisted")
 
         # Visibility should remain 'inherit' (not recalculated to 'hidden')
         row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()

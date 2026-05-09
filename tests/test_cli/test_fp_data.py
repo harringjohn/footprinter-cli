@@ -24,11 +24,11 @@ def _seeded_inmemory_db():
     assert conn is not None  # Database() always opens a connection
     conn.execute(
         "INSERT INTO clients (name, slug, client_type, status) VALUES (?, ?, ?, ?)",
-        ("Acme Corp", "acme", "external", "active"),
+        ("Acme Corp", "acme", "external", "listed"),
     )
     conn.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-        "VALUES (?, ?, 'local', 'active', 'text', 100)",
+        "VALUES (?, ?, 'local', 'listed', 'text', 100)",
         ("readme.md", "/tmp/readme.md"),
     )
     conn.commit()
@@ -164,7 +164,7 @@ class TestDataImport:
             "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
             "project_id INTEGER, client_id INTEGER, mcp_view TEXT, mcp_read TEXT)"
         )
-        conn.execute("INSERT INTO files (id, status) VALUES (1, 'active')")
+        conn.execute("INSERT INTO files (id, status) VALUES (1, 'listed')")
         conn.commit()
 
         with patch("footprinter.cli.data.open_db", return_value=_open_db_stub(conn)):

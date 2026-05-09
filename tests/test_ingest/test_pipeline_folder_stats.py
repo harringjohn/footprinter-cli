@@ -47,7 +47,7 @@ def _insert_file(
     folder_id: int,
     path: str,
     size_bytes: int,
-    status: str = "active",
+    status: str = "listed",
 ) -> None:
     name = path.rsplit("/", 1)[-1]
     ts = datetime.now(timezone.utc).isoformat()

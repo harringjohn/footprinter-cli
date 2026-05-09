@@ -68,7 +68,7 @@ class TestFolderStatusFilter:
         conn, db_path = status_db
         conn.execute(
             "INSERT INTO folders (path, relative_path, name, source, status) "
-            "VALUES ('/tmp/a', 'a', 'a', 'local', 'active')"
+            "VALUES ('/tmp/a', 'a', 'a', 'local', 'listed')"
         )
         conn.execute(
             "INSERT INTO folders (path, relative_path, name, source, status) "
@@ -510,7 +510,7 @@ class TestRecentlyModifiedFiles:
         conn, db_path = status_db
         conn.execute(
             "INSERT INTO files (name, path, source, status, size_bytes, modified_at) "
-            "VALUES ('test.py', '/tmp/test.py', 'local', 'active', 100, '2025-07-01')"
+            "VALUES ('test.py', '/tmp/test.py', 'local', 'listed', 100, '2025-07-01')"
         )
         conn.commit()
         counts = get_data_counts(db_path)
@@ -839,7 +839,7 @@ class TestJsonIncludesRecentFiles:
         conn, db_path = status_db
         conn.execute(
             "INSERT INTO files (name, path, source, status, size_bytes, modified_at) "
-            "VALUES ('test.py', '/tmp/test.py', 'local', 'active', 100, '2025-07-01')"
+            "VALUES ('test.py', '/tmp/test.py', 'local', 'listed', 100, '2025-07-01')"
         )
         conn.commit()
 

@@ -16,7 +16,7 @@ from conftest import run_fp
 
 
 def _insert_chat(
-    conn, *, id, external_id, account="claude", title="Untitled", message_count=0, status="active", merged_into_id=None
+    conn, *, id, external_id, account="claude", title="Untitled", message_count=0, status="listed", merged_into_id=None
 ):
     """Insert a chats row."""
     conn.execute(
@@ -212,18 +212,18 @@ class TestGetChatDetail:
 
         chat_conn.execute(
             """INSERT INTO clients (id, name, slug, client_type, status)
-               VALUES (1, 'Acme Corp', 'acme', 'external', 'active')"""
+               VALUES (1, 'Acme Corp', 'acme', 'external', 'listed')"""
         )
         chat_conn.execute(
             """INSERT INTO projects (id, project_name, project_type, status, client_id)
-               VALUES (1, 'Alpha', 'python', 'active', 1)"""
+               VALUES (1, 'Alpha', 'python', 'listed', 1)"""
         )
         chat_conn.execute(
             """INSERT INTO chats
                (id, external_id, account, title, summary, message_count,
                 client_id, project_id, created_at, updated_at, status)
                VALUES (10, 'c-rel', 'claude', 'Relationship Chat', 'test summary',
-                       0, 1, 1, datetime('now'), datetime('now'), 'active')"""
+                       0, 1, 1, datetime('now'), datetime('now'), 'listed')"""
         )
         chat_conn.commit()
 

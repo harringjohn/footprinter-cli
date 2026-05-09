@@ -300,31 +300,28 @@ class TestCompleteColumnSets:
         )
         db.close()
 
-    def test_projects_status_default_active(self, temp_db):
+    def test_projects_status_default_listed(self, temp_db):
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         cursor = db.conn.cursor()
 
-        # Insert a project without explicit status
         cursor.execute(
             "INSERT INTO projects (project_name) VALUES (?)",
             ("test-project",),
         )
         db.conn.commit()
 
-        # Verify the row gets status='active' from the DEFAULT
         cursor.execute(
             "SELECT status FROM projects WHERE project_name = ?",
             ("test-project",),
         )
         row = cursor.fetchone()
-        assert row[0] == "active", f"Expected status 'active', got {row[0]!r}"
+        assert row[0] == "listed", f"Expected status 'listed', got {row[0]!r}"
 
-        # Verify schema metadata declares the default
         cursor.execute("PRAGMA table_info(projects)")
-        columns = {r[1]: r[4] for r in cursor.fetchall()}  # name -> dflt_value
-        assert columns["status"] == "'active'", f"Expected dflt_value \"'active'\", got {columns['status']!r}"
+        columns = {r[1]: r[4] for r in cursor.fetchall()}
+        assert columns["status"] == "'listed'", f"Expected dflt_value \"'listed'\", got {columns['status']!r}"
         db.close()
 
     def test_projects_status_reason_default_null(self, temp_db):
@@ -936,7 +933,7 @@ class TestFTS5Tables:
             "indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
             "metadata TEXT, "
             "metadata_vectorized_at DATETIME, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "mcp_read TEXT DEFAULT 'inherit', "
             "mcp_view TEXT DEFAULT 'inherit', "
             "client_id INTEGER, assignment_source TEXT, "
@@ -1669,7 +1666,7 @@ class TestBrowserVisitsMigration:
         # Pre-existing row survives with DEFAULT status
         row = cursor.execute("SELECT status FROM visits WHERE url = 'https://example.com'").fetchone()
         assert row is not None, "pre-existing row was lost during migration"
-        assert row[0] == "active", f"expected status='active', got {row[0]!r}"
+        assert row[0] == "listed", f"expected status='listed', got {row[0]!r}"
         db.close()
 
     def test_migrate_browser_columns_idempotent(self, temp_db):
@@ -1716,7 +1713,7 @@ class TestBrowserVisitsMigration:
         entry = get_visit(db.conn, result["visits"][0]["id"])
         assert entry is not None
         assert entry["url"] == "https://example.com"
-        assert entry["status"] == "active"
+        assert entry["status"] == "listed"
         db.close()
 
     def test_rename_migration_on_existing_db(self, temp_db):
@@ -1874,7 +1871,7 @@ class TestDriveColumnRenameCorrections:
             metadata TEXT,
             folder_id INTEGER,
             md5_hash TEXT,
-            status TEXT DEFAULT 'active',
+            status TEXT DEFAULT 'listed',
             status_reason TEXT,
             status_changed_at DATETIME,
             mcp_read TEXT DEFAULT 'inherit',
@@ -2174,7 +2171,7 @@ class TestMigrateColumnAdditions:
         assert "status" in columns, f"emails missing status column. Columns: {columns}"
 
         defaults = self._get_column_defaults(db, "emails")
-        assert defaults["status"] == "'active'", f"Expected status DEFAULT 'active', got {defaults['status']!r}"
+        assert defaults["status"] == "'listed'", f"Expected status DEFAULT 'listed', got {defaults['status']!r}"
         db.close()
 
     def test_migrate_adds_files_client_id(self, temp_db):
@@ -2203,7 +2200,7 @@ class TestMigrateColumnAdditions:
             "metadata TEXT, "
             "folder_id INTEGER, "
             "md5_hash TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "mcp_read TEXT DEFAULT 'inherit', "
@@ -2249,7 +2246,7 @@ class TestMigrateColumnAdditions:
             "metadata TEXT, "
             "folder_id INTEGER, "
             "md5_hash TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "summary TEXT, "
@@ -2305,7 +2302,7 @@ class TestMigrateColumnRenames:
             "metadata TEXT, "
             "folder_id INTEGER, "
             "md5_hash TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "mcp_read TEXT DEFAULT 'inherit', "
@@ -2390,7 +2387,7 @@ class TestMigrateColumnRenames:
             "folder_id INTEGER, "
             "md5_hash TEXT, "
             "indexed_drive_id TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "mcp_read TEXT DEFAULT 'inherit', "
@@ -2439,7 +2436,7 @@ class TestMigrateDataPreservation:
             "metadata TEXT, "
             "folder_id INTEGER, "
             "md5_hash TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "summary TEXT, "
@@ -2526,7 +2523,7 @@ class TestMigrateDataPreservation:
         cursor.execute("SELECT subject, status FROM emails ORDER BY received_at")
         rows = cursor.fetchall()
         assert rows[0][0] == "Hello"
-        assert rows[0][1] == "active"  # default applied by migration
+        assert rows[0][1] == "listed"  # default applied by migration
         assert rows[1][0] == "Meeting"
         db.close()
 
@@ -2558,7 +2555,7 @@ class TestMigrateDataPreservation:
             "metadata TEXT, "
             "folder_id INTEGER, "
             "md5_hash TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "mcp_read TEXT DEFAULT 'inherit', "
@@ -2970,7 +2967,7 @@ class TestChatsFtsRecreateBackfill:
         db = Database(temp_db)
         db.conn.execute(
             "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-            "VALUES ('readme.md', '/tmp/readme.md', 'local', 'active', 'markdown', 100)"
+            "VALUES ('readme.md', '/tmp/readme.md', 'local', 'listed', 'markdown', 100)"
         )
         db.conn.commit()
 
@@ -3111,7 +3108,7 @@ class TestFullOldSchemaConvergence:
             "folder_id INTEGER, "
             "md5_hash TEXT, "
             "indexed_remote_id TEXT, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "status_reason TEXT, "
             "status_changed_at DATETIME, "
             "summary TEXT, "
@@ -3184,7 +3181,7 @@ class TestFullOldSchemaConvergence:
             "indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
             "metadata TEXT, "
             "info_vectorized_at DATETIME, "
-            "status TEXT DEFAULT 'active', "
+            "status TEXT DEFAULT 'listed', "
             "client_id INTEGER, "
             "assignment_source TEXT, "
             "project_id INTEGER, "
@@ -3251,9 +3248,9 @@ class TestFullOldSchemaConvergence:
         # Verify key column defaults were applied by migration.
         # PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
         expected_defaults = {
-            "emails": {"status": "'active'", "mcp_read": "'inherit'", "mcp_view": "'inherit'"},
+            "emails": {"status": "'listed'", "mcp_read": "'inherit'", "mcp_view": "'inherit'"},
             "files": {"mcp_read": "'inherit'", "mcp_view": "'inherit'"},
-            "visits": {"status": "'active'", "mcp_read": "'inherit'", "mcp_view": "'inherit'"},
+            "visits": {"status": "'listed'", "mcp_read": "'inherit'", "mcp_view": "'inherit'"},
             "chats": {"mcp_read": "'inherit'", "mcp_view": "'inherit'"},
         }
         for table, col_defaults in expected_defaults.items():
@@ -3367,7 +3364,7 @@ class TestCheckConstraints:
     def test_invalid_mcp_read_rejected(self, temp_db, table):
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
-            status="'active'",
+            status="'listed'",
             mcp_read="'bogus'",
             mcp_view="'inherit'",
         )
@@ -3379,7 +3376,7 @@ class TestCheckConstraints:
     def test_invalid_mcp_view_rejected(self, temp_db, table):
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
-            status="'active'",
+            status="'listed'",
             mcp_read="'inherit'",
             mcp_view="'bogus'",
         )
@@ -3387,16 +3384,34 @@ class TestCheckConstraints:
             db.conn.execute(sql)
         db.close()
 
-    @pytest.mark.parametrize("status", ["'active'", "'hidden'", "'removed'"])
-    def test_valid_status_accepted(self, temp_db, status):
-        """All three status values should be accepted on files table."""
+    @pytest.mark.parametrize("table", _ENTITY_TABLES)
+    @pytest.mark.parametrize("status", ["'listed'", "'unlisted'", "'removed'"])
+    def test_trichotomy_status_accepted(self, temp_db, table, status):
+        """Trichotomy values must be accepted on every entity table."""
         db = self._get_fresh_db(temp_db)
-        sql = _ENTITY_INSERTS["files"].format(
+        sql = _ENTITY_INSERTS[table].format(
             status=status,
             mcp_read="'inherit'",
             mcp_view="'inherit'",
         )
         db.conn.execute(sql)  # should not raise
+        db.close()
+
+    @pytest.mark.parametrize("table", _ENTITY_TABLES)
+    @pytest.mark.parametrize(
+        "legacy_status",
+        ["'active'", "'hidden'", "'paused'", "'completed'", "'abandoned'", "'archived'"],
+    )
+    def test_legacy_status_rejected(self, temp_db, table, legacy_status):
+        """Legacy status values must be rejected on every entity table."""
+        db = self._get_fresh_db(temp_db)
+        sql = _ENTITY_INSERTS[table].format(
+            status=legacy_status,
+            mcp_read="'inherit'",
+            mcp_view="'inherit'",
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.conn.execute(sql)
         db.close()
 
     def test_null_status_passes_check(self, temp_db):

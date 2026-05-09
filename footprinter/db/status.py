@@ -53,35 +53,35 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
     tables: Dict[str, Dict[str, Optional[str]]] = {
         "files": {
             "count": (
-                "SELECT COUNT(*) FROM files WHERE status != 'removed' AND COALESCE(mcp_view, 'inherit') != 'hidden'"
+                "SELECT COUNT(*) FROM files WHERE status = 'listed' AND COALESCE(mcp_view, 'inherit') != 'hidden'"
             ),
             "latest": (
                 "SELECT MAX(indexed_at) FROM files "
-                "WHERE status != 'removed' "
+                "WHERE status = 'listed' "
                 "AND COALESCE(mcp_view, 'inherit') != 'hidden'"
             ),
         },
         "emails": {
             "count": (
                 "SELECT COUNT(*) FROM emails email "
-                "WHERE email.status != 'removed' "
+                "WHERE email.status = 'listed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='email')}"
             ),
             "latest": (
                 "SELECT MAX(indexed_at) FROM emails email "
-                "WHERE email.status != 'removed' "
+                "WHERE email.status = 'listed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='email')}"
             ),
         },
         "chats": {
             "count": (
                 "SELECT COUNT(*) FROM chats chat "
-                "WHERE COALESCE(chat.status, 'active') != 'removed' "
+                "WHERE COALESCE(chat.status, 'listed') != 'removed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='chat')}"
             ),
             "latest": (
                 "SELECT MAX(modified_at) FROM chats chat "
-                "WHERE COALESCE(chat.status, 'active') != 'removed' "
+                "WHERE COALESCE(chat.status, 'listed') != 'removed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='chat')}"
             ),
         },
@@ -106,12 +106,12 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         "browser": {
             "count": (
                 "SELECT COUNT(*) FROM visits bv "
-                "WHERE bv.status != 'removed' "
+                "WHERE bv.status = 'listed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='bv')}"
             ),
             "latest": (
                 "SELECT MAX(visit_time) FROM visits bv "
-                "WHERE bv.status != 'removed' "
+                "WHERE bv.status = 'listed' "
                 f"AND {_NOT_HIDDEN_CLIENT.format(alias='bv')}"
             ),
         },
@@ -143,7 +143,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         conn,
         """
         SELECT source, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
-        FROM files WHERE status != 'removed'
+        FROM files WHERE status = 'listed'
         AND COALESCE(mcp_view, 'inherit') != 'hidden'
         GROUP BY source
     """,
@@ -174,7 +174,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         """
         SELECT COALESCE(client.name, '(unassigned)') AS client_name, COUNT(*) as count
         FROM emails email LEFT JOIN clients client ON email.client_id = client.id
-        WHERE email.status != 'removed'
+        WHERE email.status = 'listed'
           AND (client.mcp_view IS NULL OR client.mcp_view != 'hidden')
         GROUP BY client_name
     """,
@@ -187,7 +187,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         """
         SELECT COALESCE(client.name, '(unassigned)') AS client_name, COUNT(*) as count
         FROM chats chat LEFT JOIN clients client ON chat.client_id = client.id
-        WHERE chat.status != 'removed'
+        WHERE chat.status = 'listed'
           AND (client.mcp_view IS NULL OR client.mcp_view != 'hidden')
         GROUP BY client_name
     """,
@@ -221,8 +221,8 @@ def get_system_status(conn: sqlite3.Connection, config_path: Path) -> dict:
     cur = conn.cursor()
 
     counts = {
-        "files": _safe_count(cur, "SELECT COUNT(*) FROM files WHERE status != 'removed'"),
-        "folders": _safe_count(cur, "SELECT COUNT(*) FROM folders WHERE status != 'removed'"),
+        "files": _safe_count(cur, "SELECT COUNT(*) FROM files WHERE status = 'listed'"),
+        "folders": _safe_count(cur, "SELECT COUNT(*) FROM folders WHERE status = 'listed'"),
         "visits": _safe_count(cur, "SELECT COUNT(*) FROM visits"),
         "emails": _safe_count(cur, "SELECT COUNT(*) FROM emails"),
         "messages": _safe_count(cur, "SELECT COUNT(*) FROM messages"),
@@ -255,10 +255,10 @@ def get_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
     """Get database statistics."""
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) as count FROM files WHERE status != 'removed'")
+    cursor.execute("SELECT COUNT(*) as count FROM files WHERE status = 'listed'")
     files_count = cursor.fetchone()["count"]
 
-    cursor.execute("SELECT COUNT(DISTINCT content_type) as count FROM files WHERE status != 'removed'")
+    cursor.execute("SELECT COUNT(DISTINCT content_type) as count FROM files WHERE status = 'listed'")
     content_types_count = cursor.fetchone()["count"]
 
     cursor.execute("SELECT COUNT(*) as count FROM visits")
@@ -271,7 +271,7 @@ def get_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
         """
         SELECT MAX(modified_at) as latest_file
         FROM files
-        WHERE modified_at IS NOT NULL AND status != 'removed'
+        WHERE modified_at IS NOT NULL AND status = 'listed'
     """
     )
     latest_file = cursor.fetchone()["latest_file"]
@@ -286,13 +286,13 @@ def get_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
     if remote_sources:
         remote_ph = ",".join("?" * len(remote_sources))
         cursor.execute(
-            f"SELECT COUNT(*) as count FROM files WHERE source IN ({remote_ph}) AND status != 'removed'",
+            f"SELECT COUNT(*) as count FROM files WHERE source IN ({remote_ph}) AND status = 'listed'",
             remote_sources,
         )
         remote_files_count = cursor.fetchone()["count"]
 
         cursor.execute(
-            f"SELECT COUNT(DISTINCT source) as count FROM files WHERE source IN ({remote_ph}) AND status != 'removed'",
+            f"SELECT COUNT(DISTINCT source) as count FROM files WHERE source IN ({remote_ph}) AND status = 'listed'",
             remote_sources,
         )
         remote_sources_count = cursor.fetchone()["count"]

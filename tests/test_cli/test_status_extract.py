@@ -118,7 +118,7 @@ class TestIngestStatusFolderFilter:
         db = Database(str(db_path))
         db.conn.execute(
             "INSERT INTO folders (path, relative_path, name, source, status) "
-            "VALUES ('/tmp/a', 'a', 'a', 'local', 'active')"
+            "VALUES ('/tmp/a', 'a', 'a', 'local', 'listed')"
         )
         db.conn.execute(
             "INSERT INTO folders (path, relative_path, name, source, status) "

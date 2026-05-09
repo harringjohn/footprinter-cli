@@ -45,7 +45,7 @@ def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, lis
             sql += " WHERE status = ?"
             params.append(status_filter)
         else:
-            sql += " WHERE status != 'removed'"
+            sql += " WHERE status = 'listed'"
         sql += " ORDER BY name"
     else:
         sql = (
@@ -58,7 +58,7 @@ def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, lis
             sql += " WHERE p.status = ?"
             params.append(status_filter)
         else:
-            sql += " WHERE p.status != 'removed'"
+            sql += " WHERE p.status = 'listed'"
         sql += " ORDER BY p.project_name"
     return sql, params
 
@@ -74,10 +74,10 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "client_type": "external",
             "slug": "",
             "path_pattern": "~/Work/clients/acme/",
-            "status": "active",
+            "status": "listed",
         },
-        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "active"},
-        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "active"},
+        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "listed"},
+        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "listed"},
     ],
     "project": [
         {
@@ -87,7 +87,7 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "project_type": "python",
             "description": "A web application",
             "github_url": "",
-            "status": "active",
+            "status": "listed",
         },
         {
             "project_name": "Documentation",
@@ -96,7 +96,7 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "project_type": "docs",
             "description": "Internal documentation",
             "github_url": "",
-            "status": "active",
+            "status": "listed",
         },
         {
             "project_name": "Mobile App",
@@ -105,7 +105,7 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "project_type": "typescript",
             "description": "Mobile app",
             "github_url": "",
-            "status": "active",
+            "status": "listed",
         },
     ],
 }
@@ -113,10 +113,10 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
 VALID_VALUES_NOTES: dict[str, dict[str, str]] = {
     "client": {
         "client_type": "external, internal, personal",
-        "status": "active, hidden, removed",
+        "status": "listed, unlisted, removed",
     },
     "project": {
-        "status": "active, paused, completed, abandoned, removed",
+        "status": "listed, unlisted, removed",
     },
 }
 
@@ -165,7 +165,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "name": "readme.md",
                 "path": "/Users/me/Work/readme.md",
                 "source": "local",
-                "status": "active",
+                "status": "listed",
                 "content_type": "markdown",
                 "size_bytes": "1024",
                 "modified_at": "2026-01-15T10:00:00Z",
@@ -190,7 +190,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed",
+            "status": "listed, unlisted, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },
@@ -219,7 +219,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "relative_path": "Work",
                 "name": "Work",
                 "source": "local",
-                "status": "active",
+                "status": "listed",
                 "project_id": "1",
                 "client_id": "",
                 "mcp_view": "visible",
@@ -231,7 +231,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "relative_path": "Personal",
                 "name": "Personal",
                 "source": "local",
-                "status": "active",
+                "status": "listed",
                 "project_id": "",
                 "client_id": "",
                 "mcp_view": "inherit",
@@ -239,7 +239,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed",
+            "status": "listed, unlisted, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },
@@ -270,7 +270,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "subject": "Project Update",
                 "from_address": "sender@example.com",
                 "received_at": "2026-02-01T09:00:00Z",
-                "status": "active",
+                "status": "listed",
                 "project_id": "1",
                 "client_id": "1",
                 "mcp_view": "visible",
@@ -283,7 +283,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "subject": "Newsletter",
                 "from_address": "news@example.com",
                 "received_at": "2026-02-02T09:00:00Z",
-                "status": "active",
+                "status": "listed",
                 "project_id": "",
                 "client_id": "",
                 "mcp_view": "inherit",
@@ -291,7 +291,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed",
+            "status": "listed, unlisted, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },
@@ -322,7 +322,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "account": "personal",
                 "title": "Architecture Chat",
                 "message_count": "5",
-                "status": "active",
+                "status": "listed",
                 "created_at": "2026-01-10T08:00:00Z",
                 "updated_at": "2026-01-10T09:00:00Z",
                 "project_id": "1",
@@ -336,7 +336,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "account": "personal",
                 "title": "Random Chat",
                 "message_count": "3",
-                "status": "active",
+                "status": "listed",
                 "created_at": "2026-01-11T08:00:00Z",
                 "updated_at": "2026-01-11T09:00:00Z",
                 "project_id": "",
@@ -346,7 +346,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed",
+            "status": "listed, unlisted, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },
@@ -414,7 +414,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "title": "Example",
                 "visit_time": "2026-03-01T12:00:00Z",
                 "browser": "safari",
-                "status": "active",
+                "status": "listed",
                 "project_id": "1",
                 "client_id": "1",
                 "mcp_view": "visible",
@@ -426,7 +426,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "title": "News",
                 "visit_time": "2026-03-02T12:00:00Z",
                 "browser": "chrome",
-                "status": "active",
+                "status": "listed",
                 "project_id": "",
                 "client_id": "",
                 "mcp_view": "inherit",
@@ -434,7 +434,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed",
+            "status": "listed, unlisted, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },
@@ -541,7 +541,7 @@ def _handle_export_data_source(args) -> None:
             sql += " WHERE status = ?"
             params.append(status_filter)
         else:
-            sql += " WHERE status != 'removed'"
+            sql += " WHERE status = 'listed'"
     elif status_filter:
         print(
             f"Entity '{noun}' does not have a status column.",
