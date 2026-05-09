@@ -1,15 +1,16 @@
 """fp uninstall — reverse what `fp setup` and `pip install` created.
 
-Four phases, each individually skippable via prompt:
+Three user-action phases, each individually skippable via prompt:
 
 1. Remove the ``footprinter`` entry from Claude Desktop's MCP config
-2. Remind the user to restart Claude Desktop (only if step 1 changed anything)
-3. Remove ``~/.footprinter`` (config, database, vector store, logs)
-4. Uninstall the ``footprinter-cli`` pip package (pipx → pip → printed command)
+   (followed inline by a restart reminder, only when an entry was removed)
+2. Remove ``~/.footprinter`` (config, database, vector store, logs)
+3. Uninstall the ``footprinter-cli`` pip package (pipx → pip → printed command)
 
 Each phase reports what it did or that it skipped, so re-running is safe.
 """
 
+import json
 import shutil
 import subprocess
 
@@ -18,7 +19,12 @@ from rich.rule import Rule
 
 from footprinter.cli._common import FORMATTER, console
 from footprinter.cli._prompt import SafeConfirm
-from footprinter.cli.mcp_setup import detect_config_path, unregister_mcp_server
+from footprinter.cli.mcp_setup import (
+    detect_config_path,
+    has_footprinter_entry,
+    read_mcp_config,
+    unregister_mcp_server,
+)
 from footprinter.paths import get_home
 
 PACKAGE_NAME = "footprinter-cli"
@@ -45,7 +51,7 @@ def register(subparsers) -> None:
 
 
 def _handle_uninstall(args) -> None:
-    """Run all four phases in order. Returns no value; phases handle their own errors."""
+    """Run all three user-action phases in order; phases handle their own errors."""
     console.print()
     console.print(Panel.fit("[bold]fp uninstall[/bold]", border_style="dim"))
     console.print(
@@ -53,9 +59,8 @@ def _handle_uninstall(args) -> None:
         style="dim",
     )
 
-    mcp_changed = _phase_mcp()
-    if mcp_changed:
-        _phase_restart_reminder()
+    if _phase_mcp():
+        _show_restart_reminder()
     _phase_data_dir()
     _phase_package()
 
@@ -66,17 +71,31 @@ def _handle_uninstall(args) -> None:
 def _phase_mcp() -> bool:
     """Remove the footprinter entry from Claude Desktop's MCP config.
 
-    Returns True if the config was actually modified, False if skipped or no-op.
+    Returns True only when an entry was actually removed, so the caller
+    can use the return value to decide whether to show the restart reminder.
+    Reads the config to check for the entry before prompting, so users
+    aren't asked to confirm a no-op.
     """
     console.print()
-    console.print(Rule("[bold]Step 1 of 4 — Claude Desktop MCP config[/bold]", style="dim"))
+    console.print(Rule("[bold]Step 1 of 3 — Claude Desktop MCP config[/bold]", style="dim"))
 
     path = detect_config_path()
     if path is None:
         console.print("[yellow]Unsupported platform — skipping MCP config cleanup.[/yellow]")
         return False
-    if not path.exists():
+
+    try:
+        config = read_mcp_config(path)
+    except (json.JSONDecodeError, OSError) as e:
+        console.print(f"  [red]Cannot read existing config:[/red] {e}")
+        return False
+
+    if config is None:
         console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
+        return False
+
+    if not has_footprinter_entry(config):
+        console.print(f"  [dim]No footprinter entry in {path} — nothing to remove.[/dim]")
         return False
 
     if not SafeConfirm.ask(
@@ -89,13 +108,13 @@ def _phase_mcp() -> bool:
     return unregister_mcp_server(config_path=path)
 
 
-def _phase_restart_reminder() -> None:
-    """Tell the user to restart Claude Desktop so it drops the MCP connection."""
+def _show_restart_reminder() -> None:
+    """Inline restart note shown only after a real MCP removal (no step number)."""
     console.print()
     console.print(
         Panel(
             "Restart [bold]Claude Desktop[/bold] now so it drops the Footprinter MCP connection.",
-            title="Step 2 of 4 — Restart Claude Desktop",
+            title="Restart Claude Desktop",
             border_style="yellow",
         )
     )
@@ -104,7 +123,7 @@ def _phase_restart_reminder() -> None:
 def _phase_data_dir() -> None:
     """Delete ``~/.footprinter`` (config, database, vectors, logs)."""
     console.print()
-    console.print(Rule("[bold]Step 3 of 4 — User data[/bold]", style="dim"))
+    console.print(Rule("[bold]Step 2 of 3 — User data[/bold]", style="dim"))
 
     # ``get_home()`` creates the directory if missing, so ``home.exists()``
     # is always True here — only check for empty.
@@ -127,7 +146,7 @@ def _phase_data_dir() -> None:
 def _phase_package() -> None:
     """Uninstall ``footprinter-cli`` via pipx or pip; fall through to printed command."""
     console.print()
-    console.print(Rule("[bold]Step 4 of 4 — Package[/bold]", style="dim"))
+    console.print(Rule("[bold]Step 3 of 3 — Package[/bold]", style="dim"))
 
     cmd = _detect_uninstall_command()
     if cmd is None:
@@ -154,6 +173,12 @@ def _phase_package() -> None:
         return
 
     console.print(f"  [green]✓[/green] Uninstalled {PACKAGE_NAME}")
+    console.print(
+        "  [dim]Note: pip-installed dependencies (~90 packages, ~250MB) were not removed.[/dim]"
+    )
+    console.print(
+        "  [dim]To review them: [cyan]pip list --not-required[/cyan][/dim]"
+    )
 
 
 def _detect_uninstall_command() -> list[str] | None:
