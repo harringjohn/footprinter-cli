@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scr
 curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install-full.sh | bash
 ```
 
-If you prefer to manage the install yourself, use **pipx** (recommended) — modern macOS Python ships PEP 668 enabled, which blocks bare `pip install`:
+If you prefer to manage the install yourself, use **pipx** (recommended) — it isolates Footprinter and sidesteps the macOS install caveats noted below:
 
 ```bash
 brew install pipx
@@ -34,11 +34,12 @@ pipx install footprinter-cli
 pipx install 'footprinter-cli[full]'   # with semantic + parse
 ```
 
-> **macOS install caveats:**
+> **macOS caveats for manual installs:**
 > - **zsh** treats `[...]` as a glob, so keep the single quotes around any bracketed extras specifier (e.g. `'footprinter-cli[full]'`). Without quotes you'll see `zsh: no matches found`.
-> - **python.org-distributed Python** doesn't enforce PEP 668, so a bare `pip install footprinter-cli` outside pipx or a virtual environment may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which isn't on `PATH` by default. Use pipx (above) or the install script.
+> - **System and Homebrew Python** ship with PEP 668 enabled, which blocks bare `pip install` outside a venv. Use pipx (above) instead.
+> - **python.org-distributed Python** doesn't enforce PEP 668, so a bare `pip install footprinter-cli` outside pipx or a venv may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which isn't on `PATH` by default. Use pipx (above) or the install script.
 
-Inside an existing virtual environment, `pip` works as expected:
+Inside an existing venv, `pip` works as expected:
 
 ```bash
 ./venv/bin/pip install footprinter-cli
