@@ -28,13 +28,14 @@ class LocalFoldersAdapter:
             root_paths = ctx.source_config.get("directories", ["~/Work", "~/Personal"])
 
             folders = indexer.scan_folders(root_paths)
-            inserted, updated = indexer.save_folders(folders)
+            inserted, updated, unchanged = indexer.save_folders(folders)
 
             return PipeResult.completed(
                 "local_folders",
                 folders_found=len(folders),
                 inserted=inserted,
                 updated=updated,
+                unchanged=unchanged,
             )
         except Exception as e:
             logger.error(f"local_folders stage failed: {e}")
