@@ -221,7 +221,7 @@ class TestBulkTriggersRecalculate:
         # Insert a file so the count > 0
         tool_db.execute(
             "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'active')"
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
         )
         tool_db.commit()
 
@@ -244,7 +244,7 @@ class TestBulkTriggersRecalculate:
 
         tool_db.execute(
             "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'active')"
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
         )
         tool_db.commit()
 
@@ -281,7 +281,7 @@ class TestBulkPerTypeDisplay:
         # Insert a file so the folder scope resolves
         tool_db.execute(
             "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'active')"
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
         )
         tool_db.commit()
 
@@ -315,7 +315,7 @@ class TestBulkPerTypeDisplay:
         # Insert a project so the scope resolves
         tool_db.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'TestProj', 'python', '/Users/me/Work/test', 'active')"
+            "VALUES (1, 'TestProj', 'python', '/Users/me/Work/test', 'listed')"
         )
         tool_db.commit()
 
@@ -348,7 +348,7 @@ class TestBulkThresholdConfirmation:
         # Insert a project so scope resolves
         tool_db.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'SmallProj', 'python', '/Users/me/Work/small', 'active')"
+            "VALUES (1, 'SmallProj', 'python', '/Users/me/Work/small', 'listed')"
         )
         tool_db.commit()
 
@@ -377,7 +377,7 @@ class TestBulkThresholdConfirmation:
         # Insert a project so scope resolves
         tool_db.execute(
             "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'BigProj', 'python', '/Users/me/Work/big', 'active')"
+            "VALUES (1, 'BigProj', 'python', '/Users/me/Work/big', 'listed')"
         )
         tool_db.commit()
 
@@ -446,7 +446,7 @@ class TestBulkApplyStatsPluralization:
 
         tool_db.execute(
             "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'active')"
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
         )
         tool_db.commit()
 
@@ -731,7 +731,7 @@ class TestBulkApplyScopePreviewPluralization:
 
         tool_db.execute(
             "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'active')"
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
         )
         tool_db.commit()
 

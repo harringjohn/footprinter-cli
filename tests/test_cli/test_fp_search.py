@@ -142,7 +142,7 @@ class TestSearchNoML:
                 "CREATE TABLE files (id INTEGER PRIMARY KEY, source TEXT,"
                 " name TEXT, path TEXT, content_type TEXT,"
                 " size_bytes INTEGER, modified_at TEXT,"
-                " status TEXT DEFAULT 'active')"
+                " status TEXT DEFAULT 'listed')"
             )
             conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
             conn.execute(

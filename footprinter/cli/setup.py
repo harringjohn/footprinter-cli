@@ -1801,11 +1801,11 @@ def _get_indexing_counts() -> dict:
         counts = {}
         for table, query in [
             ("folders", "SELECT COUNT(*) FROM folders"),
-            ("files", "SELECT COUNT(*) FROM files WHERE status != 'removed'"),
+            ("files", "SELECT COUNT(*) FROM files WHERE status = 'listed'"),
             ("visits", "SELECT COUNT(*) FROM visits"),
             ("projects", "SELECT COUNT(*) FROM projects"),
-            ("chats", "SELECT COUNT(*) FROM chats WHERE status != 'removed'"),
-            ("messages", "SELECT COUNT(*) FROM messages WHERE status != 'removed'"),
+            ("chats", "SELECT COUNT(*) FROM chats WHERE status = 'listed'"),
+            ("messages", "SELECT COUNT(*) FROM messages WHERE status = 'listed'"),
         ]:
             try:
                 cur.execute(query)

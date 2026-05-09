@@ -36,8 +36,8 @@ def db_conn(tmp_path):
         """INSERT INTO clients (id, name, slug, client_type, path_pattern, status,
                                 mcp_view, mcp_read)
            VALUES
-               (1, 'Acme Corp',  'acme',   'external', '~/Work/clients/acme/',   'active', 'visible', 'allow'),
-               (2, 'Hidden Inc', 'hidden', 'external', '~/Work/clients/hidden/', 'active', 'hidden',  'allow')"""
+               (1, 'Acme Corp',  'acme',   'external', '~/Work/clients/acme/',   'listed', 'visible', 'allow'),
+               (2, 'Hidden Inc', 'hidden', 'external', '~/Work/clients/hidden/', 'listed', 'hidden',  'allow')"""
     )
 
     # -- Projects --------------------------------------------------------------
@@ -45,8 +45,8 @@ def db_conn(tmp_path):
         """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                  client_id, mcp_view, mcp_read)
            VALUES
-               (1, 'Alpha', 'python', '/Users/u/Work/alpha', 'active', 1, 'visible', 'allow'),
-               (2, 'Beta',  'node',   '/Users/u/Work/beta',  'active', 2, 'hidden',  'allow')"""
+               (1, 'Alpha', 'python', '/Users/u/Work/alpha', 'listed', 1, 'visible', 'allow'),
+               (2, 'Beta',  'node',   '/Users/u/Work/beta',  'listed', 2, 'hidden',  'allow')"""
     )
 
     # -- Files -----------------------------------------------------------------
@@ -55,11 +55,11 @@ def db_conn(tmp_path):
                               modified_at, account, mime_type, project_id,
                               mcp_view, mcp_read, content_preview)
            VALUES
-               (1, 'readme.md',  '/Users/u/Work/alpha/readme.md',  'local', 'active', 'markdown', 1000,
+               (1, 'readme.md',  '/Users/u/Work/alpha/readme.md',  'local', 'listed', 'markdown', 1000,
                 '2026-01-10', NULL, 'text/markdown', 1, 'visible', 'allow', 'This is a readme'),
-               (2, 'secret.py',  '/Users/u/Work/beta/secret.py',   'local', 'active', 'python',   2000,
+               (2, 'secret.py',  '/Users/u/Work/beta/secret.py',   'local', 'listed', 'python',   2000,
                 '2026-01-11', NULL, 'text/x-python', 2, 'hidden',  'allow', 'Secret content'),
-               (3, 'report.pdf', '/Users/u/Work/alpha/report.pdf', 'local', 'active', 'pdf',      5000,
+               (3, 'report.pdf', '/Users/u/Work/alpha/report.pdf', 'local', 'listed', 'pdf',      5000,
                 '2026-01-12', 'work', 'application/pdf', 1, 'visible', 'allow', 'Report content')"""
     )
 
@@ -71,13 +71,13 @@ def db_conn(tmp_path):
            VALUES
                (1, 'msg-1', 'thr-1', 'work',     'alice@example.com', 'Alice',
                 'bob@example.com', 'Project Update', 'Here is the update...', '2026-01-15T10:00:00',
-                'inbox', 'active', 'visible', 'allow'),
+                'inbox', 'listed', 'visible', 'allow'),
                (2, 'msg-2', 'thr-2', 'work',     'bob@example.com', 'Bob',
                 'alice@example.com', 'Hidden Email', 'Secret stuff', '2026-01-15T11:00:00',
-                'inbox', 'active', 'hidden', 'allow'),
+                'inbox', 'listed', 'hidden', 'allow'),
                (3, 'msg-3', 'thr-3', 'personal', 'eve@example.com', 'Eve',
                 'alice@example.com', 'Weekend Plans', 'Let us meet...', '2026-01-15T12:00:00',
-                'inbox', 'active', 'visible', 'allow')"""
+                'inbox', 'listed', 'visible', 'allow')"""
     )
 
     # -- Chats -----------------------------------------------------------------
@@ -86,11 +86,11 @@ def db_conn(tmp_path):
                               created_at, mcp_view, mcp_read, status)
            VALUES
                (1, 'conv-vis',    'claude', 'Visible Chat', 'A visible summary', 2,
-                '2026-01-10', 'visible', 'allow', 'active'),
+                '2026-01-10', 'visible', 'allow', 'listed'),
                (2, 'conv-hidden', 'claude', 'Hidden Chat',  'A hidden summary',  1,
-                '2026-01-11', 'hidden',  'allow', 'active'),
+                '2026-01-11', 'hidden',  'allow', 'listed'),
                (3, 'conv-opaque', 'claude', 'Opaque Chat',  'An opaque summary', 1,
-                '2026-01-12', 'opaque',  'deny',  'active')"""
+                '2026-01-12', 'opaque',  'deny',  'listed')"""
     )
 
     # -- Visits ----------------------------------------------------------------

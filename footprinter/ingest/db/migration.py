@@ -168,7 +168,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # browser_visits columns added with status/client/project support
     for col, col_def in [
-        ("status", "TEXT DEFAULT 'active'"),
+        ("status", "TEXT DEFAULT 'listed'"),
         ("client_id", "INTEGER"),
         ("project_id", "INTEGER"),
     ]:
@@ -179,7 +179,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # emails: add status column
     try:
-        cursor.execute("ALTER TABLE emails ADD COLUMN status TEXT DEFAULT 'active'")
+        cursor.execute("ALTER TABLE emails ADD COLUMN status TEXT DEFAULT 'listed'")
     except sqlite3.OperationalError:
         pass  # table doesn't exist yet or column already exists
 
@@ -269,7 +269,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # folders: add status, client_id, indexed_at
     for col, col_def in [
-        ("status", "TEXT DEFAULT 'active'"),
+        ("status", "TEXT DEFAULT 'listed'"),
         ("client_id", "INTEGER"),
         ("indexed_at", "DATETIME"),
     ]:
@@ -280,7 +280,7 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
 
     # messages: add status
     try:
-        cursor.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'active'")
+        cursor.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'listed'")
     except sqlite3.OperationalError:
         pass
 
@@ -358,12 +358,12 @@ def migrate_schema(cursor: sqlite3.Cursor) -> None:
             pass  # table doesn't exist yet
 
     # Backfill NULL status on chats/messages from legacy schemas that lacked
-    # a column DEFAULT. MCP filters checking `status != 'removed'` exclude
+    # a column DEFAULT. MCP filters checking `status = 'listed'` exclude
     # NULLs (NULL comparisons evaluate to NULL), so new rows silently
     # disappear from counts and search until backfilled.
     for sql in (
-        "UPDATE chats SET status = 'active' WHERE status IS NULL",
-        "UPDATE messages SET status = 'active' WHERE status IS NULL",
+        "UPDATE chats SET status = 'listed' WHERE status IS NULL",
+        "UPDATE messages SET status = 'listed' WHERE status IS NULL",
     ):
         try:
             cursor.execute(sql)

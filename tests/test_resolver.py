@@ -29,11 +29,11 @@ def resolver_db(tmp_path):
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute(
-        "INSERT INTO clients (name, slug, client_type, status) VALUES ('Acme Corp', 'acme-corp', 'external', 'active')"
+        "INSERT INTO clients (name, slug, client_type, status) VALUES ('Acme Corp', 'acme-corp', 'external', 'listed')"
     )
     conn.execute(
         "INSERT INTO projects (project_name, project_type, root_path, status) "
-        "VALUES ('Manila', 'python', '/Users/test/Work/manila', 'active')"
+        "VALUES ('Manila', 'python', '/Users/test/Work/manila', 'listed')"
     )
     conn.commit()
     yield conn
@@ -152,7 +152,7 @@ class TestResolveIdentifierAmbiguous:
         # Insert a second project with the same name
         resolver_db.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status) "
-            "VALUES ('Manila', 'node', '/Users/test/Work/manila-2', 'active')"
+            "VALUES ('Manila', 'node', '/Users/test/Work/manila-2', 'listed')"
         )
         resolver_db.commit()
 
@@ -265,7 +265,7 @@ class TestValidStatuses:
     def test_contains_all_statuses(self):
         from footprinter.cli._common import VALID_STATUSES
 
-        expected = {"active", "paused", "completed", "abandoned", "archived"}
+        expected = {"listed", "unlisted", "removed"}
         assert VALID_STATUSES == expected
 
     def test_is_frozenset(self):

@@ -132,7 +132,7 @@ class TestSaveFoldersReactivation:
         indexer.save_folders([folder])
 
         after = self._status_row(folder_db, folder["path"])
-        assert after["status"] == "active"
+        assert after["status"] == "listed"
         assert after["status_reason"] is None
         assert after["status_changed_at"] != before["status_changed_at"]
 
@@ -163,7 +163,7 @@ class TestSaveFoldersReactivation:
 
         after = self._status_row(folder_db, folder["path"])
         assert result == (0, 0, 1)
-        assert after["status"] == "active"
+        assert after["status"] == "listed"
         assert after["status_reason"] == "scan:hidden"
 
     def test_removed_folder_with_field_change_also_reactivates(self, folder_db):
@@ -179,7 +179,7 @@ class TestSaveFoldersReactivation:
         after_status = self._status_row(folder_db, folder["path"])
         after_name = _row(folder_db, folder["path"])["name"]
         assert result == (1, 0, 0)
-        assert after_status["status"] == "active"
+        assert after_status["status"] == "listed"
         assert after_status["status_reason"] is None
         assert after_name == "renamed"
 

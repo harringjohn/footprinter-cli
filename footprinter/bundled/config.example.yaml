@@ -17,7 +17,7 @@ browsers:
 #
 # Files matching these patterns are NEVER scanned — they don't appear in the
 # database at all. This is different from hidden files (dot-files/dot-directories),
-# which ARE scanned and indexed with status='hidden' so they appear in the catalog
+# which ARE scanned and indexed with status='unlisted' so they appear in the catalog
 # but are excluded from Drive sync.
 #
 # Two tiers: always (all folders), sensitive (all folders)

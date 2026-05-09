@@ -217,7 +217,7 @@ def upsert(
             project_type=project_type,
             description=description,
             github_url=github_url,
-            status=status or "active",
+            status=status or "listed",
         )
         return {"id": result["id"], "action": "created"}
 

@@ -91,7 +91,7 @@ class TestInsertFile:
 
         # Create a real project to reference
         cursor = db.conn.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (99, 'test-proj', 'active')")
+        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (99, 'test-proj', 'listed')")
 
         # Simulate manual project override
         cursor.execute("UPDATE files SET project_id = 99 WHERE id = ?", (file_id,))
@@ -194,7 +194,7 @@ class TestInsertFile:
         # Row updated and reactivated
         cursor.execute("SELECT status, size_bytes FROM files WHERE id = ?", (file_id,))
         row = cursor.fetchone()
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         assert row["size_bytes"] == 999
         db.close()
 
@@ -279,7 +279,7 @@ class TestInsertFileUnchanged:
         assert second == ("inserted", file_id)
 
         cursor.execute("SELECT status FROM files WHERE id = ?", (file_id,))
-        assert cursor.fetchone()["status"] == "active"
+        assert cursor.fetchone()["status"] == "listed"
         db.close()
 
     def test_null_project_id_fires_unchanged_when_no_project_resolves(self, temp_db):
@@ -314,7 +314,7 @@ class TestInsertFileUnchanged:
         cursor = db.conn.cursor()
         cursor.execute(
             "INSERT INTO projects (id, project_name, status, root_path) VALUES (?, ?, ?, ?)",
-            (88, "test-proj", "active", "/tmp/test"),
+            (88, "test-proj", "listed", "/tmp/test"),
         )
         db.conn.commit()
 
@@ -365,7 +365,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         assert row["status_reason"] is None
         db.close()
 
@@ -386,7 +386,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "hidden"
+        assert row["status"] == "unlisted"
         assert row["status_reason"] == "dot_file"
         db.close()
 
@@ -407,7 +407,7 @@ class TestFileStatus:
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
-        assert row["status"] == "hidden"
+        assert row["status"] == "unlisted"
         assert row["status_reason"] == "in_dot_folder"
         db.close()
 
@@ -444,7 +444,7 @@ class TestMarkRemovedFiles:
         # a.txt and b.txt still active
         for p in ["/tmp/a.txt", "/tmp/b.txt"]:
             cursor.execute("SELECT status FROM files WHERE path = ?", (p,))
-            assert cursor.fetchone()["status"] == "active"
+            assert cursor.fetchone()["status"] == "listed"
         db.close()
 
     def test_returns_removed_ids(self, temp_db):
@@ -559,7 +559,7 @@ class TestDriveFiles:
         assert row["external_id"] == "drive_file_001"
         assert row["account"] == "test_account"
         assert row["name"] == "report.pdf"
-        assert row["status"] == "active"
+        assert row["status"] == "listed"
         db.close()
 
     def test_insert_drive_file_duplicate_updates(self, temp_db):
@@ -691,7 +691,7 @@ class TestModuleLevelFileWrites:
         db = Database(temp_db)
         db.conn.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
         )
         db.conn.commit()
 
@@ -731,18 +731,18 @@ class TestPrefixMaps:
         # Insert two projects with root_path values
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('short', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('short', 'python', '/Users/john/Work', 'listed')"
         )
         short_id = cursor.lastrowid
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('long', 'python', '/Users/john/Work/client-a', 'active')"
+            " VALUES ('long', 'python', '/Users/john/Work/client-a', 'listed')"
         )
         long_id = cursor.lastrowid
         # Project with NULL root_path — should be excluded
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('null-root', 'python', NULL, 'active')"
+            " VALUES ('null-root', 'python', NULL, 'listed')"
         )
         db.conn.commit()
 
@@ -765,7 +765,7 @@ class TestPrefixMaps:
         # Insert a project
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
         )
         proj_id = cursor.lastrowid
 
@@ -809,7 +809,7 @@ class TestPrefixMaps:
         # Seed project and folder
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('myproj', 'python', '/Users/john/Work/myproj', 'active')"
+            " VALUES ('myproj', 'python', '/Users/john/Work/myproj', 'listed')"
         )
         proj_id = cursor.lastrowid
         cursor.execute(
@@ -865,7 +865,7 @@ class TestPrefixMaps:
 
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work/proj', 'active')"
+            " VALUES ('proj', 'python', '/Users/john/Work/proj', 'listed')"
         )
         db.conn.commit()
 
@@ -895,7 +895,7 @@ class TestPrefixMaps:
 
         cursor.execute(
             "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('client-a', 'python', '/Users/john/Work/client-a', 'active')"
+            " VALUES ('client-a', 'python', '/Users/john/Work/client-a', 'listed')"
         )
         proj_id = cursor.lastrowid
         db.conn.commit()

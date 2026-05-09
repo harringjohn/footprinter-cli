@@ -27,7 +27,7 @@ def list_visits(conn: sqlite3.Connection, *, limit: int = 50, page: int = 1) -> 
     """
     rows, pagination = paginate(
         conn,
-        "SELECT COUNT(*) FROM visits bv WHERE bv.status != 'removed'",
+        "SELECT COUNT(*) FROM visits bv WHERE bv.status = 'listed'",
         """
         SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
                bv.client_id, bv.project_id,
@@ -36,7 +36,7 @@ def list_visits(conn: sqlite3.Connection, *, limit: int = 50, page: int = 1) -> 
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
-        WHERE bv.status != 'removed'
+        WHERE bv.status = 'listed'
         ORDER BY bv.visit_time DESC
         LIMIT ? OFFSET ?
         """,
@@ -83,7 +83,7 @@ def get_visit(conn: sqlite3.Connection, entry_id: int) -> dict | None:
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
-        WHERE bv.id = ? AND bv.status != 'removed'
+        WHERE bv.id = ? AND bv.status = 'listed'
         """,
         (entry_id,),
     )

@@ -32,7 +32,7 @@ def _make_rebuild_db(tmp_path):
             message_count INTEGER DEFAULT 0,
             metadata TEXT,
             metadata_vectorized_at TEXT,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'listed'
         )
     """)
     conn.execute("""
@@ -45,7 +45,7 @@ def _make_rebuild_db(tmp_path):
             metadata TEXT,
             vectorized_at TEXT,
             vectorized_chunks INTEGER,
-            status TEXT DEFAULT 'active',
+            status TEXT DEFAULT 'listed',
             FOREIGN KEY (chat_id) REFERENCES chats(id)
         )
     """)
@@ -188,7 +188,7 @@ class TestFileIndexerRespectsFlag:
         db.conn.execute(
             "INSERT INTO files (id, name, path, source, status, content_type, "
             "size_bytes, metadata) "
-            "VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'active', 'text', "
+            "VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed', 'text', "
             "100, ?)",
             (json.dumps({"vectorize": 0}),),
         )
@@ -224,7 +224,7 @@ class TestFileIndexerRespectsFlag:
         db.conn.execute(
             "INSERT INTO files (id, name, path, source, status, content_type, "
             "size_bytes) "
-            "VALUES (1, 'test.txt', ?, 'local', 'active', 'text', 100)",
+            "VALUES (1, 'test.txt', ?, 'local', 'listed', 'text', 100)",
             (str(tmp_path / "test.txt"),),
         )
         db.conn.commit()

@@ -61,12 +61,12 @@ class TestStatusService:
 
     def test_viewer_files_by_status(self, service_db):
         result = status_service.get_status(service_db, role=Role.VIEWER)
-        assert "active" in result["files_by_status"]
-        assert result["files_by_status"]["active"] == 3
+        assert "listed" in result["files_by_status"]
+        assert result["files_by_status"]["listed"] == 3
 
     def test_viewer_projects_by_status(self, service_db):
         result = status_service.get_status(service_db, role=Role.VIEWER)
-        assert "active" in result["projects_by_status"]
+        assert "listed" in result["projects_by_status"]
 
     def test_missing_table_graceful(self, service_db):
         """If a table doesn't exist, the count should be 0, not a crash."""

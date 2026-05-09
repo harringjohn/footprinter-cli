@@ -124,7 +124,7 @@ class TestEntityExplicitFields:
         conn.execute(
             """INSERT INTO files (name, path, source, status, content_type,
                                       size_bytes)
-               VALUES ('test.py', '/tmp/test.py', 'local', 'active', 'code',
+               VALUES ('test.py', '/tmp/test.py', 'local', 'listed', 'code',
                        100)"""
         )
         conn.commit()
@@ -183,7 +183,7 @@ class TestEntityExplicitFields:
         conn.execute(
             """INSERT INTO files (name, path, source, status, content_type,
                                   size_bytes, external_id, account, mime_type)
-               VALUES ('report.pdf', '/tmp/report.pdf', 'workdrive', 'active',
+               VALUES ('report.pdf', '/tmp/report.pdf', 'workdrive', 'listed',
                        'document', 5000, 'ext-abc-123', 'work', 'application/pdf')"""
         )
         conn.commit()

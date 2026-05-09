@@ -106,7 +106,7 @@ class FolderIndexer:
         """Check if directory should be skipped.
 
         v3 Architecture (2026-01): Scan ALL folders including hidden ones.
-        Hidden folders are scanned so their files can be indexed with status='hidden'.
+        Hidden folders are scanned so their files can be indexed with status='unlisted'.
 
         Only skip regeneratable build/cache directories (node_modules, venv, etc.)
         """
@@ -115,7 +115,7 @@ class FolderIndexer:
             return True
 
         # NOTE: Hidden directories (starting with .) are NOT skipped
-        # They are scanned so their files can be indexed with status='hidden'
+        # They are scanned so their files can be indexed with status='unlisted'
         # Filter hidden folders in the Web UI, not at scan time
 
         return False
@@ -260,7 +260,7 @@ class FolderIndexer:
                         parent_path = ?,
                         scanned_at = ?,
                         updated_at = CURRENT_TIMESTAMP,
-                        status = CASE WHEN status = 'removed' THEN 'active' ELSE status END,
+                        status = CASE WHEN status = 'removed' THEN 'listed' ELSE status END,
                         status_reason = CASE WHEN status = 'removed' THEN NULL ELSE status_reason END,
                         status_changed_at = CASE WHEN status = 'removed'
                                                  THEN CURRENT_TIMESTAMP

@@ -30,7 +30,7 @@ class TestFileItemType:
         cursor = tool_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, path, source, status)"
-            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'active')"
+            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed')"
         )
         tool_db.commit()
         # Should resolve without error (result depends on policies)
@@ -42,7 +42,7 @@ class TestFileItemType:
         cursor = tool_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, path, source, status)"
-            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'active')"
+            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed')"
         )
         tool_db.commit()
         result = get_visibility(tool_db, "file", 1)
@@ -57,7 +57,7 @@ class TestSourceFilesScope:
         cursor = tool_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, path, source, status)"
-            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'active')"
+            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed')"
         )
         cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:files', 'allow')")
         tool_db.commit()
@@ -68,7 +68,7 @@ class TestSourceFilesScope:
         cursor = tool_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, name, path, source, status)"
-            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'active')"
+            " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
         tool_db.commit()

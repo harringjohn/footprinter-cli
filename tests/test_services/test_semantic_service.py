@@ -124,7 +124,7 @@ class TestSemanticServiceFiles:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (50, 'local', 'budget.xlsx', '/Users/u/docs/budget.xlsx', "
-            "'active', 'spreadsheet', 8000, '2026-01-15', 'visible', 'allow', "
+            "'listed', 'spreadsheet', 8000, '2026-01-15', 'visible', 'allow', "
             "'Q4 revenue figures for review')"
         )
         service_db.commit()

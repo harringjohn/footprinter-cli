@@ -49,15 +49,7 @@ C_ERROR = "red"
 C_INFO = "cyan"
 C_DIM = "dim"
 
-VALID_STATUSES = frozenset(
-    {
-        "active",
-        "paused",
-        "completed",
-        "abandoned",
-        "archived",
-    }
-)
+VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 ALLOWED_TABLES = frozenset({"clients", "projects"})
 ALLOWED_COLUMNS = frozenset({"name", "project_name"})

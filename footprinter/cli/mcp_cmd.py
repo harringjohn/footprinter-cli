@@ -195,7 +195,7 @@ def _view_check(args) -> None:
 
         # Try to find file in DB
         row = conn.execute(
-            "SELECT id FROM files WHERE path = ? AND status != 'removed'",
+            "SELECT id FROM files WHERE path = ? AND status = 'listed'",
             (expanded,),
         ).fetchone()
 
@@ -383,7 +383,7 @@ def _read_check(args) -> None:
         display = abbreviate_home(expanded)
 
         row = conn.execute(
-            "SELECT id FROM files WHERE path = ? AND status != 'removed'",
+            "SELECT id FROM files WHERE path = ? AND status = 'listed'",
             (expanded,),
         ).fetchone()
 

@@ -74,7 +74,7 @@ SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
             "client_type",
         ),
         ("--path-pattern", {"default": None, "help": "Path pattern for client files"}, "path_pattern"),
-        ("--status", {"default": None, "help": "Client status (active, hidden, removed)"}, "status"),
+        ("--status", {"default": None, "help": "Client status (listed, unlisted, removed)"}, "status"),
     ],
     "project": [
         ("--name", {"required": True, "help": "Project name", "dest": "project_name"}, "project_name"),
@@ -87,7 +87,7 @@ SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
             "--status",
             {
                 "default": None,
-                "help": "Project status (active, hidden, removed, paused, completed, abandoned, archived)",
+                "help": "Project status (listed, unlisted, removed)",
             },
             "status",
         ),
@@ -706,7 +706,7 @@ def register(subparsers) -> None:
             "  optional: slug, path_pattern, status\n"
             "\n"
             "  client_type values: external, internal, personal\n"
-            "  status values:      active (default), hidden, removed\n"
+            "  status values:      listed (default), unlisted, removed\n"
             "\n"
             "example CSV:\n"
             "  name,client_type,path_pattern\n"
@@ -724,8 +724,7 @@ def register(subparsers) -> None:
             "            description, github_url, status\n"
             "\n"
             "  client: client name (resolved to client_id)\n"
-            "  status values: active (default), paused, completed, abandoned,\n"
-            "                 archived, hidden, removed\n"
+            "  status values: listed (default), unlisted, removed\n"
             "\n"
             "example CSV:\n"
             "  project_name,client,project_type,root_path\n"

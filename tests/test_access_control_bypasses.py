@@ -187,11 +187,11 @@ class TestOpaqueFilterProjectClient:
     """_filter_to_opaque() must handle project and client types."""
 
     def test_project_opaque_filter(self):
-        full = {"id": 1, "project_name": "Secret", "project_type": "python", "status": "active"}
+        full = {"id": 1, "project_name": "Secret", "project_type": "python", "status": "listed"}
         filtered = _filter_to_opaque("project", full)
         assert set(filtered.keys()) == {"id", "project_type", "status"}
 
     def test_client_opaque_filter(self):
-        full = {"id": 1, "name": "Secret", "client_type": "external", "status": "active"}
+        full = {"id": 1, "name": "Secret", "client_type": "external", "status": "listed"}
         filtered = _filter_to_opaque("client", full)
         assert set(filtered.keys()) == {"id", "client_type", "status"}

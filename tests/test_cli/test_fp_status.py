@@ -52,7 +52,7 @@ def _mock_db_path(tmp_path: Path) -> Path:
     """Create a minimal SQLite DB at tmp_path and return its path."""
     db_path = tmp_path / "footprinter.db"
     conn = sqlite3.connect(str(db_path))
-    conn.execute("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'active')")
+    conn.execute("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'listed')")
     conn.execute("CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, name TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY, name TEXT)")
     conn.close()

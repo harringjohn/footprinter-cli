@@ -93,7 +93,7 @@ class FileScanner:
         Check if file should be excluded based on patterns.
 
         v3 Architecture (2026-01): Index ALL files in ~/Work and ~/Personal.
-        Hidden files are indexed with status='hidden', not excluded.
+        Hidden files are indexed with status='unlisted', not excluded.
 
         Only exclude:
         - always: Regeneratable dependencies (node_modules, venv, .git internals)
@@ -124,7 +124,7 @@ class FileScanner:
                 return True
 
         # NOTE: Hidden files (starting with .) are NOT excluded
-        # They are indexed with status='hidden' in the database
+        # They are indexed with status='unlisted' in the database
 
         return False
 

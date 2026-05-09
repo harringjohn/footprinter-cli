@@ -342,14 +342,14 @@ def project_conn():
             content_type TEXT,
             size_bytes INTEGER,
             modified_at TEXT,
-            status TEXT DEFAULT 'active',
+            status TEXT DEFAULT 'listed',
             status_reason TEXT,
             project_id INTEGER
         )"""
     )
     conn.execute(
         "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-        "VALUES (1, 'EmptyProj', 'python', '/tmp/empty', 'active')"
+        "VALUES (1, 'EmptyProj', 'python', '/tmp/empty', 'listed')"
     )
     conn.commit()
     return conn
@@ -372,7 +372,7 @@ class TestListProjectFiles:
             "INSERT INTO files (id, source, account, name, path, content_type, "
             "size_bytes, modified_at, status, project_id) "
             "VALUES (1, 'local', 'work', 'readme.md', '/tmp/empty/readme.md', "
-            "'text/markdown', 1024, '2026-01-15', 'active', 1)"
+            "'text/markdown', 1024, '2026-01-15', 'listed', 1)"
         )
         project_conn.commit()
 
@@ -457,7 +457,7 @@ def pagination_conn():
         """CREATE TABLE files (
             id INTEGER PRIMARY KEY, source TEXT, name TEXT, path TEXT,
             content_type TEXT, size_bytes INTEGER, modified_at TEXT,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'listed'
         )"""
     )
     conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
@@ -476,7 +476,7 @@ def pagination_conn():
     for i in range(1, 6):
         conn.execute(
             "INSERT INTO files (id, source, name, path, size_bytes, modified_at, status) "
-            "VALUES (?, 'local', ?, ?, 100, '2026-01-01', 'active')",
+            "VALUES (?, 'local', ?, ?, 100, '2026-01-01', 'listed')",
             (i, f"report_{i}.txt", f"/home/user/report_{i}.txt"),
         )
         conn.execute(

@@ -52,7 +52,7 @@ def _query_all_counts(cursor, counts: dict) -> dict:
         cursor.execute(
             """
             SELECT source, COUNT(*) as count, SUM(size_bytes) as size
-            FROM files WHERE status != 'removed'
+            FROM files WHERE status = 'listed'
             GROUP BY source
             """
         )
@@ -68,7 +68,7 @@ def _query_all_counts(cursor, counts: dict) -> dict:
 
     # Total files
     try:
-        cursor.execute("SELECT COUNT(*) FROM files WHERE status != 'removed'")
+        cursor.execute("SELECT COUNT(*) FROM files WHERE status = 'listed'")
         counts["files_total"] = cursor.fetchone()[0]
     except sqlite3.OperationalError:
         counts["files_total"] = 0
@@ -78,7 +78,7 @@ def _query_all_counts(cursor, counts: dict) -> dict:
         cursor.execute(
             """
             SELECT source, COUNT(*) as count
-            FROM folders WHERE status != 'removed'
+            FROM folders WHERE status = 'listed'
             GROUP BY source
             """
         )
@@ -158,7 +158,7 @@ def _query_all_counts(cursor, counts: dict) -> dict:
         cursor.execute(
             """
             SELECT name, source, modified_at
-            FROM files WHERE status != 'removed'
+            FROM files WHERE status = 'listed'
             ORDER BY modified_at DESC
             LIMIT 10
             """

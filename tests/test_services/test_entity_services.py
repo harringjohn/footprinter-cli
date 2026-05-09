@@ -250,14 +250,14 @@ class TestClientService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Secret', 'python', '/Users/u/Work/secret', 'active',
+               VALUES (10, 'Secret', 'python', '/Users/u/Work/secret', 'listed',
                        1, 'hidden', 'allow')"""
         )
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, mcp_view, mcp_read)
                VALUES (10, 'secret.py', '/Users/u/Work/secret/secret.py', 'local',
-                       'active', 'python', 500, 10, 'hidden', 'allow')"""
+                       'listed', 'python', 500, 10, 'hidden', 'allow')"""
         )
         service_db.commit()
 
@@ -297,7 +297,7 @@ class TestProjectService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'active',
+               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
@@ -310,7 +310,7 @@ class TestProjectService:
         service_db.execute(
             """INSERT INTO projects (id, project_name, project_type, root_path, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'active',
+               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
@@ -720,7 +720,7 @@ class TestFolderService:
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, folder_id, mcp_view, mcp_read)
                VALUES (10, 'hidden.py', '/Users/u/Work/alpha/src/hidden.py', 'local',
-                       'active', 'python', 100, 1, 1, 'hidden', 'allow')"""
+                       'listed', 'python', 100, 1, 1, 'hidden', 'allow')"""
         )
         service_db.commit()
 

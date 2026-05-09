@@ -15,7 +15,7 @@ def fts_db(tmp_path):
     cursor = db.conn.cursor()
     cursor.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-        "VALUES ('test.txt', '/tmp/test.txt', 'local', 'active', 'text', 100)"
+        "VALUES ('test.txt', '/tmp/test.txt', 'local', 'listed', 'text', 100)"
     )
     cursor.execute(
         "INSERT INTO emails (message_id, thread_id, account, subject, from_name, "
@@ -55,7 +55,7 @@ class TestCheckFtsHealth:
         fts_db.drop_fts_triggers()
         fts_db.conn.execute(
             "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-            "VALUES ('stale.txt', '/tmp/stale.txt', 'local', 'active', 'text', 75)"
+            "VALUES ('stale.txt', '/tmp/stale.txt', 'local', 'listed', 'text', 75)"
         )
         fts_db.conn.commit()
 
@@ -82,7 +82,7 @@ class TestCheckFtsHealth:
         fts_db.drop_fts_triggers()
         fts_db.conn.execute(
             "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-            "VALUES ('extra.txt', '/tmp/extra.txt', 'local', 'active', 'text', 50)"
+            "VALUES ('extra.txt', '/tmp/extra.txt', 'local', 'listed', 'text', 50)"
         )
         fts_db.conn.commit()
 
@@ -150,14 +150,14 @@ class TestFtsExcludesOpaque:
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
             "size_bytes, content_preview, mcp_view) "
-            "VALUES ('budget.xlsx', '/tmp/budget.xlsx', 'local', 'active', "
+            "VALUES ('budget.xlsx', '/tmp/budget.xlsx', 'local', 'listed', "
             "'spreadsheet', 200, 'classified financial data', 'opaque')"
         )
         # Insert a visible file with different content
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
             "size_bytes, content_preview, mcp_view) "
-            "VALUES ('report.txt', '/tmp/report.txt', 'local', 'active', "
+            "VALUES ('report.txt', '/tmp/report.txt', 'local', 'listed', "
             "'text', 100, 'public quarterly report', 'visible')"
         )
         fts_db.conn.commit()
@@ -183,7 +183,7 @@ class TestFtsExcludesOpaque:
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
             "size_bytes, content_preview, mcp_view) "
-            "VALUES ('memo.txt', '/tmp/memo.txt', 'local', 'active', "
+            "VALUES ('memo.txt', '/tmp/memo.txt', 'local', 'listed', "
             "'text', 50, 'sensitive merger details', 'visible')"
         )
         fts_db.conn.commit()

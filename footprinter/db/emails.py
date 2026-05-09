@@ -34,7 +34,7 @@ def list_emails(
     order_sql = "ASC" if order.lower() == "asc" else "DESC"
 
     # Build dynamic WHERE clause
-    conditions: list[str] = ["email.status != 'removed'"]
+    conditions: list[str] = ["email.status = 'listed'"]
     params: list = []
 
     if account:
@@ -133,7 +133,7 @@ def get_email(conn: sqlite3.Connection, email_id: int) -> Optional[dict]:
         FROM emails email
         LEFT JOIN clients client ON email.client_id = client.id
         LEFT JOIN projects project ON email.project_id = project.id
-        WHERE email.id = ? AND email.status != 'removed'
+        WHERE email.id = ? AND email.status = 'listed'
         """,
         (email_id,),
     )

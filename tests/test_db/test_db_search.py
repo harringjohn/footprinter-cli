@@ -313,7 +313,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (100, 'local', 'report.pdf', '/Users/u/docs/report.pdf', "
-            "'active', 'pdf', 5000, '2026-01-15', 'visible', 'allow', "
+            "'listed', 'pdf', 5000, '2026-01-15', 'visible', 'allow', "
             "'This is the report content preview text')"
         )
         db_conn.commit()
@@ -329,7 +329,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (102, 'local', 'notes.txt', '/Users/u/docs/notes.txt', "
-            "'active', 'text', 1000, '2026-01-15', 'visible', 'allow', NULL)"
+            "'listed', 'text', 1000, '2026-01-15', 'visible', 'allow', NULL)"
         )
         db_conn.commit()
         self._rebuild_fts(db_conn)
@@ -345,7 +345,7 @@ class TestFileFts5Fallback:
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
             "VALUES (101, 'local', 'classified.docx', '/Users/u/docs/classified.docx', "
-            "'active', 'document', 3000, '2026-01-15', 'visible', 'deny', "
+            "'listed', 'document', 3000, '2026-01-15', 'visible', 'deny', "
             "'CONFIDENTIAL DATA that must not leak')"
         )
         db_conn.commit()

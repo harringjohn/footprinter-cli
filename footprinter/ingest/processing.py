@@ -77,7 +77,7 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
 
                 where = "indexed_at > ?"
                 if meta["has_status"]:
-                    where += " AND status != 'removed'"
+                    where += " AND status = 'listed'"
 
                 rows = conn.execute(f"SELECT id FROM {table} WHERE {where}", (last_run,)).fetchall()
                 ids = [r["id"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]

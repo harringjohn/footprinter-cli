@@ -176,7 +176,7 @@ def keyword_search(
                 JOIN chats chat ON chat.id = fts.rowid
                 WHERE chats_fts MATCH ?
                   AND chat.account = ?
-                  AND chat.status != 'removed'
+                  AND chat.status = 'listed'
                 ORDER BY fts.rank
                 LIMIT ?
             """,
@@ -190,7 +190,7 @@ def keyword_search(
                 FROM chats_fts fts
                 JOIN chats chat ON chat.id = fts.rowid
                 WHERE chats_fts MATCH ?
-                  AND chat.status != 'removed'
+                  AND chat.status = 'listed'
                 ORDER BY fts.rank
                 LIMIT ?
             """,

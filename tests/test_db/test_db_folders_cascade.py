@@ -28,7 +28,7 @@ def conn():
         "  name TEXT,"
         "  folder_id INTEGER,"
         "  project_id INTEGER,"
-        "  status TEXT DEFAULT 'active'"
+        "  status TEXT DEFAULT 'listed'"
         ")"
     )
 
@@ -46,11 +46,11 @@ def conn():
     db.execute("INSERT INTO folders VALUES (4, '/root/child2', 'root/child2', 'child2', 'local', NULL, 1)")
 
     # Files in various folders
-    db.execute("INSERT INTO files VALUES (10, 'a.txt', 1, NULL, 'active')")
-    db.execute("INSERT INTO files VALUES (11, 'b.txt', 2, NULL, 'active')")
-    db.execute("INSERT INTO files VALUES (12, 'c.txt', 3, NULL, 'active')")
+    db.execute("INSERT INTO files VALUES (10, 'a.txt', 1, NULL, 'listed')")
+    db.execute("INSERT INTO files VALUES (11, 'b.txt', 2, NULL, 'listed')")
+    db.execute("INSERT INTO files VALUES (12, 'c.txt', 3, NULL, 'listed')")
     db.execute("INSERT INTO files VALUES (13, 'removed.txt', 2, NULL, 'removed')")
-    db.execute("INSERT INTO files VALUES (14, 'd.txt', 4, NULL, 'active')")
+    db.execute("INSERT INTO files VALUES (14, 'd.txt', 4, NULL, 'listed')")
 
     db.commit()
     return db
@@ -73,7 +73,7 @@ class TestCascadeProjectId:
         result = cascade_project_id(conn, 1, 1)
         assert result["files_updated"] == 4  # 4 active files (not the removed one)
 
-        rows = conn.execute("SELECT id, project_id FROM files WHERE status = 'active' ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, project_id FROM files WHERE status = 'listed' ORDER BY id").fetchall()
         for row in rows:
             assert row["project_id"] == 1
 

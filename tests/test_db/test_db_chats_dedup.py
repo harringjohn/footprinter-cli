@@ -37,7 +37,7 @@ def conn():
     return db
 
 
-def _insert_chat(conn, chat_id, title, account="claude", message_count=0, status="active"):
+def _insert_chat(conn, chat_id, title, account="claude", message_count=0, status="listed"):
     conn.execute(
         "INSERT INTO chats (id, external_id, account, title, message_count, status) VALUES (?, ?, ?, ?, ?, ?)",
         (chat_id, f"ext-{chat_id}", account, title, message_count, status),

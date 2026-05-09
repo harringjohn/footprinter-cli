@@ -23,15 +23,15 @@ def _make_test_db(tmp_path):
     # Files with mixed vectorize state
     db.conn.execute(
         "INSERT INTO files (id, name, path, source, status, content_type, size_bytes) "
-        "VALUES (1, 'a.txt', '/tmp/a.txt', 'local', 'active', 'text', 100)"
+        "VALUES (1, 'a.txt', '/tmp/a.txt', 'local', 'listed', 'text', 100)"
     )
     db.conn.execute(
         "INSERT INTO files (id, name, path, source, status, content_type, size_bytes) "
-        "VALUES (2, 'b.txt', '/tmp/b.txt', 'local', 'active', 'text', 200)"
+        "VALUES (2, 'b.txt', '/tmp/b.txt', 'local', 'listed', 'text', 200)"
     )
     db.conn.execute(
         "INSERT INTO files (id, name, path, source, status, content_type, size_bytes, metadata) "
-        "VALUES (3, 'c.txt', '/tmp/c.txt', 'local', 'active', 'text', 300, ?)",
+        "VALUES (3, 'c.txt', '/tmp/c.txt', 'local', 'listed', 'text', 300, ?)",
         (json.dumps({"vectorize": 0}),),
     )
 

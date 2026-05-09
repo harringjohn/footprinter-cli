@@ -57,7 +57,7 @@ class TestAccessServiceGating:
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, folder_id, mcp_view, mcp_read)
-               VALUES (10, 'denied.md', '/Users/u/Work/denied.md', 'local', 'active',
+               VALUES (10, 'denied.md', '/Users/u/Work/denied.md', 'local', 'listed',
                        'markdown', 100, 1, 1, 'visible', 'deny')"""
         )
         service_db.commit()
@@ -102,7 +102,7 @@ class TestAccessServiceGating:
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
                                   size_bytes, project_id, folder_id, mcp_view, mcp_read)
-               VALUES (11, 'admin.md', '/Users/u/Work/admin.md', 'local', 'active',
+               VALUES (11, 'admin.md', '/Users/u/Work/admin.md', 'local', 'listed',
                        'markdown', 100, 1, 1, 'visible', 'deny')"""
         )
         service_db.commit()
@@ -288,7 +288,7 @@ def test_filter_result_opaque_client_fields():
         "id": 1,
         "name": "Acme Corp",
         "client_type": "external",
-        "status": "active",
+        "status": "listed",
         "path_pattern": "~/Work/clients/acme/",
         "mcp_view": "opaque",
     }
@@ -360,7 +360,7 @@ def test_filter_result_opaque_client_fields():
                 "name": "Footprinter",
                 "type": "code",
                 "project_type": "personal",
-                "status": "active",
+                "status": "listed",
                 "client_id": 2,
                 "mcp_view": "opaque",
             },

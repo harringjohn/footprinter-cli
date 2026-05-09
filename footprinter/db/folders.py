@@ -34,7 +34,7 @@ def list_folders(
     status : str, list[str], or None
         ``None`` → exclude removed (default).
         ``"all"`` → no status filter.
-        Single string → exact match (``"active"``, ``"hidden"``, ``"removed"``).
+        Single string → exact match (``"listed"``, ``"unlisted"``, ``"removed"``).
         List of strings → ``WHERE status IN (...)``.
     sort_by : str
         ``'size'`` (DESC), ``'files'`` (DESC), or ``'path'`` (ASC).
@@ -80,14 +80,14 @@ def list_folders(
         count_expr = """(
             SELECT COUNT(*) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
-            WHERE file.status != 'removed'
+            WHERE file.status = 'listed'
               AND (ancestor_folder.id = folder_cte.id
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
         size_expr = """(
             SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
             JOIN folders ancestor_folder ON file.folder_id = ancestor_folder.id
-            WHERE file.status != 'removed'
+            WHERE file.status = 'listed'
               AND (ancestor_folder.id = folder_cte.id
                    OR ancestor_folder.relative_path LIKE folder_cte.relative_path || '/%')
         )"""
@@ -165,7 +165,7 @@ def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -
         """SELECT id, name, content_type, size_bytes, modified_at, source, status,
                   mcp_view, mcp_read
            FROM files
-           WHERE folder_id = ? AND status != 'removed'
+           WHERE folder_id = ? AND status = 'listed'
            ORDER BY name
            LIMIT 200""",
         (folder_id,),
@@ -193,7 +193,7 @@ def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -
            SELECT COUNT(*) as total
            FROM files
            WHERE folder_id IN (SELECT id FROM descendants)
-             AND status != 'removed'
+             AND status = 'listed'
              AND COALESCE(mcp_view, 'inherit') != 'hidden'""",
         (folder_id,),
     ).fetchone()
@@ -243,10 +243,10 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
             folder.project_id, folder.mcp_view, folder.mcp_read,
             project.project_name,
             (SELECT COUNT(*) FROM files file
-             WHERE file.folder_id = folder.id AND file.status != 'removed'
+             WHERE file.folder_id = folder.id AND file.status = 'listed'
             ) AS live_file_count,
             (SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-             WHERE file.folder_id = folder.id AND file.status != 'removed'
+             WHERE file.folder_id = folder.id AND file.status = 'listed'
             ) AS live_size_bytes
         FROM folders folder
         LEFT JOIN projects project ON folder.project_id = project.id
@@ -263,7 +263,7 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
         """
         SELECT id, name, content_type, size_bytes
         FROM files
-        WHERE folder_id = ? AND status != 'removed'
+        WHERE folder_id = ? AND status = 'listed'
         LIMIT 20
         """,
         (folder_id,),
@@ -354,7 +354,7 @@ def cascade_project_id(
 
     # Update files (skip removed)
     cursor.execute(
-        f"UPDATE files SET project_id = ? WHERE folder_id IN ({ph}) AND status != 'removed'",
+        f"UPDATE files SET project_id = ? WHERE folder_id IN ({ph}) AND status = 'listed'",
         [value] + desc_ids,
     )
     files_updated = cursor.rowcount
@@ -484,7 +484,7 @@ def cascade_client_id(
 
     # Update files (skip removed)
     cursor.execute(
-        f"UPDATE files SET client_id = ? WHERE folder_id IN ({ph}) AND status != 'removed'",
+        f"UPDATE files SET client_id = ? WHERE folder_id IN ({ph}) AND status = 'listed'",
         [value] + desc_ids,
     )
     files_updated = cursor.rowcount
@@ -579,7 +579,7 @@ def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[i
         return []
 
     cursor = conn.cursor()
-    cursor.execute("SELECT id, path FROM folders WHERE source = 'local' AND status != 'removed'")
+    cursor.execute("SELECT id, path FROM folders WHERE source = 'local' AND status = 'listed'")
 
     removed_ids = [row["id"] for row in cursor.fetchall() if row["path"] not in scanned_paths]
 
@@ -647,11 +647,11 @@ def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
         UPDATE folders
         SET direct_file_count = COALESCE((
                 SELECT COUNT(*) FROM files file
-                WHERE file.folder_id = folders.id AND file.status != 'removed'
+                WHERE file.folder_id = folders.id AND file.status = 'listed'
             ), 0),
             total_size_bytes = COALESCE((
                 SELECT SUM(file.size_bytes) FROM files file
-                WHERE file.folder_id = folders.id AND file.status != 'removed'
+                WHERE file.folder_id = folders.id AND file.status = 'listed'
             ), 0)
     """
     )

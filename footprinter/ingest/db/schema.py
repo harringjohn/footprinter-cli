@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # messages, emails, clients) share these baseline columns:
 #
 #   id            INTEGER PRIMARY KEY AUTOINCREMENT
-#   status        TEXT DEFAULT 'active'   CHECK (active|hidden|removed)
+#   status        TEXT DEFAULT 'listed'   CHECK (listed|unlisted|removed)
 #   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 #   display_name  TEXT                    (auto-populated via trigger)
 #   mcp_read      TEXT DEFAULT 'inherit'  CHECK (allow|deny|inherit)
@@ -177,8 +177,8 @@ class SchemaMixin:
                 md5_hash TEXT,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 status_changed_at DATETIME,
 
@@ -267,8 +267,8 @@ class SchemaMixin:
                 total_size_bytes INTEGER DEFAULT 0,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 status_changed_at DATETIME,
 
@@ -319,8 +319,8 @@ class SchemaMixin:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -358,10 +358,8 @@ class SchemaMixin:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_name TEXT NOT NULL,
                 description TEXT,
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed',
-                                      'paused', 'completed', 'abandoned',
-                                      'archived')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -421,8 +419,8 @@ class SchemaMixin:
                 metadata_vectorized_at DATETIME,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -471,8 +469,8 @@ class SchemaMixin:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -521,8 +519,8 @@ class SchemaMixin:
                 metadata TEXT,
 
                 -- Status tracking
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -567,8 +565,8 @@ class SchemaMixin:
                 slug TEXT NOT NULL UNIQUE,
                 client_type TEXT NOT NULL,
                 path_pattern TEXT,
-                status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed')),
+                status TEXT DEFAULT 'listed'
+                    CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 metadata TEXT,

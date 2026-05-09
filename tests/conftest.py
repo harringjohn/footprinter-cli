@@ -161,13 +161,13 @@ def access_db(tmp_path, monkeypatch):
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-        "VALUES ('baseline-visible.txt', ?, 'local', 'active', 'text', 100)",
+        "VALUES ('baseline-visible.txt', ?, 'local', 'listed', 'text', 100)",
         (f"{baseline_dir}/visible.txt",),
     )
     baseline_visible_file_id = cursor.lastrowid
     cursor.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-        "VALUES ('baseline-visible-denied.txt', ?, 'local', 'active', 'text', 100)",
+        "VALUES ('baseline-visible-denied.txt', ?, 'local', 'listed', 'text', 100)",
         (f"{baseline_dir}/visible-denied.txt",),
     )
     baseline_visible_denied_file_id = cursor.lastrowid
@@ -185,7 +185,7 @@ def access_db(tmp_path, monkeypatch):
     # query time, not stamp time.
     cursor.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
-        "VALUES ('opaque-prefix-anchor.txt', ?, 'local', 'active', 'text', 100)",
+        "VALUES ('opaque-prefix-anchor.txt', ?, 'local', 'listed', 'text', 100)",
         (f"{home}/Work/clients/shared-docs/opaque-prefix-anchor.txt",),
     )
     opaque_folder_prefix_file_id = cursor.lastrowid
@@ -297,11 +297,11 @@ def populate_minimal_db(db_path):
     )
     conn.execute(
         """INSERT INTO projects (project_name, project_type, root_path, status)
-           VALUES ('test-project', 'python', '/Users/testuser/Work/test-project', 'active')"""
+           VALUES ('test-project', 'python', '/Users/testuser/Work/test-project', 'listed')"""
     )
     conn.execute(
         """INSERT INTO files (name, path, source, status, content_type, size_bytes)
-           VALUES ('readme.md', '/Users/testuser/Work/test-project/readme.md', 'local', 'active', 'markdown', 1000)"""
+           VALUES ('readme.md', '/Users/testuser/Work/test-project/readme.md', 'local', 'listed', 'markdown', 1000)"""
     )
     conn.commit()
     conn.close()
@@ -323,18 +323,18 @@ def populate_access_control_db(db_path):
     conn.execute(
         """INSERT INTO projects (id, project_name, project_type, root_path, status)
            VALUES
-               (1, 'Visible Project', 'python', '/Users/testuser/Work/visible', 'active'),
-               (2, 'Hidden Project', 'python', '/Users/testuser/Work/hidden', 'active'),
-               (3, 'Opaque Project', 'python', '/Users/testuser/Work/opaque', 'active')"""
+               (1, 'Visible Project', 'python', '/Users/testuser/Work/visible', 'listed'),
+               (2, 'Hidden Project', 'python', '/Users/testuser/Work/hidden', 'listed'),
+               (3, 'Opaque Project', 'python', '/Users/testuser/Work/opaque', 'listed')"""
     )
 
     # Clients
     conn.execute(
         """INSERT INTO clients (id, name, slug, client_type, path_pattern, status)
            VALUES
-               (1, 'Visible Client', 'visible', 'external', '~/Work/clients/visible/', 'active'),
-               (2, 'Hidden Client', 'hidden', 'external', '~/Work/clients/hidden/', 'active'),
-               (3, 'Opaque Client', 'opaque', 'external', '~/Work/clients/opaque/', 'active')"""
+               (1, 'Visible Client', 'visible', 'external', '~/Work/clients/visible/', 'listed'),
+               (2, 'Hidden Client', 'hidden', 'external', '~/Work/clients/hidden/', 'listed'),
+               (3, 'Opaque Client', 'opaque', 'external', '~/Work/clients/opaque/', 'listed')"""
     )
 
     # Chats: visible(1), hidden(2), opaque(3), permission-denied(4)
@@ -362,8 +362,8 @@ def populate_access_control_db(db_path):
     conn.execute(
         """INSERT INTO files (id, name, path, source, status, content_type, size_bytes)
            VALUES
-               (1, 'visible.txt', '/Users/testuser/Work/visible.txt', 'local', 'active', 'text', 100),
-               (2, 'hidden.txt', '/Users/testuser/Work/hidden.txt', 'local', 'active', 'text', 200)"""
+               (1, 'visible.txt', '/Users/testuser/Work/visible.txt', 'local', 'listed', 'text', 100),
+               (2, 'hidden.txt', '/Users/testuser/Work/hidden.txt', 'local', 'listed', 'text', 200)"""
     )
 
     # Browser history
