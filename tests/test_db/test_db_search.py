@@ -195,18 +195,6 @@ class TestSearchChatsKeyword:
         titles = [r["title"] for r in results]
         assert "Removed Chat" not in titles
 
-    def test_excludes_merged_chats(self, db_conn):
-        db_conn.execute(
-            """INSERT INTO chats (external_id, account, title, summary, message_count,
-                                  created_at, mcp_view, mcp_read, status)
-               VALUES ('conv-mg', 'claude', 'Merged Chat', 'Merged away', 0,
-                       '2026-01-10', 'visible', 'allow', 'merged')"""
-        )
-        db_conn.commit()
-        results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=50)
-        titles = [r["title"] for r in results]
-        assert "Merged Chat" not in titles
-
     def test_returns_list_of_dicts(self, db_conn):
         results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=10)
         assert isinstance(results, list)

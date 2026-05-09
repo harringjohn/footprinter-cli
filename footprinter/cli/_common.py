@@ -56,7 +56,6 @@ VALID_STATUSES = frozenset(
         "completed",
         "abandoned",
         "archived",
-        "merged",
     }
 )
 
@@ -113,7 +112,7 @@ def open_database(db_path=None):
 
     Like ``open_db`` but yields the full ``Database`` wrapper instead of a
     raw ``sqlite3.Connection``.  Use this when callers need methods only
-    available on the wrapper (e.g. ``ChatDedup``).
+    available on the wrapper.
 
     Exits with code 1 if the database file does not exist.
     """

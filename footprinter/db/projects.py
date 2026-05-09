@@ -18,7 +18,6 @@ VALID_STATUSES = frozenset(
         "completed",
         "abandoned",
         "archived",
-        "merged",
     }
 )
 
@@ -190,8 +189,8 @@ def list_projects(
     page, limit : int
         Pagination.
     status : str, list[str], or None
-        Filter by status value(s). ``None`` → exclude removed and merged
-        (default). ``"all"`` → no status filter.
+        Filter by status value(s). ``None`` → exclude removed (default).
+        ``"all"`` → no status filter.
     client : str or None
         Filter by client name (exact match).
     project_type : str or None
@@ -211,7 +210,7 @@ def list_projects(
     status_conds, status_params = build_status_filter(
         status,
         column="project.status",
-        default_exclude=["removed", "merged"],
+        default_exclude=["removed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
@@ -593,46 +592,6 @@ def update_project(conn: sqlite3.Connection, project_id: int, **fields) -> Optio
     )
     conn.commit()
     return True
-
-
-def merge_projects(conn: sqlite3.Connection, target_id: int, source_id: int) -> Optional[dict]:
-    """Merge source project into target project.
-
-    Returns dict with moved counts, or None if either not found.
-    Raises ValueError if target_id == source_id.
-    """
-    if target_id == source_id:
-        raise ValueError("Cannot merge a project into itself")
-
-    if not fetch_project(conn, target_id):
-        return None
-    if not fetch_project(conn, source_id):
-        return None
-
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "UPDATE files SET project_id = ? WHERE project_id = ?",
-        (target_id, source_id),
-    )
-    files_moved = cursor.rowcount
-
-    cursor.execute(
-        "UPDATE folders SET project_id = ? WHERE project_id = ?",
-        (target_id, source_id),
-    )
-    folders_moved = cursor.rowcount
-
-    cursor.execute(
-        "UPDATE projects SET status = 'merged', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        (source_id,),
-    )
-    conn.commit()
-
-    return {
-        "files_moved": files_moved,
-        "folders_moved": folders_moved,
-    }
 
 
 def link_files(conn: sqlite3.Connection, project_id: int, file_ids: list[int]) -> Optional[dict]:

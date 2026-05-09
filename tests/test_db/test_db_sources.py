@@ -7,6 +7,8 @@ create_upload/get_upload_by_hash/get_recent_uploads/update_upload, insert_email,
 move_messages_to_chat.
 """
 
+import pytest
+
 from footprinter.db import browser as browser_db
 from footprinter.db import chats as chats_db
 from footprinter.db import emails as emails_db
@@ -173,17 +175,10 @@ class TestModuleLevelChatWrites:
         assert result["title"] == "Test"
         db.close()
 
-    def test_mark_chat_merged_module_function(self, temp_db):
-        from footprinter.db.chats import get_chat_by_id, insert_chat, mark_chat_merged
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        src = insert_chat(db.conn, {"external_id": "mod-merge-src", "account": "claude"})
-        tgt = insert_chat(db.conn, {"external_id": "mod-merge-tgt", "account": "claude"})
-        mark_chat_merged(db.conn, src, tgt)
-        result = get_chat_by_id(db.conn, src)
-        assert result["status"] == "merged"
-        db.close()
+    def test_mark_chat_merged_removed(self):
+        """mark_chat_merged was removed when merge functionality was stripped."""
+        with pytest.raises(ImportError):
+            from footprinter.db.chats import mark_chat_merged  # noqa: F401
 
     def test_move_messages_to_chat_module_function(self, temp_db):
         from footprinter.db.chats import (
@@ -658,6 +653,7 @@ class TestListChats:
                 "account": "claude",
                 "title": "Claude Chat 1",
                 "updated_at": "2025-01-01",
+                "status": "removed",
             },
         )
         chats_db.insert_chat(
@@ -669,11 +665,8 @@ class TestListChats:
                 "updated_at": "2025-01-02",
             },
         )
-        # Mark conv-1 as merged
-        conv1_id = chats_db.get_chat_id_by_uuid(db.conn, "conv-1")
-        chats_db.mark_chat_merged(db.conn, conv1_id, chats_db.get_chat_id_by_uuid(db.conn, "conv-2"))
 
-    def test_excludes_merged_by_default(self, temp_db):
+    def test_excludes_removed_by_default(self, temp_db):
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
@@ -684,7 +677,7 @@ class TestListChats:
         assert result["chats"][0]["title"] == "GPT Chat"
         db.close()
 
-    def test_includes_merged_when_requested(self, temp_db):
+    def test_includes_removed_when_requested(self, temp_db):
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
@@ -1198,39 +1191,6 @@ class TestDeleteChatMessagesDoesNotCommit:
         assert count == 3, (
             f"delete_chat_messages() auto-committed — only {count} row(s) visible from "
             f"second connection (expected 3). It should leave commit to the caller."
-        )
-        db.close()
-
-
-class TestMarkChatMergedDoesNotCommit:
-    """mark_chat_merged() must not auto-commit — caller controls transaction boundary."""
-
-    def test_uncommitted_update_invisible_to_second_connection(self, tmp_path):
-        import sqlite3
-
-        from footprinter.ingest.database import Database
-
-        db_path = str(tmp_path / "test.db")
-        db = Database(db_path=db_path)
-        db.conn.execute("PRAGMA journal_mode=DELETE")
-
-        chats_db.insert_chat(db.conn, {"external_id": "conv-merge-src", "account": "claude"})
-        chats_db.insert_chat(db.conn, {"external_id": "conv-merge-tgt", "account": "claude"})
-        db.conn.commit()
-
-        src_id = chats_db.get_chat_id_by_uuid(db.conn, "conv-merge-src")
-        tgt_id = chats_db.get_chat_id_by_uuid(db.conn, "conv-merge-tgt")
-
-        chats_db.mark_chat_merged(db.conn, src_id, tgt_id)
-
-        conn2 = sqlite3.connect(db_path)
-        conn2.row_factory = sqlite3.Row
-        row = conn2.execute("SELECT status FROM chats WHERE id = ?", (src_id,)).fetchone()
-        conn2.close()
-
-        assert row["status"] != "merged", (
-            f"mark_chat_merged() auto-committed — status is '{row['status']}' from second "
-            f"connection (expected not 'merged'). It should leave commit to the caller."
         )
         db.close()
 

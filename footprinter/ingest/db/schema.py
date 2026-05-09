@@ -361,7 +361,7 @@ class SchemaMixin:
                 status TEXT DEFAULT 'active'
                     CHECK (status IN ('active', 'hidden', 'removed',
                                       'paused', 'completed', 'abandoned',
-                                      'archived', 'merged')),
+                                      'archived')),
                 status_reason TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -422,7 +422,7 @@ class SchemaMixin:
 
                 -- Status tracking
                 status TEXT DEFAULT 'active'
-                    CHECK (status IN ('active', 'hidden', 'removed', 'merged')),
+                    CHECK (status IN ('active', 'hidden', 'removed')),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'

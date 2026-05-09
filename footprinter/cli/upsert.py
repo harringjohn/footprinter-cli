@@ -87,7 +87,7 @@ SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
             "--status",
             {
                 "default": None,
-                "help": "Project status (active, hidden, removed, paused, completed, abandoned, archived, merged)",
+                "help": "Project status (active, hidden, removed, paused, completed, abandoned, archived)",
             },
             "status",
         ),

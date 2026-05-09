@@ -346,7 +346,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             },
         ],
         valid_values={
-            "status": "active, hidden, removed, merged",
+            "status": "active, hidden, removed",
             "mcp_view": "hidden, opaque, visible, inherit",
             "mcp_read": "allow, deny, inherit",
         },

@@ -51,7 +51,7 @@ def _insert(conn, chat_id, title="Chat", account="claude", status="active"):
 
 
 class TestListChatsStatusFilter:
-    """list_chats with default status=None excludes merged, removed, and NULL."""
+    """list_chats with default status=None excludes removed and NULL."""
 
     def test_includes_active(self, conn):
         from footprinter.db.chats import list_chats
@@ -70,16 +70,6 @@ class TestListChatsStatusFilter:
         titles = [c["title"] for c in result["chats"]]
         assert "Active chat" in titles
         assert "Removed chat" not in titles
-
-    def test_excludes_merged(self, conn):
-        from footprinter.db.chats import list_chats
-
-        _insert(conn, 1, "Active chat", status="active")
-        _insert(conn, 2, "Merged chat", status="merged")
-        result = list_chats(conn)
-        titles = [c["title"] for c in result["chats"]]
-        assert "Active chat" in titles
-        assert "Merged chat" not in titles
 
     def test_excludes_null_status(self, conn):
         """NULL status should be excluded by default — not silently included."""

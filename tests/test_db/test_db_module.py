@@ -121,7 +121,6 @@ EXPECTED_FUNCTIONS = {
         "get_project_detail",
         "create_project",
         "update_project",
-        "merge_projects",
         "link_files",
         "unlink_files",
     ],
@@ -552,3 +551,9 @@ class TestPaginationShape:
         result_p2 = search_messages(pagination_conn, "test content", limit=2, page=2)
         assert len(result_p2["results"]) == 1
         assert result_p2["pagination"]["page"] == 2
+
+
+def test_merge_projects_removed():
+    """merge_projects was removed when chat-merge functionality was stripped."""
+    with pytest.raises(ImportError):
+        from footprinter.db.projects import merge_projects  # noqa: F401

@@ -35,7 +35,7 @@ def list_chats(
     limit : max rows per page
     page : 1-based page number
     status : str, list[str], or None
-        ``None`` → exclude merged and removed (default).
+        ``None`` → exclude removed (default).
         ``"all"`` → no status filter.
         Single string → exact match.
         List of strings → ``WHERE status IN (...)``.
@@ -54,7 +54,7 @@ def list_chats(
     status_conds, status_params = build_status_filter(
         status,
         column="chat.status",
-        default_exclude=["merged", "removed"],
+        default_exclude=["removed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
@@ -246,12 +246,12 @@ _MESSAGE_OVERLAP_THRESHOLD = 0.50
 
 
 def _get_active_chats(conn: sqlite3.Connection) -> list[dict]:
-    """All non-merged, non-removed chats for dedup scan."""
+    """All non-removed chats for dedup scan."""
     rows = conn.execute(
         "SELECT id, external_id, account, title, message_count,"
         "       created_at, modified_at"
         " FROM chats"
-        " WHERE status NOT IN ('merged', 'removed')"
+        " WHERE status != 'removed'"
         " ORDER BY id"
     ).fetchall()
     return [dict(r) for r in rows]
@@ -466,14 +466,14 @@ def delete_chat_messages(conn: sqlite3.Connection, chat_id: int) -> int:
 
 
 def get_all_active_chats(conn: sqlite3.Connection) -> List[Dict]:
-    """All non-merged chats (includes removed). Use ``detect_duplicates`` for dedup."""
+    """All non-removed chats. Use ``detect_duplicates`` for dedup."""
     cursor = conn.cursor()
     cursor.execute(
         """
         SELECT id, external_id, account, title, message_count,
                created_at, modified_at
         FROM chats
-        WHERE status != 'merged'
+        WHERE status != 'removed'
         ORDER BY id
         """
     )
@@ -521,19 +521,6 @@ def get_chat_by_id(conn: sqlite3.Connection, chat_id: int) -> Optional[Dict]:
     return dict(row) if row else None
 
 
-def mark_chat_merged(conn: sqlite3.Connection, chat_id: int, merged_into_id: int) -> None:
-    """Set status='merged' and record which chat it was merged into."""
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE chats
-        SET status = 'merged', merged_into_id = ?
-        WHERE id = ?
-        """,
-        (merged_into_id, chat_id),
-    )
-
-
 def move_messages_to_chat(conn: sqlite3.Connection, source_id: int, target_id: int, message_ids: List[int]) -> int:
     """Move specific messages from source to target chat."""
     if not message_ids:
@@ -572,7 +559,7 @@ def list_chats_simple(
     limit: int = 50,
     status: Optional[str | list[str]] = None,
 ) -> List[Dict]:
-    """List chats with optional account filter, excludes merged by default.
+    """List chats with optional account filter, excludes removed by default.
 
     Returns a flat list of chat dicts (unlike the paginated ``list_chats``
     used by the read API).
@@ -581,7 +568,7 @@ def list_chats_simple(
     conditions: list[str] = []
     params: list = []
     if status is None:
-        conditions.append("status != 'merged'")
+        conditions.append("status != 'removed'")
     elif status == "all":
         pass
     elif isinstance(status, list) and status:
