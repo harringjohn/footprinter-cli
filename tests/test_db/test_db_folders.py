@@ -117,3 +117,82 @@ class TestMarkRemovedFolders:
         # so it should not appear in the returned list.
         removed = mark_removed_folders(tool_db, {"/tmp/something-else"})
         assert fid not in removed
+
+
+class TestListFoldersDepthDefault:
+    """Default depth must be None — full listing, not depth-1 subset (FPR-1631)."""
+
+    def _insert(self, conn, path: str, relative_path: str) -> int:
+        cursor = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source)
+               VALUES (?, ?, ?, 'local')""",
+            (path, relative_path, path.rsplit("/", 1)[-1]),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+    def test_default_depth_returns_all_levels(self, tool_db):
+        # depth 0: one segment under home
+        self._insert(tool_db, "/Users/u/Work", "/Work")
+        # depth 1: two segments under home
+        self._insert(tool_db, "/Users/u/Work/alpha", "/Work/alpha")
+        # depth 3: four segments under home
+        self._insert(tool_db, "/Users/u/Work/alpha/src/lib/x", "/Work/alpha/src/lib/x")
+
+        result = list_folders(tool_db)
+        assert result["pagination"]["total"] == 3
+        assert len(result["folders"]) == 3
+
+
+class TestListFoldersUsesPrecomputedCounts:
+    """When depth is None, use folders.direct_file_count and total_size_bytes
+    instead of correlated subqueries against the files table (FPR-1631)."""
+
+    def test_reads_precomputed_columns_without_files(self, tool_db):
+        tool_db.execute(
+            """INSERT INTO folders
+                   (path, relative_path, name, source,
+                    direct_file_count, total_size_bytes)
+               VALUES
+                   ('/Users/u/Work', '/Work', 'Work', 'local', 42, 999)"""
+        )
+        tool_db.commit()
+
+        result = list_folders(tool_db, depth=None)
+        folder = result["folders"][0]
+        # No rows exist in files; the subquery path would return 0/0.
+        # The fast path must read directly from the folders columns.
+        assert folder["direct_files"] == 42
+        assert folder["total_size_bytes"] == 999
+
+
+class TestListFoldersDepthExplicitStillRollsUp:
+    """When depth is explicitly set, the CTE+subquery rollup is preserved
+    so callers asking for shallow listings still see descendant counts (FPR-1631)."""
+
+    def test_depth_filter_rolls_up_descendant_files(self, tool_db):
+        parent_cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source)
+               VALUES ('/Users/u/Work/alpha', '/Work/alpha', 'alpha', 'local')"""
+        )
+        parent_id = parent_cur.lastrowid
+
+        deep_cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, parent_folder_id)
+               VALUES ('/Users/u/Work/alpha/src/lib', '/Work/alpha/src/lib', 'lib', 'local', ?)""",
+            (parent_id,),
+        )
+        deep_id = deep_cur.lastrowid
+
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, size_bytes, folder_id)
+               VALUES ('a.py', '/Users/u/Work/alpha/src/lib/a.py', 'local', 'active', 123, ?)""",
+            (deep_id,),
+        )
+        tool_db.commit()
+
+        result = list_folders(tool_db, depth=5)
+        by_id = {f["id"]: f for f in result["folders"]}
+        # Parent folder rolls up the descendant file count + size.
+        assert by_id[parent_id]["direct_files"] == 1
+        assert by_id[parent_id]["total_size_bytes"] == 123

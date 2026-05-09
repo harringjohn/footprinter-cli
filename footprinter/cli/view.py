@@ -180,8 +180,17 @@ def _handle_collection(args) -> None:
     limit = getattr(args, "limit", 50)
     page = getattr(args, "page", 1)
 
+    # --all bypasses pagination (CLI-only; bulk export for --csv / --json).
+    if getattr(args, "all", False):
+        limit = 1_000_000
+        page = 1
+
+    list_kwargs: dict = {"role": Role.ADMIN, "limit": limit, "page": page}
+    if noun == "folders":
+        list_kwargs["depth"] = getattr(args, "depth", None)
+
     with open_db() as conn:
-        result = service.list_(conn, role=Role.ADMIN, limit=limit, page=page)
+        result = service.list_(conn, **list_kwargs)
         rows = result[list_key]
         if (verbose or getattr(args, "json", False)) and rows:
             enrich_verbose_access(rows, entity_type)
@@ -312,6 +321,18 @@ def register(subparsers) -> None:
             default=1,
             help="Page number (default: 1)",
         )
+        p.add_argument(
+            "--all",
+            action="store_true",
+            help="Bypass pagination — fetch every row (intended for --csv / --json bulk export)",
+        )
+        if noun == "folders":
+            p.add_argument(
+                "--depth",
+                type=int,
+                default=None,
+                help="Max folder path depth below home (default: no limit)",
+            )
         add_verbose_flag(p)
 
         # --json and --csv are mutually exclusive
