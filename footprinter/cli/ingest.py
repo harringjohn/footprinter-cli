@@ -251,6 +251,7 @@ def _run_with_logging(
     header="Footprinter Data Pipeline",
     show_banner=False,
     show_next_steps=True,
+    scan_roots=None,
 ):
     """Shared run helper: Rich Progress, file logging, run record, cleanup.
 
@@ -402,6 +403,7 @@ def _run_with_logging(
                 on_pipe_start=on_start,
                 on_pipe_end=on_end,
                 on_progress=on_progress,
+                scan_roots=scan_roots,
             )
         else:
             orchestrator.run_pipeline(

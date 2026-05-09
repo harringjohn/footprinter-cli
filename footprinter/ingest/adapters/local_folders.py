@@ -26,7 +26,13 @@ class LocalFoldersAdapter:
         """Scan local folder structure into folders."""
         try:
             indexer = FolderIndexer(ctx.source_config, db)
-            root_paths = ctx.source_config.get("directories", ["~/Work", "~/Personal"])
+            # FPR-1624: ctx.scan_roots scopes the scan to a specific list (e.g.
+            # the folder just added via `fp setup folders add`). When unset,
+            # fall back to all configured roots — the fp ingest default.
+            if ctx.scan_roots is not None:
+                root_paths = ctx.scan_roots
+            else:
+                root_paths = ctx.source_config.get("directories", ["~/Work", "~/Personal"])
 
             folders = indexer.scan_folders(root_paths)
             inserted, updated, unchanged = indexer.save_folders(folders)

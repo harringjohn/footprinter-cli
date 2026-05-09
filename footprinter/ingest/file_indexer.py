@@ -5,7 +5,7 @@ File indexer that coordinates file scanning and content extraction.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from footprinter.db import files as files_db
 from footprinter.source_registry import get_config
@@ -20,7 +20,13 @@ logger = logging.getLogger(__name__)
 class FileIndexer:
     """File indexer coordinating all indexing operations."""
 
-    def __init__(self, config_path: str = None, last_run: Optional[datetime] = None, db: Optional["Database"] = None):
+    def __init__(
+        self,
+        config_path: str = None,
+        last_run: Optional[datetime] = None,
+        db: Optional["Database"] = None,
+        scan_roots: Optional[List[str]] = None,
+    ):
         """
         Initialize the indexer.
 
@@ -29,6 +35,8 @@ class FileIndexer:
             last_run: Timestamp of last successful run. If set, only index files
                 modified after this time. None means full scan.
             db: Optional shared Database handle. If None, creates its own.
+            scan_roots: When set, scan only these paths instead of
+                config["directories"] (FPR-1624 — used by `fp setup folders add`).
         """
         self.config = get_config(config_path)
         self.db = db if db is not None else Database()
@@ -48,7 +56,9 @@ class FileIndexer:
             "vectorized_skipped_unchanged": 0,
         }
 
-        self.file_scanner = FileScanner(self.config, since_datetime=last_run)
+        self.file_scanner = FileScanner(
+            self.config, since_datetime=last_run, scan_roots=scan_roots
+        )
         self.content_extractor = ContentExtractor()
 
     def index_files(
