@@ -195,7 +195,7 @@ class TestFoldersAdd:
         mock_orch.assert_not_called()
 
     def test_index_true_triggers_orchestrator(self, config_file, tmp_path):
-        """index=True should prompt and call orchestrator."""
+        """index=True should prompt and call orchestrator scoped to the new directory."""
         from footprinter.cli.setup import folders_add
 
         new_dir = tmp_path / "index-test"
@@ -212,7 +212,10 @@ class TestFoldersAdd:
             exit_code = folders_add(str(new_dir), index=True)
 
         assert exit_code == 0
-        mock_orch.assert_called_once_with(["local_folders", "local_files"])
+        # FPR-1624: scan must be scoped to the newly added directory, not all configured roots.
+        mock_orch.assert_called_once_with(
+            ["local_folders", "local_files"], scan_roots=[str(new_dir)]
+        )
 
 
 # ---------------------------------------------------------------------------

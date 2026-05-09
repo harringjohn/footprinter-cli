@@ -1536,13 +1536,16 @@ def write_config(config: dict, path: Path = None):
     console.print(f"  Wrote [bold]{target}[/bold]")
 
 
-def _run_orchestrator_stages(stages: list[str]):
+def _run_orchestrator_stages(stages: list[str], scan_roots: list[str] | None = None):
     """Run pipeline stages in-process via the same code path as ``fp ingest``.
 
     Uses DataPipelineOrchestrator + ``_run_with_logging()`` directly.
 
     Args:
         stages: List of stage names (e.g. ["local_folders", "local_files"]).
+        scan_roots: Optional override for filesystem-scanning pipes (FPR-1624).
+            When provided, local_folders/local_files scan only these paths.
+            When None, all configured directories are scanned.
     """
     orchestrator = DataPipelineOrchestrator()
     try:
@@ -1553,6 +1556,7 @@ def _run_orchestrator_stages(stages: list[str]):
             quiet=False,
             header="Setup Indexing",
             show_next_steps=False,
+            scan_roots=scan_roots,
         )
     except ValueError as e:
         console.print(f"[yellow]Pipeline error:[/yellow] {e}")
@@ -1746,7 +1750,11 @@ def folders_add(path: str, index: bool = True) -> int:
 
     if index:
         if Confirm.ask("Run indexing for the new folder now?", default=True):
-            _run_orchestrator_stages(["local_folders", "local_files"])
+            # FPR-1624: scope the scan to the newly added directory so we don't
+            # rewalk every configured root for a single new folder.
+            _run_orchestrator_stages(
+                ["local_folders", "local_files"], scan_roots=[normalized]
+            )
 
     return 0
 

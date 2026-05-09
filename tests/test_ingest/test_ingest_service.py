@@ -163,7 +163,7 @@ class _MockRunner:
         self.calls: list[tuple] = []
         self.last_last_run: object = "NOT_SET"
 
-    def run_pipe(self, pipe: str, on_progress=None, last_run=None) -> dict:
+    def run_pipe(self, pipe: str, on_progress=None, last_run=None, scan_roots=None) -> dict:
         self.calls.append((pipe,))
         self.last_last_run = last_run
         return self._result
@@ -243,7 +243,7 @@ class _MockBatchRunner:
         self._error = error
         self.run_pipes_calls: list[tuple] = []
 
-    def run_pipes(self, pipes, on_pipe_start=None, on_pipe_end=None, on_progress=None, pipe_hook=None) -> list[dict]:
+    def run_pipes(self, pipes, on_pipe_start=None, on_pipe_end=None, on_progress=None, pipe_hook=None, scan_roots=None) -> list[dict]:
         self.run_pipes_calls.append((pipes, on_pipe_start, on_pipe_end, on_progress, pipe_hook))
         if self._error:
             raise self._error

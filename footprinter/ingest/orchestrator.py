@@ -89,15 +89,12 @@ class DataPipelineOrchestrator:
             raise ValueError(f"Unknown pipeline: {pipeline_name}. Available: {', '.join(self.runner.pipelines.keys())}")
         return self._dispatch_pipes(self.runner.pipelines[pipeline_name], on_pipe_start, on_pipe_end, on_progress)
 
-    def run_pipes(self, pipes: List[str], on_pipe_start=None, on_pipe_end=None, on_progress=None) -> List[Dict]:
-        """Execute a user-supplied pipe list. Rejects POST_PIPES (post-processing stages)."""
+    def run_pipes(self, pipes: List[str], on_pipe_start=None, on_pipe_end=None, on_progress=None, scan_roots=None) -> List[Dict]:  # noqa: E501
+        """User-supplied pipe list. Rejects POST_PIPES. scan_roots (FPR-1624) scopes filesystem pipes."""
         post = [p for p in pipes if p in POST_PIPES]
         if post:
-            raise ValueError(
-                f"{post[0]} is a post-processing stage, not a user-selectable pipe. "
-                f"Use 'fp ingest' or 'fp ingest --pipe <source>' to trigger it implicitly."
-            )
-        return self._dispatch_pipes(pipes, on_pipe_start, on_pipe_end, on_progress)
+            raise ValueError(f"{post[0]} is a post-processing stage, not a user-selectable pipe. Use 'fp ingest' or 'fp ingest --pipe <source>' to trigger it implicitly.")  # noqa: E501
+        return self._dispatch_pipes(pipes, on_pipe_start, on_pipe_end, on_progress, scan_roots=scan_roots)
 
     def run_refresh(self, source: str, on_pipe_start=None, on_pipe_end=None, on_progress=None) -> List[Dict]:
         """Execute a refresh group. Shares _dispatch_pipes with run_pipeline so POST_PIPES run inline."""
@@ -105,16 +102,16 @@ class DataPipelineOrchestrator:
             raise ValueError(f"Unknown refresh source: {source}. Available: {', '.join(self.refresh_pipes.keys())}")
         return self._dispatch_pipes(self.refresh_pipes[source], on_pipe_start, on_pipe_end, on_progress)
 
-    def _dispatch_pipes(self, pipes, on_pipe_start, on_pipe_end, on_progress) -> List[Dict]:
+    def _dispatch_pipes(self, pipes, on_pipe_start, on_pipe_end, on_progress, scan_roots=None) -> List[Dict]:
         self.runner.full_mode = self.full_mode
         mode = "full" if self.full_mode else "incremental"
         hook = lambda pipe, on_progress=None: self.ingest_service.run_pipe(  # noqa: E731
-            pipe, mode=mode, trigger="cli", runner=self.runner, on_progress=on_progress,
+            pipe, mode=mode, trigger="cli", runner=self.runner, on_progress=on_progress, scan_roots=scan_roots,
         )
         return self.ingest_service.run_pipes(
             pipes, runner=self.runner, full_mode=self.full_mode, mode=mode, trigger="cli",
             on_pipe_start=on_pipe_start, on_pipe_end=on_pipe_end,
-            on_progress=on_progress, pipe_hook=hook,
+            on_progress=on_progress, pipe_hook=hook, scan_roots=scan_roots,
         )
 
     def get_status(self) -> Dict:
