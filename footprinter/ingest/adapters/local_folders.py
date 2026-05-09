@@ -37,16 +37,20 @@ class LocalFoldersAdapter:
             folders = indexer.scan_folders(root_paths)
             inserted, updated, unchanged = indexer.save_folders(folders)
 
-            # Mark phantom folder rows as removed (FPR-1654). Skip when no
-            # paths were scanned — guards against accidental mass-remove if
-            # every configured root is missing or fully excluded.
-            scanned_paths = {f["path"] for f in folders}
-            if scanned_paths:
-                removed_ids = mark_removed_folders(db.conn, scanned_paths)
-                if removed_ids:
-                    logger.info(f"Marked {len(removed_ids)} folder(s) as removed")
-            else:
-                removed_ids = []
+            # Mark phantom folder rows as removed (FPR-1654). Skipped on
+            # scoped scans (ctx.scan_roots is not None) — those only walk a
+            # subset of configured roots, so every other folder would falsely
+            # appear "missing" and get mass-marked. Mirrors the
+            # `if not self.incremental:` gate around mark_removed_files in
+            # FileIndexer (FPR-1640).
+            removed_ids: List[int] = []
+            if ctx.scan_roots is None:
+                scanned_paths = {f["path"] for f in folders}
+                if scanned_paths:
+                    removed_ids = mark_removed_folders(db.conn, scanned_paths)
+                    db.conn.commit()
+                    if removed_ids:
+                        logger.info(f"Marked {len(removed_ids)} folder(s) as removed")
 
             return PipeResult.completed(
                 "local_folders",

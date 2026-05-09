@@ -553,9 +553,12 @@ def insert_drive_folder(conn: sqlite3.Connection, data: Dict[str, Any]) -> tuple
 def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[int]:
     """Mark local folders as 'removed' if path not in scanned_paths.
 
-    Mirrors mark_removed_files() in db/files.py. The folders schema has no
-    vectorization columns, so the update is a status + status_reason +
-    status_changed_at + updated_at bump.
+    Modeled on mark_removed_files() in db/files.py, with two intentional
+    differences:
+      * folders has no vectorization columns to clear
+      * the caller controls the transaction — this function does not
+        commit, so the cleanup can be rolled back if a later step in the
+        adapter fails
 
     Returns:
         List of folder IDs that were marked as removed
@@ -568,22 +571,20 @@ def mark_removed_folders(conn: sqlite3.Connection, scanned_paths: set) -> List[i
 
     removed_ids = [row["id"] for row in cursor.fetchall() if row["path"] not in scanned_paths]
 
-    if removed_ids:
-        for i in range(0, len(removed_ids), 500):
-            batch = removed_ids[i : i + 500]
-            placeholders = ",".join("?" * len(batch))
-            cursor.execute(
-                f"""
-                UPDATE folders
-                SET status = 'removed',
-                    status_reason = 'folder_deleted',
-                    status_changed_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id IN ({placeholders})
-            """,
-                batch,
-            )
-        conn.commit()
+    for i in range(0, len(removed_ids), 500):
+        batch = removed_ids[i : i + 500]
+        placeholders = ",".join("?" * len(batch))
+        cursor.execute(
+            f"""
+            UPDATE folders
+            SET status = 'removed',
+                status_reason = 'folder_deleted',
+                status_changed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """,
+            batch,
+        )
 
     return removed_ids
 
