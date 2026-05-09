@@ -149,17 +149,24 @@ verify_fp() {
     echo "==> Verifying install..."
     fp --version
 
-    # Print the PATH-action notice LAST (and as a bordered block) so users
-    # don't miss it. UAT F3: when the line was buried mid-output, users hit
-    # `command not found` immediately after install completed.
+    # Closing message must be the literal last line on screen. When fp
+    # isn't already on PATH, that means a bordered ACTION REQUIRED block
+    # — telling users to "Run fp setup" before they've opened a new
+    # terminal would just hand them a `command not found` (UAT F3).
+    # Callers (install.sh, install-full.sh) intentionally print nothing
+    # after verify_fp so this stays the final word.
+    echo ""
     if [ "$user_path_has_fp" -eq 0 ]; then
-        echo ""
         echo "────────────────────────────────────────────────────────────"
         echo "  ACTION REQUIRED — open a new terminal before using \`fp\`"
         echo "  (or run:  source ${rc})"
         echo ""
         echo "  Added ${USER_BIN} to PATH in ${rc};"
         echo "  existing shells haven't picked it up yet."
+        echo ""
+        echo "  Then run:  fp setup"
         echo "────────────────────────────────────────────────────────────"
+    else
+        echo "==> Done! Run 'fp setup' to get started."
     fi
 }
