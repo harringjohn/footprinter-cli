@@ -41,3 +41,8 @@ class TestSemanticEndpoint:
             api_client.get("/api/semantic", params={"query": "test query"})
             _, kwargs = mock.call_args
             assert kwargs["role"] == Role.ADMIN
+
+    def test_semantic_limit_above_cap_returns_422(self, api_client):
+        """limit > MAX_LIMIT (200) returns 422."""
+        resp = api_client.get("/api/semantic", params={"query": "test query", "limit": 201})
+        assert resp.status_code == 422

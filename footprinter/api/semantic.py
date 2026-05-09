@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from footprinter.api import MAX_LIMIT
 from footprinter.api.db import get_conn
 from footprinter.services import semantic_service
 from footprinter.services.roles import Role
@@ -16,7 +17,7 @@ def semantic_search(
     conn=Depends(get_conn),
     query: str = Query(..., min_length=3, description="Search query (minimum 3 characters)"),
     source: str = Query("all", description="Source to search: chats, files, or all"),
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=MAX_LIMIT),
 ):
     """Semantic (vector) search across indexed content."""
     if source not in _VALID_SOURCES:
