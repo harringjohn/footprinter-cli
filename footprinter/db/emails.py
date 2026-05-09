@@ -7,7 +7,7 @@ import json
 import sqlite3
 from typing import Any, Dict, Optional
 
-from footprinter.db.sql_utils import paginate, paginated_response
+from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
 SORT_WHITELIST = {"subject", "from_address", "account", "received_at", "has_attachments"}
 
@@ -24,8 +24,12 @@ def list_emails(
     project_id: Optional[int] = None,
     query: Optional[str] = None,
     has_attachments: Optional[bool] = None,
+    status: Optional[str | list[str]] = None,
 ) -> dict:
     """List emails with pagination, filtering, and sorting.
+
+    ``status`` follows the standard contract: ``None`` excludes ``removed``;
+    ``"all"`` bypasses; otherwise exact match or IN.
 
     Returns dict with keys: emails, pagination.
     """
@@ -34,8 +38,11 @@ def list_emails(
     order_sql = "ASC" if order.lower() == "asc" else "DESC"
 
     # Build dynamic WHERE clause
-    conditions: list[str] = ["email.status = 'listed'"]
-    params: list = []
+    status_conds, status_params = build_status_filter(
+        status, column="email.status", default_exclude=["removed"]
+    )
+    conditions: list[str] = list(status_conds)
+    params: list = list(status_params)
 
     if account:
         acct_list = [a.strip() for a in account.split(",") if a.strip()]
