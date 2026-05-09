@@ -119,6 +119,53 @@ class TestMarkRemovedFolders:
         assert fid not in removed
 
 
+class TestListFoldersStatusFilter:
+    """list_folders() must exclude status='removed' by default and accept overrides (FPR-1707)."""
+
+    def _insert(self, conn, path: str, status: str = "active") -> int:
+        cursor = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, status)
+               VALUES (?, ?, ?, 'local', ?)""",
+            (path, path, path.rsplit("/", 1)[-1], status),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+    def test_default_excludes_removed(self, tool_db):
+        active_id = self._insert(tool_db, "/tmp/keep", status="active")
+        self._insert(tool_db, "/tmp/gone", status="removed")
+
+        result = list_folders(tool_db)
+        assert result["pagination"]["total"] == 1
+        ids = [f["id"] for f in result["folders"]]
+        assert ids == [active_id]
+
+    def test_status_all_includes_removed(self, tool_db):
+        self._insert(tool_db, "/tmp/keep", status="active")
+        self._insert(tool_db, "/tmp/gone", status="removed")
+
+        result = list_folders(tool_db, status="all")
+        assert result["pagination"]["total"] == 2
+
+    def test_status_exact_match(self, tool_db):
+        self._insert(tool_db, "/tmp/keep", status="active")
+        removed_id = self._insert(tool_db, "/tmp/gone", status="removed")
+        self._insert(tool_db, "/tmp/quiet", status="hidden")
+
+        result = list_folders(tool_db, status="removed")
+        assert result["pagination"]["total"] == 1
+        assert result["folders"][0]["id"] == removed_id
+
+    def test_status_list(self, tool_db):
+        active_id = self._insert(tool_db, "/tmp/keep", status="active")
+        self._insert(tool_db, "/tmp/gone", status="removed")
+        hidden_id = self._insert(tool_db, "/tmp/quiet", status="hidden")
+
+        result = list_folders(tool_db, status=["active", "hidden"])
+        assert result["pagination"]["total"] == 2
+        assert {f["id"] for f in result["folders"]} == {active_id, hidden_id}
+
+
 class TestListFoldersDepthDefault:
     """Default depth must be None — full listing, not depth-1 subset (FPR-1631)."""
 
