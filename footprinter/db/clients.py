@@ -23,7 +23,7 @@ def list_clients(
     ----------
     conn : sqlite3.Connection
     status : str, list[str], or None
-        ``None`` → active only (default).
+        ``None`` → all except ``removed`` (default).
         ``"all"`` → no status filter.
         Single string → exact match.
         List of strings → ``WHERE status IN (...)``.
@@ -43,7 +43,7 @@ def list_clients(
     status_conds, status_params = build_status_filter(
         status,
         column="client.status",
-        default_include=["listed"],
+        default_exclude=["removed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
