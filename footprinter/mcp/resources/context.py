@@ -13,7 +13,6 @@ from footprinter.mcp.db import get_db, handle_db_errors
 from footprinter.services import status_service
 from footprinter.services.roles import Role
 
-
 GUIDANCE = """\
 # Footprinter MCP — tool-selection guide
 
