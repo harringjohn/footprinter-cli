@@ -127,6 +127,56 @@ class TestLocalFoldersRun:
         MockScanner.assert_called_once_with(ctx.source_config, mock_db)
 
 
+class TestLocalFoldersMarkRemoved:
+    """run() invokes mark_removed_folders() with the scanned path set (FPR-1654)."""
+
+    @patch("footprinter.ingest.adapters.local_folders.mark_removed_folders")
+    @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
+    def test_calls_mark_removed_with_scanned_paths(
+        self, MockScanner, mock_mark_removed, mock_db, sample_config
+    ):
+        from footprinter.ingest.adapters.local_folders import LocalFoldersAdapter
+
+        scanner_instance = MockScanner.return_value
+        scanner_instance.scan_folders.return_value = [
+            {"path": "/a"},
+            {"path": "/b"},
+            {"path": "/c"},
+        ]
+        scanner_instance.save_folders.return_value = (3, 0, 0)
+        mock_mark_removed.return_value = [99, 100]
+
+        ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
+        adapter = LocalFoldersAdapter()
+        result = adapter.run(mock_db, ctx)
+
+        mock_mark_removed.assert_called_once()
+        passed_conn, passed_paths = mock_mark_removed.call_args[0]
+        assert passed_conn is mock_db.conn
+        assert passed_paths == {"/a", "/b", "/c"}
+        assert result.data["removed"] == 2
+
+    @patch("footprinter.ingest.adapters.local_folders.mark_removed_folders")
+    @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
+    def test_skips_mark_removed_when_scan_empty(
+        self, MockScanner, mock_mark_removed, mock_db, sample_config
+    ):
+        """Empty scan must not trigger any mark_removed call (avoids
+        accidental mass-remove if the underlying guard is ever loosened)."""
+        from footprinter.ingest.adapters.local_folders import LocalFoldersAdapter
+
+        scanner_instance = MockScanner.return_value
+        scanner_instance.scan_folders.return_value = []
+        scanner_instance.save_folders.return_value = (0, 0, 0)
+
+        ctx = PipeContext(source_config=sample_config, config_path="/tmp/config.yaml")
+        adapter = LocalFoldersAdapter()
+        result = adapter.run(mock_db, ctx)
+
+        mock_mark_removed.assert_not_called()
+        assert result.data["removed"] == 0
+
+
 class TestLocalFoldersOnProgress:
     """_on_progress must not leak into FolderIndexer's source_config."""
 
