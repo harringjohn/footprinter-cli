@@ -39,6 +39,40 @@ class TestFoldersAccessColumns:
         assert folder["mcp_read"] == "allow"
 
 
+class TestListFoldersDefaultExclude:
+    """Regression guard: default filter excludes ``removed`` only."""
+
+    def _insert_mixed_status(self, conn):
+        conn.execute(
+            """
+            INSERT INTO folders (id, path, relative_path, name, source, status)
+            VALUES
+                (1, '/Users/test/Listed',   '/Listed',   'Listed',   'local', 'listed'),
+                (2, '/Users/test/Unlisted', '/Unlisted', 'Unlisted', 'local', 'unlisted'),
+                (3, '/Users/test/Removed',  '/Removed',  'Removed',  'local', 'removed')
+            """
+        )
+        conn.commit()
+
+    def test_default_returns_listed_and_unlisted(self, tool_db):
+        self._insert_mixed_status(tool_db)
+        result = list_folders(tool_db, depth=None)
+        names = {f["name"] for f in result["folders"]}
+        assert names == {"Listed", "Unlisted"}
+
+    def test_default_excludes_removed(self, tool_db):
+        self._insert_mixed_status(tool_db)
+        result = list_folders(tool_db, depth=None)
+        names = {f["name"] for f in result["folders"]}
+        assert "Removed" not in names
+
+    def test_status_all_returns_everything(self, tool_db):
+        self._insert_mixed_status(tool_db)
+        result = list_folders(tool_db, depth=None, status="all")
+        names = {f["name"] for f in result["folders"]}
+        assert names == {"Listed", "Unlisted", "Removed"}
+
+
 class TestMarkRemovedFolders:
     """Test folders.mark_removed_folders() — phantom folder cleanup (FPR-1654)."""
 
