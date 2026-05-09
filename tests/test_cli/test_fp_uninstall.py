@@ -7,17 +7,17 @@ Covers:
   pip vs pipx detection with manual-command fallback
   Unsupported platform handling
   Ctrl-C / PromptCancelled handling
+  UX/logic fixes: pre-prompt entry check, restart-only-on-removal, 3-step
+    numbering, deps-left-behind note (FPR-1634)
 """
 
 import json
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from conftest import run_fp
-
 
 # ---------------------------------------------------------------------------
 # unregister_mcp_server() — pure function in mcp_setup.py
@@ -286,6 +286,129 @@ class TestUninstallFlow:
         assert code == 0
         # data dir still removed
         assert not fake_home.exists()
+
+    # -----------------------------------------------------------------------
+    # FPR-1634 — UX/logic fixes
+    # -----------------------------------------------------------------------
+
+    def test_phase_mcp_skips_prompt_when_entry_absent(self, fake_home, tmp_path):
+        """Config exists but has no footprinter entry → no MCP prompt fires.
+
+        Regression: F8 — previously asked "Remove footprinter?" then said
+        "no entry." The entry check must happen before the prompt.
+        """
+        cfg = tmp_path / "claude_desktop_config.json"
+        cfg.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
+
+        ask_mock = MagicMock(return_value=True)
+        with (
+            patch("footprinter.cli.uninstall.detect_config_path", return_value=cfg),
+            patch("footprinter.cli.uninstall.SafeConfirm.ask", ask_mock),
+            patch("footprinter.cli.uninstall.shutil.which", return_value=None),
+        ):
+            stdout, stderr, code = run_fp("uninstall")
+
+        assert code == 0
+        # No MCP prompt should have been issued. SafeConfirm.ask is also used
+        # by other phases (data, package), so filter by the prompt's text.
+        mcp_prompts = [
+            call for call in ask_mock.call_args_list
+            if call.args and "footprinter" in str(call.args[0]).lower()
+            and "remove" in str(call.args[0]).lower()
+        ]
+        assert mcp_prompts == [], (
+            f"MCP prompt should not fire when entry is absent; got {mcp_prompts}"
+        )
+        combined = stdout + stderr
+        assert "No footprinter entry" in combined or "nothing to remove" in combined
+
+    def test_no_restart_reminder_when_mcp_noop(self, fake_home, tmp_path):
+        """Restart reminder must not appear when nothing was removed.
+
+        Regression: F9 — `unregister_mcp_server` returns True for no-op cases,
+        which previously caused the reminder to fire even when the entry was
+        already absent.
+        """
+        cfg = tmp_path / "claude_desktop_config.json"
+        cfg.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
+
+        with (
+            patch("footprinter.cli.uninstall.detect_config_path", return_value=cfg),
+            patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
+            patch("footprinter.cli.uninstall.shutil.which", return_value=None),
+        ):
+            stdout, stderr, code = run_fp("uninstall")
+
+        assert code == 0
+        combined = stdout + stderr
+        assert "Restart" not in combined, (
+            "Restart reminder should not appear when MCP entry was absent"
+        )
+
+    def test_restart_reminder_shows_when_mcp_removed(self, fake_home, fake_mcp_config):
+        """Restart reminder appears after a real removal."""
+        with (
+            patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
+            patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
+            patch("footprinter.cli.uninstall.shutil.which", return_value=None),
+        ):
+            stdout, stderr, code = run_fp("uninstall")
+
+        assert code == 0
+        combined = stdout + stderr
+        assert "Restart" in combined
+        assert "Claude Desktop" in combined
+
+    def test_step_numbering_uses_three_user_steps(self, fake_home, fake_mcp_config):
+        """Steps are numbered 1/2/3 of 3 — restart reminder is no longer numbered.
+
+        Regression: F4 — prior flow showed "Step 1 of 4" through "Step 4 of 4"
+        with the restart reminder consuming Step 2.
+        """
+        which_pipx = lambda x: "/usr/local/bin/pipx" if x == "pipx" else None  # noqa: E731
+        with (
+            patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
+            patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
+            patch("footprinter.cli.uninstall.shutil.which", side_effect=which_pipx),
+            patch(
+                "footprinter.cli.uninstall.subprocess.run",
+                return_value=subprocess.CompletedProcess(args=[], returncode=0),
+            ),
+        ):
+            stdout, stderr, code = run_fp("uninstall")
+
+        assert code == 0
+        combined = stdout + stderr
+        assert "Step 1 of 3" in combined
+        assert "Step 2 of 3" in combined
+        assert "Step 3 of 3" in combined
+        assert "Step 4 of 4" not in combined
+        assert "Step 2 of 4" not in combined
+
+    def test_package_phase_prints_deps_note(self, fake_home, fake_mcp_config):
+        """After successful package uninstall, a note about residual deps appears.
+
+        Regression: F11 — pip uninstall leaves dependencies behind; users were
+        surprised. The note should mention dependencies and not be tied to a
+        platform-specific path (varies by install method).
+        """
+        which_pipx = lambda x: "/usr/local/bin/pipx" if x == "pipx" else None  # noqa: E731
+        with (
+            patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
+            patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
+            patch("footprinter.cli.uninstall.shutil.which", side_effect=which_pipx),
+            patch(
+                "footprinter.cli.uninstall.subprocess.run",
+                return_value=subprocess.CompletedProcess(args=[], returncode=0),
+            ),
+        ):
+            stdout, stderr, code = run_fp("uninstall")
+
+        assert code == 0
+        combined = stdout + stderr
+        assert "dependencies" in combined.lower(), (
+            "expected a note mentioning dependencies after package uninstall"
+        )
 
     def test_cancel_via_prompt_exits_130(self, fake_home, fake_mcp_config):
         """SafeConfirm raises PromptCancelled → router exits 130."""
