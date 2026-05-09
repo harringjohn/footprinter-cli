@@ -41,6 +41,9 @@ exclusions:
     - ".*/\\.sfdx/.*"            # Salesforce DX CLI
     - ".*/\\.docker/.*"          # Docker config
     - ".*/\\.cumulusci/.*"       # CumulusCI cache
+    - ".*/\\.browser_state/.*"   # Playwright/Puppeteer browser state
+    - ".*/\\.context/.*"         # IDE/agent context directories
+    - ".*/\\.ai-dev/.*"          # AI dev tool scratch dirs
     # Home-level Claude dirs only (keep .claude within Work/Personal)
     - "^~/\\.claude/.*"           # Home-level .claude
     - "^~/\\.claude-worktrees/.*" # Home-level .claude-worktrees
@@ -115,17 +118,19 @@ vectorization:
   # but not embedded in the vector store.
   #
   # Common exclusions — system caches, IDE output, and tool output that
-  # match text file extensions but contain no meaningful prose content:
-  #   - "**/Photos Library.photoslibrary/**"  # macOS Spotlight index cache (.txt)
-  #   - "**/.claude/debug/**"                 # Claude Code debug logs
-  #   - "**/.claude/paste-cache/**"           # Claude Code paste cache
-  #   - "**/.claude/cache/**"                 # Claude Code cache
-  #   - "**/.claude/projects/**"              # Claude Code session data
-  #   - "**/.claude/plans/**"                 # Claude Code auto-generated plans
-  #   - "**/.claude/plugins/**"              # Claude Code plugin cache
-  #   - "**/.cci/**"                          # CumulusCI cache
-  #   - "**/.context/**"                      # IDE context directories
-  exclude_patterns: []
+  # match text file extensions but contain no meaningful prose content.
+  exclude_patterns:
+    - "**/Photos Library.photoslibrary/**"  # macOS Spotlight index cache (.txt)
+    - "**/.claude/debug/**"                 # Claude Code debug logs
+    - "**/.claude/paste-cache/**"           # Claude Code paste cache
+    - "**/.claude/cache/**"                 # Claude Code cache
+    - "**/.claude/projects/**"              # Claude Code session data
+    - "**/.claude/plans/**"                 # Claude Code auto-generated plans
+    - "**/.claude/plugins/**"               # Claude Code plugin cache
+    - "**/.cci/**"                          # CumulusCI cache
+    - "**/.context/**"                      # IDE context directories
+    - "**/.github/**"                       # GitHub workflow files (FTS-only)
+    - "**/.ai-dev/**"                       # AI dev tool scratch dirs
 
 # Source registry seeds — loaded into the sources table on init
 # Connector sources added by: fp connect install <name>
