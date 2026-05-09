@@ -293,6 +293,67 @@ class TestReadmeModuleStructure:
 
 
 # ---------------------------------------------------------------------------
+# TestResourceRegistration — MCP resources (FPR-1681)
+# ---------------------------------------------------------------------------
+class TestResourceRegistration:
+    """Tests for resource registration on the server."""
+
+    def _get_resource_uris(self, server):
+        """Get registered resource URIs from FastMCP server.
+
+        Note: Uses private API (_resource_manager._resources) — may break
+        on FastMCP upgrades. Mirrors the approach in TestToolRegistration.
+        """
+        return {str(uri) for uri in server._resource_manager._resources}
+
+    def test_at_least_one_resource_registered(self):
+        """Acceptance: server registers >=1 resource."""
+        from footprinter.mcp.server import _build_server
+
+        server = _build_server()
+        if server is None:
+            pytest.skip("MCP library not available")
+        assert len(self._get_resource_uris(server)) >= 1
+
+    def test_expected_resource_uris(self):
+        """v1 ships exactly two static resources: summary and guidance."""
+        from footprinter.mcp.server import _build_server
+
+        server = _build_server()
+        if server is None:
+            pytest.skip("MCP library not available")
+        expected = {
+            "footprinter://context/summary",
+            "footprinter://context/guidance",
+        }
+        assert self._get_resource_uris(server) == expected
+
+    def test_tool_count_unchanged(self):
+        """Adding resources must not perturb the tool registry — still 7 tools."""
+        from footprinter.mcp.server import _build_server
+
+        server = _build_server()
+        if server is None:
+            pytest.skip("MCP library not available")
+        assert len(server._tool_manager._tools) == 7
+
+
+# ---------------------------------------------------------------------------
+# TestClaudeMdGuidance — CLAUDE.md references Footprinter tooling (FPR-1681)
+# ---------------------------------------------------------------------------
+class TestClaudeMdGuidance:
+    """The project CLAUDE.md must point Claude Code at Footprinter's own tools."""
+
+    def test_claude_md_mentions_footprinter_tooling(self):
+        from pathlib import Path
+
+        content = Path(".claude/CLAUDE.md").read_text()
+        assert "footprinter_status" in content, "CLAUDE.md should reference the status MCP tool"
+        assert "fp" in content, "CLAUDE.md should reference the fp CLI"
+        assert "footprinter://context/" in content, "CLAUDE.md should point at the new context resources"
+
+
+# ---------------------------------------------------------------------------
 # TestMainEntryPoint — 2 tests
 # ---------------------------------------------------------------------------
 class TestMainEntryPoint:
