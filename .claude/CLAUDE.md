@@ -16,6 +16,24 @@ A local context layer for files, browser history, chats, and email — searchabl
 
 Python 3.11+, SQLite, MCP (Model Context Protocol), FastAPI/Uvicorn, Rich, PyYAML, cryptography. Optional extras: ChromaDB + ONNX (semantic search), pypdf/python-docx/openpyxl/python-pptx (document parsing).
 
+## Footprinter Tooling
+
+The Footprinter MCP tools and `fp` CLI are available in this workspace. Use them
+to validate behavior from the consumer side — code shows intent, MCP tools show
+reality. When investigating MCP behavior, do BOTH.
+
+**MCP tools (VIEWER role):** `footprinter_status`, `footprinter_search`,
+`footprinter_project`, `footprinter_client`, `footprinter_folder`,
+`footprinter_semantic`, `footprinter_read`. See `reference/interfaces.md` for
+parameter schemas and return shapes.
+
+**`fp` CLI (ADMIN-level):** broader surface for ingest, indexing, and config.
+Use when investigating data outside the VIEWER-filtered MCP view.
+
+**Ambient context resources:** `footprinter://context/summary` (live status
+snapshot — same payload as `footprinter_status`) and `footprinter://context/guidance`
+(tool-selection reference). Read these when orienting on a fresh task.
+
 ## Project-Specific Rules
 
 This is a **public repo**. Additional constraints beyond global rules:
