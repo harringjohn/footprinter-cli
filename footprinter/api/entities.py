@@ -217,16 +217,19 @@ def list_folders(
     project_id: Optional[int] = None,
     depth: Optional[int] = 1,
     include_hidden: bool = False,
+    status: Optional[str] = Query(None, description="Comma-separated status filter"),
     sort_by: str = "size",
     limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
+    status_list = [s.strip() for s in status.split(",")] if status else None
     return folder_service.list_(
         conn,
         role=Role.ADMIN,
         project_id=project_id,
         depth=depth,
         include_hidden=include_hidden,
+        status=status_list,
         sort_by=sort_by,
         limit=limit,
         page=page,
