@@ -3817,6 +3817,48 @@ class TestContexterRead:
         # Hidden items indistinguishable from nonexistent
         assert result["error_code"] == "NOT_FOUND"
 
+    def test_read_removed_returns_not_found(self, mcp_db):
+        """File with status='removed' must return NOT_FOUND for VIEWER."""
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, mcp_view, mcp_read) "
+            "VALUES (1, 'gone.md', '/Users/u/gone.md', 'local', 'removed',"
+            " 'markdown', 100, 'visible', 'allow')"
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1)
+
+        assert result["error_code"] == "NOT_FOUND"
+
+    def test_read_unlisted_returns_not_found(self, mcp_db):
+        """File with status='unlisted' must return NOT_FOUND for VIEWER."""
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, mcp_view, mcp_read) "
+            "VALUES (1, 'shh.md', '/Users/u/shh.md', 'local', 'unlisted',"
+            " 'markdown', 100, 'visible', 'allow')"
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1)
+
+        assert result["error_code"] == "NOT_FOUND"
+
     def test_unresolved_visibility_defaults_opaque(self, mcp_db):
         """Email without mcp_view (defaults to inherit) should be opaque."""
         cursor = mcp_db.cursor()
