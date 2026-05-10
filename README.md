@@ -19,10 +19,10 @@ The fastest path on a clean machine is the install script — it ensures Python 
 
 ```bash
 # Base install (CLI + MCP + HTTP API)
-curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install.sh | bash
 
 # Full install (adds semantic search + document parsing)
-curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install-full.sh | bash
+curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install-full.sh | bash
 ```
 
 If you prefer to manage the install yourself, use **pipx** (recommended) — it isolates Footprinter and sidesteps the macOS install caveats noted below:
@@ -108,7 +108,7 @@ Once configured, Claude can search your files, browse projects, and find related
 | **Documents** | PDF, Word, Excel, PowerPoint content (with `[parse]` extra) |
 | **Semantic embeddings** | Conceptual similarity across all sources (with `[semantic]` extra) |
 
-What lands in the database — and when — is controlled by the **content storage tier** you opt into. By default, Footprinter only indexes metadata; it does not read your file content until you explicitly enable it. See [Content Storage](https://github.com/swellcitygroup/footprinter/blob/main/reference/content-storage.md) for the full breakdown.
+What lands in the database — and when — is controlled by the **content storage tier** you opt into. By default, Footprinter only indexes metadata; it does not read your file content until you explicitly enable it. See [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) for the full breakdown.
 
 Additional sources are available through [connector plugins](#connectors).
 
@@ -161,22 +161,22 @@ Sources are scanned into SQLite with bidirectional links connecting local files 
 
 ## Documentation
 
-- [Interfaces](https://github.com/swellcitygroup/footprinter/blob/main/reference/interfaces.md) — CLI commands, MCP tools, Python API
-- [Data Model](https://github.com/swellcitygroup/footprinter/blob/main/reference/data-model.md) — database schema
-- [Pipeline](https://github.com/swellcitygroup/footprinter/blob/main/reference/pipeline.md) — indexing stages and configuration
-- [Content Storage](https://github.com/swellcitygroup/footprinter/blob/main/reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
-- [Access Control](https://github.com/swellcitygroup/footprinter/blob/main/reference/mcp-access-control.md) — MCP security model
+- [Interfaces](https://github.com/harringjohn/footprinter-cli/blob/main/reference/interfaces.md) — CLI commands, MCP tools, Python API
+- [Data Model](https://github.com/harringjohn/footprinter-cli/blob/main/reference/data-model.md) — database schema
+- [Pipeline](https://github.com/harringjohn/footprinter-cli/blob/main/reference/pipeline.md) — indexing stages and configuration
+- [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
+- [Access Control](https://github.com/harringjohn/footprinter-cli/blob/main/reference/mcp-access-control.md) — MCP security model
 
 ## Contributing
 
-Bug fixes, documentation, and tests welcome. For new features or architectural changes, [open an issue](https://github.com/swellcitygroup/footprinter/issues) first to discuss the approach.
+Bug fixes, documentation, and tests welcome. For new features or architectural changes, [open an issue](https://github.com/harringjohn/footprinter-cli/issues) first to discuss the approach.
 
 Connector plugins use an internal API that isn't stable yet — we're not accepting connector contributions at this time.
 
 ### Development setup
 
 ```bash
-git clone https://github.com/swellcitygroup/footprinter.git
+git clone https://github.com/harringjohn/footprinter-cli.git
 cd footprinter
 python3 -m venv venv
 ./venv/bin/pip install -e ".[dev]"
@@ -202,7 +202,7 @@ python3 -m venv venv
 4. Run the test suite
 5. Submit a PR targeting `main`
 
-Never commit API keys, tokens, or credentials. Report security vulnerabilities privately — see [SECURITY.md](https://github.com/swellcitygroup/footprinter/blob/main/SECURITY.md).
+Never commit API keys, tokens, or credentials. Report security vulnerabilities privately — see [SECURITY.md](https://github.com/harringjohn/footprinter-cli/blob/main/SECURITY.md).
 
 ### Pull request expectations
 
@@ -213,13 +213,13 @@ Never commit API keys, tokens, or credentials. Report security vulnerabilities p
 
 All PRs are reviewed by the maintainer. Expect reviews within one week. CI must pass before review begins.
 
-No Contributor License Agreement required. By submitting a PR, you agree your contribution is licensed under the project's [MIT License](https://github.com/swellcitygroup/footprinter/blob/main/LICENSE).
+No Contributor License Agreement required. By submitting a PR, you agree your contribution is licensed under the project's [MIT License](https://github.com/harringjohn/footprinter-cli/blob/main/LICENSE).
 
 ## Community
 
-- [Code of Conduct](https://github.com/swellcitygroup/footprinter/blob/main/CODE_OF_CONDUCT.md)
-- [Security Policy](https://github.com/swellcitygroup/footprinter/blob/main/SECURITY.md)
+- [Code of Conduct](https://github.com/harringjohn/footprinter-cli/blob/main/CODE_OF_CONDUCT.md)
+- [Security Policy](https://github.com/harringjohn/footprinter-cli/blob/main/SECURITY.md)
 
 ## License
 
-MIT — see [LICENSE](https://github.com/swellcitygroup/footprinter/blob/main/LICENSE).
+MIT — see [LICENSE](https://github.com/harringjohn/footprinter-cli/blob/main/LICENSE).

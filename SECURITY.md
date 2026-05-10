@@ -11,7 +11,7 @@
 
 If you discover a security vulnerability in Footprinter, please report it responsibly.
 
-**Preferred:** Use [GitHub's private security advisory](https://github.com/swellcitygroup/footprinter/security/advisories/new) to report the issue. This creates a private channel between you and the maintainers.
+**Preferred:** Use [GitHub's private security advisory](https://github.com/harringjohn/footprinter-cli/security/advisories/new) to report the issue. This creates a private channel between you and the maintainers.
 
 **Alternative:** Email [hello@swellcity.ai](mailto:hello@swellcity.ai) with a description of the vulnerability.
 
