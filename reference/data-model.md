@@ -168,7 +168,7 @@ The CLI uses distinct verbs for each entity tier:
 | Verb | Applies to | Effect |
 |------|-----------|--------|
 | `fp upsert` | Super entities (projects, clients) | Create or edit the entity itself. `--status removed` for soft-delete. |
-| `fp assign` | Content entities (files, folders, emails, chats, visits) | Set `project_id`/`client_id` FK — categorizes content without changing status |
+| `fp assign` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
 | `fp delete` | Super entities only | Hard `DELETE FROM` — permanently removes the record. Refuses when dependent rows exist. |
 
 ---
@@ -746,7 +746,7 @@ Claude and ChatGPT conversation exports.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `merged_into_id` | INTEGER | FK to `chats` — when duplicate chats are merged, points to the surviving record |
+| `merged_into_id` | INTEGER | Historical — column preserved, merge functionality removed. Previously pointed to the surviving record when duplicate chats were merged. |
 
 **Display:**
 
