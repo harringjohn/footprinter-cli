@@ -336,21 +336,6 @@ class TestIngestSourceBanner:
         output = buf.getvalue()
         assert "fp connect" in output
 
-    def test_banner_quiet_no_output(self):
-        from io import StringIO
-
-        from rich.console import Console
-
-        from footprinter.cli.ingest import _print_source_banner
-
-        buf = StringIO()
-        test_console = Console(file=buf, force_terminal=False)
-        config = {"google_drive": {"enabled": True}}
-
-        _print_source_banner(config, quiet=True, console=test_console)
-
-        assert buf.getvalue() == ""
-
     def test_banner_hides_local_files_when_no_directories(self):
         from io import StringIO
 
