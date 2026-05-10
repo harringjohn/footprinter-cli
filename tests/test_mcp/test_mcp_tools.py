@@ -4309,5 +4309,95 @@ class TestPathContainment:
 
 
 # ---------------------------------------------------------------------------
+# TestIncludeFlagsForwarding — FPR-1678
+# ---------------------------------------------------------------------------
+class TestIncludeFlagsForwarding:
+    """The three discovery tools accept include_unlisted/include_removed and
+    forward them verbatim to the service layer (FPR-1678).
+
+    MCP entry points always run as VIEWER, so the flags pass through but the
+    service layer ignores them. These tests assert the wiring, not VIEWER
+    semantics (which are covered at the service layer).
+    """
+
+    def test_search_forwards_include_flags(self, mcp_db):
+        with (
+            patch("footprinter.mcp.tools.search.get_db") as mock_get_db,
+            patch("footprinter.mcp.tools.search.search_service.search") as mock_search,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_search.return_value = {"files": []}
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            footprinter_search("query", include_unlisted=True, include_removed=True)
+
+        kwargs = mock_search.call_args.kwargs
+        assert kwargs["include_unlisted"] is True
+        assert kwargs["include_removed"] is True
+
+    def test_search_default_flags_false(self, mcp_db):
+        with (
+            patch("footprinter.mcp.tools.search.get_db") as mock_get_db,
+            patch("footprinter.mcp.tools.search.search_service.search") as mock_search,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_search.return_value = {"files": []}
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            footprinter_search("query")
+
+        kwargs = mock_search.call_args.kwargs
+        assert kwargs["include_unlisted"] is False
+        assert kwargs["include_removed"] is False
+
+    def test_folder_forwards_include_flags(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source, mcp_view) "
+            "VALUES (1, 'p', '/test/p', 'test/p', 'local', 'visible')"
+        )
+        mcp_db.commit()
+
+        with (
+            patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db,
+            patch("footprinter.mcp.tools.navigation.folder_service.get_by_path") as mock_get,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_get.return_value = {"path": "/test/p"}
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            footprinter_folder("/test/p", include_unlisted=True)
+
+        kwargs = mock_get.call_args.kwargs
+        assert kwargs["include_unlisted"] is True
+        assert kwargs.get("include_removed", False) is False
+
+    def test_semantic_forwards_include_flags(self, mcp_db):
+        with (
+            patch("footprinter.mcp.tools.semantic.get_db") as mock_get_db,
+            patch(
+                "footprinter.mcp.tools.semantic.semantic_service.semantic_search"
+            ) as mock_sem,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_sem.return_value = {"chats": [], "files": [], "summary": ""}
+
+            from footprinter.mcp.tools.semantic import footprinter_semantic
+
+            footprinter_semantic("hello world", include_removed=True)
+
+        kwargs = mock_sem.call_args.kwargs
+        assert kwargs["include_removed"] is True
+        assert kwargs.get("include_unlisted", False) is False
+
+
+# ---------------------------------------------------------------------------
 # TestSchemaConsistency — verify fixture matches production schema
 # ---------------------------------------------------------------------------

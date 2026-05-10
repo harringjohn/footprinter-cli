@@ -4,7 +4,12 @@ Verifies that list_folders() and get_folder() include both
 mcp_view and mcp_read in returned dicts.
 """
 
-from footprinter.db.folders import get_folder, list_folders, mark_removed_folders
+from footprinter.db.folders import (
+    get_folder,
+    get_folder_navigation,
+    list_folders,
+    mark_removed_folders,
+)
 
 
 class TestFoldersAccessColumns:
@@ -277,3 +282,114 @@ class TestListFoldersDepthExplicitStillRollsUp:
         # Parent folder rolls up the descendant file count + size.
         assert by_id[parent_id]["direct_files"] == 1
         assert by_id[parent_id]["total_size_bytes"] == 123
+
+
+class TestGetFolderNavigationStatusFilter:
+    """get_folder_navigation respects the status kwarg (FPR-1678).
+
+    Default returns only listed children. Widening lets ADMIN-flagged callers
+    see unlisted/removed files; recursive count widens to match.
+    """
+
+    def _setup(self, conn) -> int:
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, mcp_view)
+               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'visible')"""
+        )
+        folder_id = cur.lastrowid
+        conn.executemany(
+            """INSERT INTO files
+                   (name, path, source, status, status_reason,
+                    folder_id, mcp_view, mcp_read)
+               VALUES (?, ?, 'local', ?, ?, ?, 'visible', 'allow')""",
+            [
+                ("listed.py", "/Users/u/proj/listed.py", "listed", None, folder_id),
+                ("unlisted.py", "/Users/u/proj/unlisted.py", "unlisted", "user_hidden", folder_id),
+                ("removed.py", "/Users/u/proj/removed.py", "removed", "deleted_by_user", folder_id),
+            ],
+        )
+        conn.commit()
+        return folder_id
+
+    def test_default_returns_only_listed_files(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj")
+        names = sorted(f["name"] for f in result["files"])
+        assert names == ["listed.py"]
+
+    def test_status_all_returns_all_files(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        names = sorted(f["name"] for f in result["files"])
+        assert names == ["listed.py", "removed.py", "unlisted.py"]
+
+    def test_status_listed_unlisted(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(
+            tool_db, folder_id, "/Users/u/proj", status=["listed", "unlisted"]
+        )
+        names = sorted(f["name"] for f in result["files"])
+        assert names == ["listed.py", "unlisted.py"]
+
+    def test_files_include_status_reason(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        by_name = {f["name"]: f for f in result["files"]}
+        assert by_name["unlisted.py"]["status"] == "unlisted"
+        assert by_name["unlisted.py"]["status_reason"] == "user_hidden"
+        assert by_name["removed.py"]["status"] == "removed"
+        assert by_name["removed.py"]["status_reason"] == "deleted_by_user"
+
+    def test_recursive_count_default_excludes_unlisted_and_removed(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj")
+        assert result["recursive_file_count"] == 1
+
+    def test_recursive_count_widens_with_status_all(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        assert result["recursive_file_count"] == 3
+
+    def _setup_with_subfolders(self, conn) -> int:
+        """Mirror _setup but with mixed-status subfolders instead of files."""
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, status, mcp_view)
+               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'listed', 'visible')"""
+        )
+        folder_id = cur.lastrowid
+        conn.executemany(
+            """INSERT INTO folders
+                   (path, relative_path, name, source, status, status_reason,
+                    parent_folder_id, mcp_view, mcp_read)
+               VALUES (?, ?, ?, 'local', ?, ?, ?, 'visible', 'allow')""",
+            [
+                ("/Users/u/proj/listed_sub", "/proj/listed_sub", "listed_sub",
+                 "listed", None, folder_id),
+                ("/Users/u/proj/unlisted_sub", "/proj/unlisted_sub", "unlisted_sub",
+                 "unlisted", "user_hidden", folder_id),
+                ("/Users/u/proj/removed_sub", "/proj/removed_sub", "removed_sub",
+                 "removed", "deleted_by_user", folder_id),
+            ],
+        )
+        conn.commit()
+        return folder_id
+
+    def test_default_returns_only_listed_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj")
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub"]
+
+    def test_status_all_returns_all_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub", "removed_sub", "unlisted_sub"]
+
+    def test_status_widens_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(
+            tool_db, folder_id, "/Users/u/proj", status=["listed", "unlisted"]
+        )
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub", "unlisted_sub"]

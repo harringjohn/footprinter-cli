@@ -76,6 +76,8 @@ def footprinter_search(
     days_back: Optional[int] = None,
     folder: Optional[str] = None,
     mime_type: Optional[str] = None,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
 ) -> dict:
     """Search across indexed sources by keyword. Returns metadata only, no file content.
 
@@ -122,6 +124,10 @@ def footprinter_search(
         days_back: Only include emails from the last N days. Emails only.
         folder: Filter files under this path prefix (e.g. "~/Work/projects"). Files only.
         mime_type: Exact MIME type filter (e.g. "application/pdf"). Files only.
+        include_unlisted: ADMIN-only. Include items with status='unlisted'. VIEWER
+            (the default for MCP) accepts this but always sees listed-only.
+        include_removed: ADMIN-only. Include items with status='removed'. VIEWER
+            (the default for MCP) accepts this but always sees listed-only.
 
     Returns:
         Dict with keys per source (e.g. "files", "emails", "chats", "browser"),
@@ -147,6 +153,8 @@ def footprinter_search(
             days_back=days_back,
             folder=folder,
             mime_type=mime_type,
+            include_unlisted=include_unlisted,
+            include_removed=include_removed,
         )
 
     # Shorten file paths for MCP display

@@ -299,3 +299,91 @@ class TestSemanticFallbackNote:
         assert "Tips:" not in result["summary"]
         assert "note" in result
         assert "search failed" in result["note"].lower()
+
+
+class TestSemanticIncludeFlags:
+    """include_unlisted/include_removed are ADMIN-only (FPR-1678).
+
+    Threading reaches enrich_chat_visibility/enrich_file_metadata and the
+    FTS5 fallbacks. VIEWER ignores the flags.
+    """
+
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO chats_fts(chats_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')")
+        conn.commit()
+
+    def _seed_unlisted_chat(self, conn) -> int:
+        cur = conn.execute(
+            """INSERT INTO chats (external_id, account, title, summary, message_count,
+                                  status, mcp_view, mcp_read)
+               VALUES ('conv-arch', 'claude', 'Archived Chat',
+                       'A chat about archived stuff', 1,
+                       'unlisted', 'visible', 'allow')"""
+        )
+        conn.commit()
+        return cur.lastrowid
+
+    def _seed_removed_file(self, conn) -> int:
+        cur = conn.execute(
+            """INSERT INTO files (name, path, source, status, status_reason,
+                                  content_type, size_bytes, mcp_view, mcp_read,
+                                  content_preview)
+               VALUES ('archived.md', '/Users/u/Work/alpha/archived.md', 'local',
+                       'removed', 'deleted_by_user', 'markdown', 50,
+                       'visible', 'allow', 'archived content')"""
+        )
+        conn.commit()
+        return cur.lastrowid
+
+    def test_viewer_ignores_flags_for_chats(self, service_db):
+        chat_id = self._seed_unlisted_chat(service_db)
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db,
+            "Archived Chat",
+            role=Role.VIEWER,
+            source="chats",
+            include_unlisted=True,
+        )
+        chat_ids = [c.get("chat_id") or c.get("id") for c in result.get("chats", [])]
+        assert chat_id not in chat_ids
+
+    def test_admin_include_unlisted_returns_unlisted_chat(self, service_db):
+        chat_id = self._seed_unlisted_chat(service_db)
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db,
+            "Archived Chat",
+            role=Role.ADMIN,
+            source="chats",
+            include_unlisted=True,
+        )
+        chat_ids = [c.get("chat_id") or c.get("id") for c in result.get("chats", [])]
+        assert chat_id in chat_ids
+
+    def test_viewer_ignores_flags_for_files(self, service_db):
+        file_id = self._seed_removed_file(service_db)
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db,
+            "archived",
+            role=Role.VIEWER,
+            source="files",
+            include_removed=True,
+        )
+        file_ids = [f.get("id") for f in result.get("files", [])]
+        assert file_id not in file_ids
+
+    def test_admin_include_removed_returns_removed_file(self, service_db):
+        file_id = self._seed_removed_file(service_db)
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db,
+            "archived",
+            role=Role.ADMIN,
+            source="files",
+            include_removed=True,
+        )
+        file_ids = [f.get("id") for f in result.get("files", [])]
+        assert file_id in file_ids
