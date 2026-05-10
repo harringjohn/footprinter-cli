@@ -570,7 +570,7 @@ security gate, configuration defaults, CONTRIBUTING.md, and test cleanup.
 1. **File-count parity (v1.0.1).** Distinct path count across layers 1–20
    = 305. Run:
    ```
-   awk '/^- `[^`]+`/ { gsub(/\(.*\)/,""); gsub(/^[^`]*`|`.*$/,""); print }' \
+   awk '/^### Layer /{ok=1} ok && /^- `[^`]+`/ { gsub(/\(.*\)/,""); gsub(/^[^`]*`|`.*$/,""); print }' \
      .context/plans/history-rebuild/layer-map.md | sort -u | wc -l
    ```
    Expect `305`. (Modified files count once because the `(M)` annotation is
