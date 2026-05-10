@@ -133,7 +133,7 @@ def _check_semantic_deps() -> Check:
 
 def _check_parse_deps() -> Check:
     missing = []
-    for mod in ("docx", "pypdf"):
+    for mod in ("docx", "pypdf", "openpyxl", "pptx"):
         if _find_spec(mod) is None:
             missing.append(mod)
     if not missing:

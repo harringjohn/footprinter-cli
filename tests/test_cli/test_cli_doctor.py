@@ -213,6 +213,20 @@ class TestDoctorParseDeps:
         assert "pypdf" in recorded
         assert "pdfplumber" not in recorded
 
+    def test_parse_deps_checks_all_four_extras(self, monkeypatch):
+        from footprinter.cli import doctor
+
+        recorded = []
+
+        def record(name):
+            recorded.append(name)
+            return None
+
+        monkeypatch.setattr(doctor, "_find_spec", record)
+        doctor._check_parse_deps()
+
+        assert {"docx", "pypdf", "openpyxl", "pptx"}.issubset(recorded)
+
 
 class TestDoctorWarnMessageRendering:
     """Rich must not swallow the [full] markup in install hints."""
