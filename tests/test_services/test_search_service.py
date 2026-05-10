@@ -176,3 +176,105 @@ class TestSearchBrowserGating:
             assert "browser" in b
             assert "url" not in b  # sensitive field stripped
             assert "title" not in b
+
+
+class TestSearchIncludeFlags:
+    """include_unlisted/include_removed are ADMIN-only (FPR-1678).
+
+    VIEWER callers (the default for MCP) accept the flags but they have no
+    effect — the service still applies the listed-only default filter.
+    ADMIN callers see widened results.
+    """
+
+    def _seed_unlisted_and_removed_files(self, conn) -> None:
+        conn.execute(
+            """INSERT INTO files (id, name, path, source, status, status_reason,
+                                  content_type, size_bytes, mcp_view, mcp_read)
+               VALUES
+                   (10, 'archived.md', '/Users/u/Work/alpha/archived.md', 'local',
+                    'unlisted', 'user_hidden', 'markdown', 100, 'visible', 'allow'),
+                   (11, 'gone.md',     '/Users/u/Work/alpha/gone.md',     'local',
+                    'removed',  'deleted_by_user', 'markdown', 200, 'visible', 'allow')"""
+        )
+        conn.commit()
+
+    def test_viewer_ignores_include_unlisted(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.VIEWER,
+            include_unlisted=True,
+        )
+        ids = {f.get("id") for f in result["files"]}
+        assert 10 not in ids
+        assert 11 not in ids
+
+    def test_viewer_ignores_include_removed(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.VIEWER,
+            include_removed=True,
+        )
+        ids = {f.get("id") for f in result["files"]}
+        assert 11 not in ids
+
+    def test_admin_include_unlisted_returns_unlisted(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.ADMIN,
+            include_unlisted=True,
+        )
+        by_id = {f["id"]: f for f in result["files"]}
+        assert 10 in by_id
+        assert 11 not in by_id  # removed not included
+        assert by_id[10]["status"] == "unlisted"
+        assert by_id[10]["status_reason"] == "user_hidden"
+
+    def test_admin_include_removed_returns_removed(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.ADMIN,
+            include_removed=True,
+        )
+        by_id = {f["id"]: f for f in result["files"]}
+        assert 11 in by_id
+        assert 10 not in by_id  # unlisted not included
+        assert by_id[11]["status"] == "removed"
+        assert by_id[11]["status_reason"] == "deleted_by_user"
+
+    def test_admin_both_flags_returns_all(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.ADMIN,
+            include_unlisted=True,
+            include_removed=True,
+        )
+        ids = {f["id"] for f in result["files"]}
+        assert 10 in ids
+        assert 11 in ids
+
+    def test_admin_default_excludes_non_listed(self, service_db):
+        self._seed_unlisted_and_removed_files(service_db)
+        result = search_service.search(
+            service_db,
+            query="",
+            sources=["files"],
+            role=Role.ADMIN,
+        )
+        ids = {f.get("id") for f in result["files"]}
+        assert 10 not in ids
+        assert 11 not in ids

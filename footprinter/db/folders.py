@@ -155,20 +155,35 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
     return dict(row) if row else None
 
 
-def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -> dict:
+def get_folder_navigation(
+    conn: sqlite3.Connection,
+    folder_id: int,
+    path: str,
+    *,
+    status: "str | list[str] | None" = None,
+) -> dict:
     """Return navigation data for a folder: files, subfolders, recursive file count.
 
     All results include ``mcp_view`` so the service layer can filter by visibility.
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
+    Recursive count widens to match. ``status_reason`` is surfaced on files.
     """
-    # Files in this folder (limit 200, hidden NOT pre-filtered — service does it)
+    file_status_conds, file_status_params = build_status_filter(
+        status, column="status", default_include=["listed"]
+    )
+    file_status_sql = (
+        "WHERE folder_id = ? AND " + " AND ".join(file_status_conds)
+        if file_status_conds
+        else "WHERE folder_id = ?"
+    )
     files = conn.execute(
-        """SELECT id, name, content_type, size_bytes, modified_at, source, status,
-                  mcp_view, mcp_read
+        f"""SELECT id, name, content_type, size_bytes, modified_at, source,
+                  status, status_reason, mcp_view, mcp_read
            FROM files
-           WHERE folder_id = ? AND status = 'listed'
+           {file_status_sql}
            ORDER BY name
            LIMIT 200""",
-        (folder_id,),
+        [folder_id, *file_status_params],
     ).fetchall()
     file_results = [dict(r) for r in files]
 
@@ -182,9 +197,15 @@ def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -
     ).fetchall()
     subfolder_results = [dict(sf) for sf in subfolders]
 
-    # Recursive file count across all descendants (excludes hidden files)
+    # Recursive file count across all descendants (excludes hidden files; respects status filter)
+    recursive_status_conds, recursive_status_params = build_status_filter(
+        status, column="status", default_include=["listed"]
+    )
+    recursive_status_sql = (
+        " AND " + " AND ".join(recursive_status_conds) if recursive_status_conds else ""
+    )
     recursive = conn.execute(
-        """WITH RECURSIVE descendants(id) AS (
+        f"""WITH RECURSIVE descendants(id) AS (
                SELECT id FROM folders WHERE id = ?
                UNION ALL
                SELECT f.id FROM folders f
@@ -193,9 +214,9 @@ def get_folder_navigation(conn: sqlite3.Connection, folder_id: int, path: str) -
            SELECT COUNT(*) as total
            FROM files
            WHERE folder_id IN (SELECT id FROM descendants)
-             AND status = 'listed'
-             AND COALESCE(mcp_view, 'inherit') != 'hidden'""",
-        (folder_id,),
+             AND COALESCE(mcp_view, 'inherit') != 'hidden'
+             {recursive_status_sql}""",
+        [folder_id, *recursive_status_params],
     ).fetchone()
 
     return {
