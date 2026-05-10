@@ -140,7 +140,7 @@ def get_email(conn: sqlite3.Connection, email_id: int) -> Optional[dict]:
         FROM emails email
         LEFT JOIN clients client ON email.client_id = client.id
         LEFT JOIN projects project ON email.project_id = project.id
-        WHERE email.id = ? AND email.status = 'listed'
+        WHERE email.id = ?
         """,
         (email_id,),
     )

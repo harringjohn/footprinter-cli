@@ -1,9 +1,10 @@
 """Tests for footprinter.db.emails listing behavior.
 
-Pins the standardized ``default_exclude=["removed"]`` filter pattern.
+Pins the standardized ``default_exclude=["removed"]`` filter pattern,
+and the convention that single-record getters return regardless of status.
 """
 
-from footprinter.db.emails import list_emails
+from footprinter.db.emails import get_email, list_emails
 
 
 def _insert_emails(conn):
@@ -49,3 +50,19 @@ class TestListEmailsDefaultExclude:
         result = list_emails(tool_db, status="removed")
         subjects = [e["subject"] for e in result["emails"]]
         assert subjects == ["Removed mail"]
+
+
+class TestGetEmailNoStatusFilter:
+    """Single-record getter returns regardless of status (matches get_visit/get_chat)."""
+
+    def test_get_email_returns_unlisted(self, tool_db):
+        _insert_emails(tool_db)
+        email = get_email(tool_db, 2)
+        assert email is not None
+        assert email["subject"] == "Unlisted mail"
+
+    def test_get_email_returns_removed(self, tool_db):
+        _insert_emails(tool_db)
+        email = get_email(tool_db, 3)
+        assert email is not None
+        assert email["subject"] == "Removed mail"
