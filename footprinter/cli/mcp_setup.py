@@ -275,6 +275,27 @@ def write_config(snippet: dict, config_path: Path = None, dry_run: bool = False)
     return True
 
 
+def read_mcp_config(path: Path) -> Optional[dict]:
+    """Read and parse the MCP config at ``path``.
+
+    Returns the parsed dict, or None if the file does not exist.
+    Raises ``json.JSONDecodeError`` or ``OSError`` if the file exists
+    but cannot be read or parsed — callers decide how to surface that.
+    """
+    if not path.exists():
+        return None
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def has_footprinter_entry(config: dict) -> bool:
+    """True iff the parsed MCP config has a ``footprinter`` entry under mcpServers.
+
+    Coerces hand-edited ``"mcpServers": null`` to ``{}``.
+    """
+    return "footprinter" in (config.get("mcpServers") or {})
+
+
 def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bool:
     """Remove the footprinter entry from the Claude Desktop MCP config.
 
@@ -297,22 +318,21 @@ def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bo
         console.print("[yellow]Unsupported platform — cannot detect MCP config path.[/yellow]")
         return False
 
-    if not path.exists():
-        console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
-        return True
-
     try:
-        with open(path, "r") as f:
-            existing = json.load(f)
+        existing = read_mcp_config(path)
     except (json.JSONDecodeError, OSError) as e:
         console.print(f"[red]Cannot read existing config:[/red] {e}")
         return False
 
-    # Hand-edited configs may have ``"mcpServers": null`` — coerce to {}.
-    servers = existing.get("mcpServers") or {}
-    if "footprinter" not in servers:
+    if existing is None:
+        console.print(f"  [dim]No MCP config at {path} — nothing to remove.[/dim]")
+        return True
+
+    if not has_footprinter_entry(existing):
         console.print(f"  [dim]No footprinter entry in {path}.[/dim]")
         return True
+
+    servers = existing.get("mcpServers") or {}
 
     if dry_run:
         console.print(f"[dim]Would remove footprinter from:[/dim] {path}")

@@ -49,16 +49,7 @@ C_ERROR = "red"
 C_INFO = "cyan"
 C_DIM = "dim"
 
-VALID_STATUSES = frozenset(
-    {
-        "active",
-        "paused",
-        "completed",
-        "abandoned",
-        "archived",
-        "merged",
-    }
-)
+VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 ALLOWED_TABLES = frozenset({"clients", "projects"})
 ALLOWED_COLUMNS = frozenset({"name", "project_name"})
@@ -113,7 +104,7 @@ def open_database(db_path=None):
 
     Like ``open_db`` but yields the full ``Database`` wrapper instead of a
     raw ``sqlite3.Connection``.  Use this when callers need methods only
-    available on the wrapper (e.g. ``ChatDedup``).
+    available on the wrapper.
 
     Exits with code 1 if the database file does not exist.
     """

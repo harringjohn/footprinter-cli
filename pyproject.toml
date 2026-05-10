@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "footprinter-cli"
-version = "1.0.1"
+version = "1.0.2"
 description = "A local context layer for your files, browser history, chats, and email — searchable, user-owned, MCP-served."
 readme = "README.md"
 license = {text = "MIT"}
@@ -59,10 +59,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/swellcitygroup/footprinter"
-Repository = "https://github.com/swellcitygroup/footprinter"
-Issues = "https://github.com/swellcitygroup/footprinter/issues"
-Documentation = "https://github.com/swellcitygroup/footprinter/blob/main/README.md"
+Homepage = "https://github.com/harringjohn/footprinter-cli"
+Repository = "https://github.com/harringjohn/footprinter-cli"
+Issues = "https://github.com/harringjohn/footprinter-cli/issues"
+Documentation = "https://github.com/harringjohn/footprinter-cli/blob/main/README.md"
+Changelog = "https://github.com/harringjohn/footprinter-cli/blob/main/CHANGELOG.md"
 
 [project.scripts]
 fp = "footprinter.cli:main"

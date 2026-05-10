@@ -5,11 +5,6 @@ Verifies that cli.py exposes the expected functions and that
 backward-compat scaffolding has been removed.
 """
 
-import importlib
-import sys
-from pathlib import Path
-from types import ModuleType
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -62,59 +57,6 @@ class TestOrchestratorNoReexports:
         assert not hasattr(orch, "_dispatch_refresh"), (
             "orchestrator still re-exports _dispatch_refresh — remove __getattr__"
         )
-
-
-@pytest.mark.skipif(
-    not (Path(__file__).resolve().parent.parent.parent / "scripts" / "setup" / "setup_google_auth.py").exists(),
-    reason="setup_google_auth.py not present (snapshot)",
-)
-class TestSetupGoogleAuthNoReexports:
-    """setup_google_auth.py should NOT re-export scope constants (scaffolding removed)."""
-
-    REMOVED_NAMES = [
-        "SCOPES_DRIVE_FULL",
-        "SCOPES_DRIVE_READONLY",
-        "SCOPES_DRIVE_WRITE",
-        "SCOPES_FULL",
-        "SCOPES_GMAIL_READONLY",
-        "SCOPES_WRITE",
-    ]
-
-    @staticmethod
-    def _load_script():
-        """Load setup_google_auth, ensuring Google API stubs are in place."""
-        for name in (
-            "google",
-            "google.auth",
-            "google.auth.transport",
-            "google.auth.transport.requests",
-            "google.oauth2",
-            "google.oauth2.credentials",
-            "google_auth_oauthlib",
-            "google_auth_oauthlib.flow",
-            "googleapiclient",
-            "googleapiclient.discovery",
-        ):
-            if name not in sys.modules:
-                sys.modules[name] = ModuleType(name)
-        sys.modules["google.auth.transport.requests"].Request = MagicMock  # type: ignore[attr-defined]
-        sys.modules["google.oauth2.credentials"].Credentials = MagicMock  # type: ignore[attr-defined]
-        sys.modules["google_auth_oauthlib.flow"].InstalledAppFlow = MagicMock  # type: ignore[attr-defined]
-        sys.modules["googleapiclient.discovery"].build = MagicMock  # type: ignore[attr-defined]
-
-        if "setup_google_auth" not in sys.modules:
-            script_dir = str(Path(__file__).resolve().parent.parent.parent / "scripts" / "setup")
-            sys.path.insert(0, script_dir)
-            try:
-                importlib.import_module("setup_google_auth")
-            finally:
-                sys.path.pop(0)
-        return sys.modules["setup_google_auth"]
-
-    @pytest.mark.parametrize("name", REMOVED_NAMES)
-    def test_no_reexport(self, name):
-        mod = self._load_script()
-        assert not hasattr(mod, name), f"setup_google_auth still re-exports {name} — remove from import block"
 
 
 class TestNoRetentionRefsInCli:
@@ -230,16 +172,6 @@ class TestBackwardCompatScaffoldingRemoved:
 
         assert not hasattr(ChatIndexer, "import_claude"), "ChatIndexer still has legacy import_claude method"
         assert not hasattr(ChatIndexer, "import_chatgpt"), "ChatIndexer still has legacy import_chatgpt method"
-
-    def test_no_code_project_alias(self):
-        """project_detector should not have CodeProject backward-compat alias."""
-        mod = pytest.importorskip("footprinter.analysis.project_detector")
-        assert not hasattr(mod, "CodeProject"), "project_detector still has CodeProject = Project alias"
-
-    def test_no_code_project_alias_in_project_detection(self):
-        """project_detection should not have CodeProject backward-compat alias."""
-        mod = pytest.importorskip("footprinter.ingest.project_detection")
-        assert not hasattr(mod, "CodeProject"), "project_detection still has CodeProject = Project alias"
 
     def test_db_init_no_database_reexport(self):
         """footprinter.ingest.db should not re-export Database via __getattr__."""

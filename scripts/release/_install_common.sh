@@ -93,7 +93,13 @@ pip_install_footprinter() {
 
     echo "==> Installing ${spec}..."
     "$PYTHON_BIN" -m pip install --user --upgrade pip >/dev/null
-    "$PYTHON_BIN" -m pip install --user --upgrade "$spec"
+    # Stale cache from an older Python emits ~30 "Cache entry deserialization
+    # failed" warnings that dominate the output. Purge before install.
+    # `|| true` keeps `set -e` happy on ancient pip without `cache purge`.
+    "$PYTHON_BIN" -m pip cache purge >/dev/null 2>&1 || true
+    # --no-warn-script-location: we add USER_BIN to PATH ourselves below;
+    # pip's per-script warnings are redundant noise.
+    "$PYTHON_BIN" -m pip install --user --upgrade --no-warn-script-location "$spec"
 
     USER_BIN="$("$PYTHON_BIN" -m site --user-base)/bin"
 }
@@ -131,10 +137,9 @@ verify_fp() {
         user_path_has_fp=1
     fi
 
+    local rc=""
     if [ "$user_path_has_fp" -eq 0 ]; then
-        local rc
         rc="$(_persist_user_bin_on_path)"
-        echo "==> Added ${USER_BIN} to PATH in ${rc} (run 'source ${rc}' or open a new terminal)."
     fi
 
     # Make this run's freshly-installed user bin findable so `fp --version`
@@ -143,4 +148,25 @@ verify_fp() {
 
     echo "==> Verifying install..."
     fp --version
+
+    # Closing message must be the literal last line on screen. When fp
+    # isn't already on PATH, that means a bordered ACTION REQUIRED block
+    # — telling users to "Run fp setup" before they've opened a new
+    # terminal would just hand them a `command not found` (UAT F3).
+    # Callers (install.sh, install-full.sh) intentionally print nothing
+    # after verify_fp so this stays the final word.
+    echo ""
+    if [ "$user_path_has_fp" -eq 0 ]; then
+        echo "────────────────────────────────────────────────────────────"
+        echo "  ACTION REQUIRED — open a new terminal before using \`fp\`"
+        echo "  (or run:  source ${rc})"
+        echo ""
+        echo "  Added ${USER_BIN} to PATH in ${rc};"
+        echo "  existing shells haven't picked it up yet."
+        echo ""
+        echo "  Then run:  fp setup"
+        echo "────────────────────────────────────────────────────────────"
+    else
+        echo "==> Done! Run 'fp setup' to get started."
+    fi
 }

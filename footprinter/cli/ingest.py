@@ -209,11 +209,13 @@ def _handle_ingest(args) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_source_banner(config: dict, *, quiet: bool = False, console=None):
-    """Print a startup banner listing active and inactive data sources."""
-    if quiet:
-        return
+def _print_source_banner(config: dict, *, pipes=None, console=None):
+    """Print a startup banner listing active and inactive data sources.
 
+    When ``pipes`` is a list (from ``--pipe``), sources whose pipe names are
+    not in the list are omitted entirely. When ``pipes`` is None, every
+    configured source is shown as today.
+    """
     if console is None:
         from footprinter.cli._common import console as _console
 
@@ -221,17 +223,25 @@ def _print_source_banner(config: dict, *, quiet: bool = False, console=None):
 
     from footprinter.connectors import discover_connectors, is_configured, is_installed
 
+    pipe_set = set(pipes) if pipes is not None else None
+    show_local = pipe_set is None or bool(pipe_set & {"local_files", "local_folders"})
+    show_browser = pipe_set is None or "browser" in pipe_set
+
     console.print("[bold]Sources:[/bold]")
-    if config.get("directories"):
-        console.print("  [green]\u2713[/green] Local files")
-    else:
-        console.print("  [dim]\u2022 Local files  (no directories configured)[/dim]")
-    if config.get("browsers"):
-        console.print("  [green]\u2713[/green] Browser history")
-    else:
-        console.print("  [dim]\u2022 Browser history  (no browsers configured)[/dim]")
+    if show_local:
+        if config.get("directories"):
+            console.print("  [green]\u2713[/green] Local files")
+        else:
+            console.print("  [dim]\u2022 Local files  (no directories configured)[/dim]")
+    if show_browser:
+        if config.get("browsers"):
+            console.print("  [green]\u2713[/green] Browser history")
+        else:
+            console.print("  [dim]\u2022 Browser history  (no browsers configured)[/dim]")
 
     for name, spec in discover_connectors().items():
+        if pipe_set is not None and not (pipe_set & set(spec.pipes)):
+            continue
         if is_installed(spec) and is_configured(spec, config):
             console.print(f"  [green]\u2713[/green] {spec.description}")
         else:
@@ -251,6 +261,7 @@ def _run_with_logging(
     header="Footprinter Data Pipeline",
     show_banner=False,
     show_next_steps=True,
+    scan_roots=None,
 ):
     """Shared run helper: Rich Progress, file logging, run record, cleanup.
 
@@ -329,7 +340,7 @@ def _run_with_logging(
             console.print()
 
             if show_banner:
-                _print_source_banner(orchestrator.config, console=console)
+                _print_source_banner(orchestrator.config, pipes=pipes, console=console)
 
             progress = Progress(
                 SpinnerColumn(),
@@ -402,6 +413,7 @@ def _run_with_logging(
                 on_pipe_start=on_start,
                 on_pipe_end=on_end,
                 on_progress=on_progress,
+                scan_roots=scan_roots,
             )
         else:
             orchestrator.run_pipeline(

@@ -2,21 +2,14 @@
 Tests for the interactive setup wizard (src.cli.setup).
 """
 
-import importlib.util
 import os
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 from rich.panel import Panel
 
-_GOOGLE_CONNECTOR = importlib.util.find_spec("footprinter.connectors.google") is not None
-_requires_google = pytest.mark.skipif(
-    not _GOOGLE_CONNECTOR,
-    reason="Google connector not installed",
-)
 _requires_darwin = pytest.mark.skipif(
     sys.platform != "darwin",
     reason="Full Disk Access / Safari is a macOS-only prerequisite",
@@ -827,6 +820,61 @@ class TestWelcomeScreen:
         # Google removed from wizard
         assert "google" not in text
 
+    def _get_welcome_text_raw(self):
+        """Same as _get_welcome_text but preserves original case (for label checks)."""
+        with (
+            patch("footprinter.cli.setup.console") as mock_console,
+            patch("footprinter.cli.setup._choose_preset", return_value=None),
+            patch("footprinter.cli.setup.collect_answers", side_effect=KeyboardInterrupt),
+            patch("footprinter.cli.setup.Confirm"),
+        ):
+            try:
+                run_interactive_wizard()
+            except KeyboardInterrupt:
+                pass
+            parts = []
+            for call in mock_console.print.call_args_list:
+                for arg in call[0]:
+                    if isinstance(arg, Panel):
+                        parts.append(str(arg.renderable))
+                    else:
+                        parts.append(str(arg))
+            return " ".join(parts)
+
+    def test_welcome_uses_steps_label(self):
+        """F13: welcome panel should say 'Steps:' not 'Phases:'."""
+        text = self._get_welcome_text_raw()
+        assert "Steps:" in text, "Welcome panel should label the list 'Steps:'"
+        assert "Phases:" not in text, "Welcome panel should not say 'Phases:' anymore"
+
+    def test_welcome_lists_six_numbered_steps(self):
+        """F14: welcome panel lists steps 1–6 (Welcome itself is unnumbered)."""
+        text = self._get_welcome_text_raw()
+        for n in range(1, 7):
+            assert f"{n}." in text, f"Expected '{n}.' in welcome step list"
+        assert "7." not in text, "Welcome list should not include a 7th item"
+        # 'Welcome' is shown but never as a numbered list item
+        assert "1. Welcome" not in text
+
+    def test_welcome_chat_exports_contiguous(self):
+        """F15: 'chat exports' must render without an embedded newline."""
+        text = self._get_welcome_text_raw()
+        assert "chat\nexports" not in text, "Spurious line break between 'chat' and 'exports'"
+        assert "chat exports" in text
+
+    def test_welcome_prereqs_mention_chat_exports(self):
+        """F16: prerequisites block references chat exports + reference/chat-export.md."""
+        text = self._get_welcome_text_raw()
+        assert "chat exports" in text.lower()
+        assert "reference/chat-export.md" in text
+
+    def test_welcome_prereqs_mention_csv_import(self):
+        """F21: prerequisites mention CSV import + the shipped templates."""
+        text = self._get_welcome_text_raw()
+        assert "CSV" in text
+        assert "reference/clients-template.csv" in text
+        assert "reference/projects-template.csv" in text
+
 
 # ---------------------------------------------------------------------------
 # TestStepGuidance — per-step guidance text
@@ -1039,94 +1087,6 @@ class TestExampleConfigDefaults:
 
 
 # ---------------------------------------------------------------------------
-# TestGenerateConfigGoogle — 3 tests
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestGenerateConfigGoogle:
-    """Tests for generate_config() Google service behavior.
-
-    The template has no google_drive/gmail sections — connector sections are
-    written by ``fp connect install google``, not the template.
-    """
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_drive_section_created_with_verified_account(self, _mock_inst):
-        """generate_config() should create google_drive section when drive is verified."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert result["google_drive"]["enabled"] is True
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_no_gmail_section_for_drive_only_account(self, _mock_inst):
-        """generate_config() should not create gmail section for drive-only accounts."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert "gmail" not in result
-
-    def test_no_google_answers_has_no_connector_sections(self):
-        """Empty google dict produces no connector sections."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        result = generate_config(answers, connector_results={})
-        assert "google_drive" not in result
-        assert "gmail" not in result
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_generate_config_creates_drive_section_when_template_lacks_it(self, _mock_inst):
-        """generate_config() should create google_drive section even when
-        config.example.yaml doesn't include it."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["drive"]}
-        result = generate_config(answers, connector_results=google)
-        assert "google_drive" in result, "google_drive section should be created"
-        assert result["google_drive"]["enabled"] is True
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    def test_generate_config_creates_gmail_section_when_template_lacks_it(self, _mock_inst):
-        """generate_config() should create gmail section with accounts even when
-        config.example.yaml doesn't include it."""
-        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
-        google = {"personal": ["gmail"]}
-        result = generate_config(answers, connector_results=google)
-        assert "gmail" in result, "gmail section should be created"
-        assert result["gmail"]["enabled"] is True
-        accounts = result["gmail"].get("accounts", [])
-        assert len(accounts) == 1
-        assert accounts[0]["name"] == "personal"
-
-
-# ---------------------------------------------------------------------------
-# TestRunOrchestratorGoogle — 3 tests
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestRunOrchestratorGoogle:
-    """Tests for run_orchestrator() with connector results."""
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_includes_connector_pipes_when_results_present(self, mock_console, mock_orch, mock_rwl, _mock_inst):
-        """Connector pipes should be added when connector_results is non-empty."""
-        run_orchestrator({"browsers": []}, connector_results={"personal": ["drive"]})
-        stages = mock_rwl.call_args[1]["pipes"]
-        assert "drive_folders" in stages
-        assert "drive_files" in stages
-        assert "gmail" in stages  # all pipes from installed connector spec
-
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_no_connector_pipes_when_results_empty(self, mock_console, mock_orch, mock_rwl):
-        """No connector pipes when connector_results is empty."""
-        run_orchestrator({"browsers": []}, connector_results={})
-        stages = mock_rwl.call_args[1]["pipes"]
-        assert "drive_folders" not in stages
-        assert "gmail" not in stages
-
-
-# ---------------------------------------------------------------------------
 # TestPrintSummaryGoogle — 1 test
 # ---------------------------------------------------------------------------
 class TestPrintSummaryGoogle:
@@ -1187,19 +1147,24 @@ from tests.conftest import run_wizard_mocked
 class TestPhaseProgression:
     """Verify step indicators appear at each phase transition."""
 
-    def test_all_seven_phases_have_step_indicators(self):
-        """run_interactive_wizard() should print 'Step N of 7' for N=1..7."""
+    def test_six_numbered_steps_after_welcome(self):
+        """F14: Welcome is unnumbered; the remaining 6 phases print 'Step N of 6'."""
         mocks = run_wizard_mocked()
         printed = _extract_printed_text(mocks["console"])
-        for n in range(1, 8):
-            assert f"Step {n} of 7" in printed, f"Missing 'Step {n} of 7'"
+        for n in range(1, 7):
+            assert f"Step {n} of 6" in printed, f"Missing 'Step {n} of 6'"
+        # Old 7-phase numbering must be gone
+        assert "Step 1 of 7" not in printed
+        assert "Step 7 of 7" not in printed
+        # Welcome must not be emitted as a numbered phase rule
+        assert "Step 1 of 6 — Welcome" not in printed
+        assert "Step 1 of 6 — [bold]Welcome[/bold]" not in printed
 
     def test_phase_names_appear(self):
-        """Each phase indicator should include a descriptive name."""
+        """Each numbered phase indicator should include a descriptive name."""
         mocks = run_wizard_mocked()
         printed = _extract_printed_text(mocks["console"])
         for name in [
-            "Welcome",
             "Data Sources",
             "Content",
             "Confirm",
@@ -1623,135 +1588,6 @@ class TestProjectsInSummary:
 
 
 # ---------------------------------------------------------------------------
-# Google Drive and Gmail indexing produces 0 results
-# ---------------------------------------------------------------------------
-@_requires_google
-class TestSWE526DriveGmailIndexing:
-    """Tests for generate_config() populating source_seeds and gmail.accounts."""
-
-    def test_google_drive_adds_source_seeds(self):
-        """generate_config() should add Drive source_seeds for each verified Drive account."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"], "work": ["drive"]}
-        config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        drive_seeds = [s for s in seeds if s.get("source_type") == "remote"]
-        assert len(drive_seeds) >= 2, f"Expected 2 drive seeds, got {len(drive_seeds)}: {drive_seeds}"
-
-        account_names = {s["account"] for s in drive_seeds}
-        assert "personal" in account_names
-        assert "work" in account_names
-
-    def test_gmail_populated_when_gmail_verified(self):
-        """generate_config() creates gmail section with accounts when gmail is verified."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"work": ["drive", "gmail"]}
-        config = generate_config(answers, connector_results=google)
-
-        assert config["gmail"]["enabled"] is True
-        accounts = config["gmail"].get("accounts", [])
-        assert len(accounts) == 1
-        assert accounts[0]["name"] == "work"
-
-    # ── Dedup source_seeds and gmail.accounts on re-run ──
-
-    def test_rerun_does_not_duplicate_source_seeds(self):
-        """Re-running generate_config() with pre-existing seeds must not duplicate them."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        # Load the real template and pre-populate a drive_personal seed
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "remote",
-                "account": "personal",
-                "label": "Drive (personal)",
-                "icon": "cloud",
-                "enabled": True,
-            }
-        )
-
-        # Mock the template load to return config with existing seed
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seeds = [s for s in seeds if s.get("account") == "personal"]
-        assert len(personal_seeds) == 1, f"Expected 1 personal seed, got {len(personal_seeds)}: {personal_seeds}"
-
-    def test_legacy_drive_seed_not_matched_on_upsert(self):
-        """generate_config() must NOT match a pre-existing seed with source_type='drive'.
-        A new 'remote' seed should be appended, leaving the old one untouched."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "drive",
-                "account": "personal",
-                "label": "Old Label",
-                "icon": "cloud",
-                "enabled": True,
-            }
-        )
-
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seeds = [s for s in seeds if s.get("account") == "personal"]
-        assert len(personal_seeds) == 2, (
-            f"Old 'drive' seed should remain and new 'remote' seed appended, "
-            f"got {len(personal_seeds)}: {personal_seeds}"
-        )
-        old = [s for s in personal_seeds if s["source_type"] == "drive"]
-        new = [s for s in personal_seeds if s["source_type"] == "remote"]
-        assert len(old) == 1, "Old 'drive' seed should be untouched"
-        assert len(new) == 1, "New 'remote' seed should be appended"
-
-    def test_rerun_updates_existing_entries(self):
-        """Re-running generate_config() should update existing disabled entries to enabled."""
-        answers = {"directories": ["~/Work"], "browsers": []}
-        google = {"personal": ["drive"]}
-
-        with open(get_bundled_path("config.example.yaml")) as f:
-            base_config = yaml.safe_load(f)
-        base_config["source_seeds"].append(
-            {
-                "name": "gdrive_personal",
-                "source_type": "remote",
-                "account": "personal",
-                "label": "Drive (personal)",
-                "icon": "cloud",
-                "enabled": False,  # previously disabled
-            }
-        )
-
-        with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("yaml.safe_load", return_value=base_config):
-                config = generate_config(answers, connector_results=google)
-
-        seeds = config.get("source_seeds", [])
-        personal_seed = next(s for s in seeds if s.get("account") == "personal")
-        assert personal_seed["enabled"] is True, f"Expected enabled=True after re-run, got {personal_seed}"
-
-
-# ---------------------------------------------------------------------------
 # Chat import moved to Data Sources phase
 # ---------------------------------------------------------------------------
 class TestChatImportPhaseMove:
@@ -1981,30 +1817,6 @@ class TestInProcessPipeline:
         with patch("footprinter.cli.setup.subprocess.run") as mock_sp:
             run_orchestrator({"browsers": []})
             mock_sp.assert_not_called()
-
-    @patch("footprinter.connectors.is_installed", return_value=True)
-    @_requires_google
-    @patch("footprinter.cli.setup._run_with_logging")
-    @patch("footprinter.cli.setup.DataPipelineOrchestrator")
-    @patch("footprinter.cli.setup.console")
-    def test_run_orchestrator_connector_stages(
-        self,
-        mock_console,
-        mock_orch_cls,
-        mock_rwl,
-        _mock_inst,
-    ):
-        """run_orchestrator should include browser and connector stages."""
-        run_orchestrator(
-            {"browsers": ["safari"]},
-            connector_results={"work": ["drive", "gmail"]},
-        )
-        call_kwargs = mock_rwl.call_args[1]
-        stages = call_kwargs["pipes"]
-        assert "browser" in stages
-        assert "drive_folders" in stages
-        assert "drive_files" in stages
-        assert "gmail" in stages
 
 
 # ---------------------------------------------------------------------------
@@ -2649,11 +2461,11 @@ class TestCollectVectorizationFull:
         d.mkdir()
         (d / "code.py").write_text("print()")
 
-        # Confirm.ask order (enable-first):
-        # snippets? No, enable files? Yes, enable chats? Yes,
-        # keep defaults? No, accept exclusions? Yes
+        # Confirm.ask order (F20: files → file types → chats):
+        # snippets? No, enable files? Yes, keep defaults? No,
+        # enable chats? Yes, accept exclusions? Yes
         # Prompt.ask: custom extensions
-        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, True, True, False, True]):
+        with patch("footprinter.cli.setup.Confirm.ask", side_effect=[False, True, False, True, True]):
             with patch("footprinter.cli.setup.Prompt.ask", return_value=".py, .rs"):
                 result = collect_vectorization_answers(directories=[str(d)])
 
@@ -3395,5 +3207,181 @@ class TestSafariFullDiskAccessGuidance:
             assert SAFARI_FDA_URL not in cmd, (
                 "subprocess.run should not be invoked with the FDA URL on non-macOS"
             )
+
+
+# ---------------------------------------------------------------------------
+# TestQuickStartDirs (F17) — preset description enumerates candidate dirs
+# ---------------------------------------------------------------------------
+class TestQuickStartDirs:
+    """The quick-start preset description must list the candidate directories
+    so users know what they're opting into instead of seeing 'common directories'.
+    """
+
+    @patch("footprinter.cli.setup.os.path.isdir", return_value=True)
+    @patch("footprinter.cli.setup.os.path.expanduser", side_effect=lambda p: p)
+    @patch("footprinter.cli.setup.Prompt.ask", return_value="quick")
+    @patch("footprinter.cli.setup.console")
+    def test_quick_start_lists_candidate_directories(
+        self, mock_console, mock_prompt, mock_expanduser, mock_isdir
+    ):
+        from footprinter.cli.setup import QUICK_START_CANDIDATES, _choose_preset
+
+        _choose_preset()
+        printed = _extract_printed_text(mock_console)
+        for d in QUICK_START_CANDIDATES:
+            assert d in printed, f"Quick start description should name {d}"
+
+
+# ---------------------------------------------------------------------------
+# TestDataSourcesAlignment (F18) — left-align all printed prompts
+# ---------------------------------------------------------------------------
+class TestDataSourcesAlignment:
+    """Every printed line in the Data Sources phase should start with the
+    standard two-space indent (no triple-space, no tabs). Regression guard
+    for misaligned prompts seen in v1.0.1 UAT.
+    """
+
+    @staticmethod
+    def _collect_printed_strings(mock_console) -> list[str]:
+        out = []
+        for call in mock_console.print.call_args_list:
+            for arg in call[0]:
+                if isinstance(arg, str):
+                    out.append(arg)
+        return out
+
+    @patch("footprinter.cli.setup.os.path.isdir")
+    @patch("footprinter.cli.setup.os.path.expanduser", side_effect=lambda p: p)
+    @patch("footprinter.cli.setup.Prompt.ask")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    def test_collect_answers_lines_left_aligned(
+        self, mock_console, mock_confirm, mock_prompt, mock_expanduser, mock_isdir
+    ):
+        mock_isdir.side_effect = lambda p: p == "/tmp"
+        mock_prompt.side_effect = ["/tmp", ""]
+        mock_confirm.side_effect = [False, False]
+        collect_answers()
+
+        for line in self._collect_printed_strings(mock_console):
+            stripped = line.lstrip("\n")
+            if not stripped or stripped.startswith("["):
+                # blank lines and Rich markup-only lines are fine
+                continue
+            assert not stripped.startswith("\t"), f"Tab indent in: {line!r}"
+            assert not stripped.startswith("   "), (
+                f"Triple-space (right-shifted) indent in: {line!r}"
+            )
+
+    @_requires_darwin
+    @patch("footprinter.cli.setup.subprocess.run")
+    @patch("footprinter.cli.setup.Path")
+    @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
+    @patch("footprinter.cli.setup.console")
+    def test_fda_guidance_lines_left_aligned(
+        self, mock_console, mock_confirm, mock_path, mock_subprocess
+    ):
+        from footprinter.cli.setup import _guide_safari_full_disk_access
+
+        _guide_safari_full_disk_access()
+
+        for line in self._collect_printed_strings(mock_console):
+            stripped = line.lstrip("\n")
+            if not stripped:
+                continue
+            assert not stripped.startswith("\t"), f"Tab indent in: {line!r}"
+            assert not stripped.startswith("   "), (
+                f"Triple-space (right-shifted) indent in: {line!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestPlainContentLabels (F19) — replace Tier 0/1 jargon
+# ---------------------------------------------------------------------------
+class TestPlainContentLabels:
+    """Content tier descriptions should use plain numbered labels, not
+    'Tier 0' / 'Tier 1' which leak internal jargon to first-time users.
+    """
+
+    @patch("footprinter.cli.setup._check_semantic_deps", return_value=False)
+    @patch("footprinter.cli.setup.console")
+    @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
+    def test_content_labels_use_plain_numbering(
+        self, mock_confirm, mock_console, mock_deps, tmp_path
+    ):
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        collect_vectorization_answers(directories=[str(d)], existing=None, quick=True)
+
+        printed = _extract_printed_text(mock_console)
+        assert "1. Metadata only" in printed, "Expected '1. Metadata only' label"
+        assert "2. Content snippets" in printed, "Expected '2. Content snippets' label"
+        assert "Tier 0" not in printed, "Tier 0 jargon should be removed"
+        assert "Tier 1" not in printed, "Tier 1 jargon should be removed"
+
+
+# ---------------------------------------------------------------------------
+# TestSemanticOrdering (F20) — files -> file types -> chats
+# ---------------------------------------------------------------------------
+class TestSemanticOrdering:
+    """In _collect_vectorization_full, the file-types question must follow
+    the file-enable Confirm and precede the chat-enable Confirm.
+    """
+
+    @patch("footprinter.cli.setup._check_semantic_deps", return_value=True)
+    @patch("footprinter.cli.setup._scan_directories_for_vectorization")
+    @patch("footprinter.cli.setup.Prompt.ask")
+    @patch("footprinter.cli.setup.Confirm.ask")
+    @patch("footprinter.cli.setup.console")
+    def test_full_mode_question_order(
+        self,
+        mock_console,
+        mock_confirm,
+        mock_prompt,
+        mock_scan,
+        mock_deps,
+        tmp_path,
+    ):
+        from footprinter.cli.setup import _collect_vectorization_full
+
+        labels: list[str] = []
+
+        def capture_confirm(prompt, **kwargs):
+            labels.append(prompt)
+            return True  # enable everything so we exercise the full flow
+
+        def capture_prompt(prompt, **kwargs):
+            labels.append(prompt)
+            return ""
+
+        mock_confirm.side_effect = capture_confirm
+        mock_prompt.side_effect = capture_prompt
+        mock_scan.return_value = {"total": 0, "by_extension": {}, "junk_hits": {}, "total_after_exclusions": 0}
+
+        d = tmp_path / "work"
+        d.mkdir()
+        _collect_vectorization_full(
+            directories=[str(d)],
+            file_types=[".md"],
+            existing_excludes=[],
+            existing_semantic={},
+        )
+
+        # Find the index of each label (first match)
+        def first_idx(needle: str) -> int:
+            for i, label in enumerate(labels):
+                if needle in label:
+                    return i
+            raise AssertionError(f"Did not see prompt containing {needle!r} in {labels}")
+
+        files_idx = first_idx("Enable semantic search for files?")
+        types_idx = first_idx("Keep these file types?")
+        chats_idx = first_idx("Enable semantic search for chats?")
+
+        assert files_idx < types_idx < chats_idx, (
+            f"Order should be files -> types -> chats, got: {labels}"
+        )
 
 

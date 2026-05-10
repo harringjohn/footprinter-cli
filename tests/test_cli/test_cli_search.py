@@ -251,14 +251,14 @@ def _make_fts_db(tmp_path):
         """CREATE TABLE files (
             id INTEGER PRIMARY KEY, source TEXT, name TEXT, path TEXT,
             content_type TEXT, size_bytes INTEGER, modified_at TEXT,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'listed'
         )"""
     )
     conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
     conn.execute(
         """INSERT INTO files (id, source, name, path, content_type, size_bytes, modified_at, status)
            VALUES (1, 'local', 'database_migration.sql', '/home/user/database_migration.sql',
-                   'text/sql', 1024, '2026-01-15', 'active')"""
+                   'text/sql', 1024, '2026-01-15', 'listed')"""
     )
     conn.execute(
         "INSERT INTO files_fts (rowid, name, path)"
@@ -267,7 +267,7 @@ def _make_fts_db(tmp_path):
     conn.execute(
         """INSERT INTO files (id, source, name, path, content_type, size_bytes, modified_at, status)
            VALUES (2, 'local', 'database_schema.pdf', '/home/user/database_schema.pdf',
-                   'application/pdf', 2048, '2026-01-16', 'active')"""
+                   'application/pdf', 2048, '2026-01-16', 'listed')"""
     )
     conn.execute(
         "INSERT INTO files_fts (rowid, name, path) VALUES (2, 'database_schema.pdf', '/home/user/database_schema.pdf')"
@@ -278,7 +278,7 @@ def _make_fts_db(tmp_path):
             id INTEGER PRIMARY KEY, external_id TEXT, title TEXT, summary TEXT,
             account TEXT, created_at TEXT, updated_at TEXT, message_count INTEGER,
             mcp_view TEXT DEFAULT 'inherit',
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'listed'
         )"""
     )
     conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, summary, content=chats, content_rowid=id)")
@@ -504,14 +504,14 @@ class TestSearchFilesFileExt:
             """CREATE TABLE files (
                 id INTEGER PRIMARY KEY, source TEXT, name TEXT, path TEXT,
                 content_type TEXT, size_bytes INTEGER, modified_at TEXT,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'listed'
             )"""
         )
         conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
         conn.execute(
             """INSERT INTO files (id, source, name, path, size_bytes, modified_at, status)
                VALUES (1, 'local', 'data_backup.sql', '/home/user/data_backup.sql',
-                       100, '2026-01-01', 'active')"""
+                       100, '2026-01-01', 'listed')"""
         )
         conn.execute(
             "INSERT INTO files_fts (rowid, name, path) VALUES (1, 'data_backup.sql', '/home/user/data_backup.sql')"
@@ -520,7 +520,7 @@ class TestSearchFilesFileExt:
         conn.execute(
             """INSERT INTO files (id, source, name, path, size_bytes, modified_at, status)
                VALUES (2, 'local', 'dataxbackup.sql', '/home/user/dataxbackup.sql',
-                       100, '2026-01-01', 'active')"""
+                       100, '2026-01-01', 'listed')"""
         )
         conn.execute(
             "INSERT INTO files_fts (rowid, name, path) VALUES (2, 'dataxbackup.sql', '/home/user/dataxbackup.sql')"
@@ -544,14 +544,14 @@ class TestSearchFilesFileExt:
             """CREATE TABLE files (
                 id INTEGER PRIMARY KEY, source TEXT, name TEXT, path TEXT,
                 content_type TEXT, size_bytes INTEGER, modified_at TEXT,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'listed'
             )"""
         )
         conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
         conn.execute(
             """INSERT INTO files (id, source, name, path, size_bytes, modified_at, status)
                VALUES (1, 'local', 'report%final.txt', '/home/user/report%final.txt',
-                       100, '2026-01-01', 'active')"""
+                       100, '2026-01-01', 'listed')"""
         )
         conn.execute(
             "INSERT INTO files_fts (rowid, name, path) VALUES (1, 'report%final.txt', '/home/user/report%final.txt')"
@@ -560,7 +560,7 @@ class TestSearchFilesFileExt:
         conn.execute(
             """INSERT INTO files (id, source, name, path, size_bytes, modified_at, status)
                VALUES (2, 'local', 'report_final.txt', '/home/user/report_final.txt',
-                       100, '2026-01-01', 'active')"""
+                       100, '2026-01-01', 'listed')"""
         )
         conn.execute(
             "INSERT INTO files_fts (rowid, name, path) VALUES (2, 'report_final.txt', '/home/user/report_final.txt')"

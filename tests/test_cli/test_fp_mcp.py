@@ -424,14 +424,14 @@ class TestMcpCheck:
         # Insert client, project (with client_id), and file
         conn.execute(
             "INSERT INTO clients (id, name, slug, client_type, status) "
-            "VALUES (99, 'Test Client', 'test-client', 'external', 'active')"
+            "VALUES (99, 'Test Client', 'test-client', 'external', 'listed')"
         )
         conn.execute(
-            "INSERT INTO projects (id, project_name, client_id, status) VALUES (99, 'Client Project', 99, 'active')"
+            "INSERT INTO projects (id, project_name, client_id, status) VALUES (99, 'Client Project', 99, 'listed')"
         )
         conn.execute(
             "INSERT INTO files (id, name, path, source, status, project_id, size_bytes) "
-            "VALUES (99, 'file.txt', '/tmp/client-test/file.txt', 'local', 'active', 99, 100)"
+            "VALUES (99, 'file.txt', '/tmp/client-test/file.txt', 'local', 'listed', 99, 100)"
         )
         # Add a client-level permission policy
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('client:99', 'deny')")

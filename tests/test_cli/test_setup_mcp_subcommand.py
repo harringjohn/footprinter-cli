@@ -21,8 +21,6 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-_hooks_available = (Path(__file__).parent.parent.parent / "scripts" / "hooks" / "post-merge").exists()
-
 
 class TestMcpSubcommandRouting:
     """fp setup mcp should delegate to mcp_setup functions."""
@@ -129,20 +127,6 @@ class TestBackwardCompatibility:
                 main()
             assert exc_info.value.code == 0
             mock_check.assert_called_once()
-
-    @pytest.mark.skipif(not _hooks_available, reason="git hooks not available in snapshot")
-    def test_fp_setup_hooks_installs_hooks(self):
-        """fp setup --hooks → install_git_hooks()."""
-        with (
-            patch("footprinter.cli.setup.install_git_hooks", return_value=0) as mock_hooks,
-            patch("sys.argv", ["fp", "--hooks"]),
-        ):
-            from footprinter.cli.setup import main
-
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
-            mock_hooks.assert_called_once()
 
 
 class TestOfferSetupClaudeWiring:

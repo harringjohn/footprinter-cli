@@ -1,6 +1,7 @@
 # Footprinter
 
 [![Tests](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml/badge.svg)](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/footprinter-cli)](https://pypi.org/project/footprinter-cli/)
 
 **A local context layer for your files, browser history, chats, and email — searchable, user-owned, and served to AI agents through [MCP](https://modelcontextprotocol.io/).**
 
@@ -24,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scr
 curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install-full.sh | bash
 ```
 
-If you prefer to manage the install yourself, use **pipx** (recommended) — modern macOS Python ships PEP 668 enabled, which blocks bare `pip install`:
+If you prefer to manage the install yourself, use **pipx** (recommended) — it isolates Footprinter and sidesteps the macOS install caveats noted below:
 
 ```bash
 brew install pipx
@@ -32,6 +33,11 @@ pipx ensurepath           # then restart your terminal
 pipx install footprinter-cli
 pipx install 'footprinter-cli[full]'   # with semantic + parse
 ```
+
+> **macOS caveats for manual installs:**
+> - **zsh** treats `[...]` as a glob, so keep the single quotes around any bracketed extras specifier (e.g. `'footprinter-cli[full]'`). Without quotes you'll see `zsh: no matches found`.
+> - **System and Homebrew Python** ship with PEP 668 enabled, which blocks bare `pip install` outside a venv. Use pipx (above) instead.
+> - **python.org-distributed Python** doesn't enforce PEP 668, so a bare `pip install footprinter-cli` outside pipx or a venv may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which isn't on `PATH` by default. Use pipx (above) or the install script.
 
 Inside an existing venv, `pip` works as expected:
 
@@ -120,9 +126,9 @@ All commands use the `fp` entry point.
 | `fp mcp` | MCP server and access policies |
 | `fp api` | Start the HTTP API server |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
-| `fp upsert` | Create or update records and assign relationships |
+| `fp upsert` | Create/update records, assign relationships, or soft-delete via `--status removed` |
 | `fp data` | Export data, generate templates, or import metadata corrections |
-| `fp delete` | Soft-delete a record |
+| `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp vectorize` | Manage per-record vectorization control |
 | `fp doctor` | Post-install health check (Python version, install location, FDA, MCP wiring) |
 | `fp uninstall` | Remove Footprinter — MCP entry, user data, package |
