@@ -29,12 +29,25 @@ The `fp` command is installed by `pip install footprinter-cli`. All business log
 | `fp mcp` | MCP server and access policies |
 | `fp api` | Start the HTTP API server |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
-| `fp upsert` | Create or update records and assign relationships |
+| `fp upsert` | Create or update records, assign relationships, or soft-delete via `--status removed` |
 | `fp data` | Export data, generate templates, or import metadata corrections |
-| `fp delete` | Soft-delete a record |
+| `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp vectorize` | Manage per-record vectorization control |
 
 Run `fp <command> --help` for full signatures and arguments.
+
+#### Data scoping operations
+
+Three commands cover the lifecycle of indexed entities. They look similar but have different effects — pick the one that matches your intent.
+
+| Operation | Command | What it does | Reversible? |
+|-----------|---------|--------------|-------------|
+| **Create / edit** super entity | `fp upsert client --name Acme --type external` | Creates or updates a client/project record. `--status` accepts `listed` / `unlisted` / `removed`. | Yes |
+| **Assign** content entity | `fp upsert file 42 --project-id 3` | Sets `project_id` / `client_id` FKs on files, folders, emails, chats, or visits. Does not change `status`. Bulk path form: `fp upsert files --folder /path --project-id 3`. | Yes — re-assign or pass `0` to clear |
+| **Soft-delete** | `fp upsert client 42 --status removed` | Hides the record from default listings (`default_exclude=["removed"]`) but preserves the row and FK references. | Yes — `--status listed` to restore |
+| **Hard-delete** | `fp delete client 42` | `DELETE FROM clients WHERE id = 42`. Refuses to run when any dependent record (project, file, folder, etc.) points at the entity — reassign or remove those first. | **No** |
+
+Listings everywhere use the standardized exclude pattern via `build_status_filter()`: by default `removed` is hidden, all other statuses are visible. Pass `--status all` (or `status="all"` in service calls) to bypass; pass an explicit status to filter to it.
 
 #### Dependency groups
 
@@ -266,7 +279,7 @@ project_service.delete(conn, project_id: int, *, role) -> dict | None
 - `include` accepts `["files"]` and/or `["folders"]` to attach nested data
 - `resolve_by_name()` returns navigation data for a single match, disambiguation dict for multiple
 - `upsert()` matches on `root_path` first, then `project_name`
-- `delete()` is a soft delete (sets `status='removed'`)
+- `delete()` is a hard delete (`DELETE FROM projects`); raises `ValueError` if dependent records exist. Use `upsert(... status='removed', status_reason='cli:delete')` for a soft-delete.
 
 #### client_service
 

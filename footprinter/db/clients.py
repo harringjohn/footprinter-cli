@@ -23,7 +23,7 @@ def list_clients(
     ----------
     conn : sqlite3.Connection
     status : str, list[str], or None
-        ``None`` → active only (default).
+        ``None`` → all except ``removed`` (default).
         ``"all"`` → no status filter.
         Single string → exact match.
         List of strings → ``WHERE status IN (...)``.
@@ -43,7 +43,7 @@ def list_clients(
     status_conds, status_params = build_status_filter(
         status,
         column="client.status",
-        default_include=["listed"],
+        default_exclude=["removed"],
     )
     conditions.extend(status_conds)
     params.extend(status_params)
@@ -57,7 +57,7 @@ def list_clients(
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
-                WHERE project.client_id = client.id AND file.status = 'listed') as file_count
+                WHERE project.client_id = client.id AND file.status != 'removed') as file_count
         FROM clients client
         {where}
         ORDER BY client.name
@@ -82,6 +82,46 @@ def list_clients(
     ]
 
     return paginated_response("clients", clients, pagination)
+
+
+CLIENT_DEPENDENT_TABLES = ("projects", "files", "folders", "chats", "emails", "visits")
+
+
+def count_client_dependents(conn: sqlite3.Connection, client_id: int) -> dict[str, int]:
+    """Return per-table counts of records with ``client_id = ?``.
+
+    Tables included: ``CLIENT_DEPENDENT_TABLES``. Zero counts are kept so
+    callers can render "0 projects, 2 files" verbatim.
+    """
+    counts: dict[str, int] = {}
+    for table in CLIENT_DEPENDENT_TABLES:
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE client_id = ?",
+            (client_id,),
+        ).fetchone()
+        counts[table] = row[0] if row else 0
+    return counts
+
+
+def delete_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
+    """Hard-delete a client row.
+
+    Returns ``None`` if the client does not exist. If any dependent records
+    point at the client, returns ``{"blocked": True, "dependents": {...}}``
+    without deleting. Otherwise issues ``DELETE FROM clients`` and returns
+    ``{"deleted": True}``.
+    """
+    cursor = conn.execute("SELECT id FROM clients WHERE id = ?", (client_id,))
+    if cursor.fetchone() is None:
+        return None
+
+    counts = count_client_dependents(conn, client_id)
+    if any(c > 0 for c in counts.values()):
+        return {"blocked": True, "dependents": counts}
+
+    conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    conn.commit()
+    return {"deleted": True}
 
 
 def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optional[bool]:
@@ -218,7 +258,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor.execute(
         """SELECT COUNT(*) as cnt FROM files file
            JOIN projects project ON file.project_id = project.id
-           WHERE project.client_id = ? AND file.status = 'listed'""",
+           WHERE project.client_id = ? AND file.status != 'removed'""",
         (client_id,),
     )
     client["file_count"] = cursor.fetchone()["cnt"]
@@ -265,7 +305,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
             FROM files
-            WHERE project_id IN ({ph}) AND status = 'listed' {_nh}""",
+            WHERE project_id IN ({ph}) AND status != 'removed' {_nh}""",
         project_ids,
     ).fetchone()
 
@@ -275,15 +315,15 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     ).fetchone()[0]
 
     email_count = conn.execute(
-        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
     chat_count = conn.execute(
-        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
     browser_count = conn.execute(
-        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
 

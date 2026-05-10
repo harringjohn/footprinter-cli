@@ -6,10 +6,16 @@ Provides list, detail lookups, and insert functions for the visits table.
 import sqlite3
 from typing import Any, Dict, Optional, Union
 
-from footprinter.db.sql_utils import paginate, paginated_response
+from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
 
 
-def list_visits(conn: sqlite3.Connection, *, limit: int = 50, page: int = 1) -> dict:
+def list_visits(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 50,
+    page: int = 1,
+    status: Optional[str | list[str]] = None,
+) -> dict:
     """List browser visit entries ordered by visit_time descending.
 
     Parameters
@@ -19,16 +25,26 @@ def list_visits(conn: sqlite3.Connection, *, limit: int = 50, page: int = 1) -> 
         Maximum rows per page (default 50).
     page : int
         1-based page number (default 1).
+    status : str, list[str], or None
+        ``None`` → all except ``removed`` (default).
+        ``"all"`` → no status filter.
+        Single string → exact match.
+        List of strings → ``WHERE status IN (...)``.
 
     Returns
     -------
     dict
         ``{"visits": [...], "pagination": {page, limit, total, total_pages}}``
     """
+    status_conds, status_params = build_status_filter(
+        status, column="bv.status", default_exclude=["removed"]
+    )
+    where_clause = "WHERE " + " AND ".join(status_conds) if status_conds else ""
+
     rows, pagination = paginate(
         conn,
-        "SELECT COUNT(*) FROM visits bv WHERE bv.status = 'listed'",
-        """
+        f"SELECT COUNT(*) FROM visits bv {where_clause}",
+        f"""
         SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
                bv.client_id, bv.project_id,
                client.name AS client_name, project.project_name,
@@ -36,11 +52,11 @@ def list_visits(conn: sqlite3.Connection, *, limit: int = 50, page: int = 1) -> 
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
-        WHERE bv.status = 'listed'
+        {where_clause}
         ORDER BY bv.visit_time DESC
         LIMIT ? OFFSET ?
         """,
-        [],
+        list(status_params),
         page=page,
         limit=limit,
     )
@@ -83,7 +99,7 @@ def get_visit(conn: sqlite3.Connection, entry_id: int) -> dict | None:
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
-        WHERE bv.id = ? AND bv.status = 'listed'
+        WHERE bv.id = ?
         """,
         (entry_id,),
     )

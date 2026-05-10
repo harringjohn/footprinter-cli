@@ -159,24 +159,28 @@ class TestClientService:
         with pytest.raises(PermissionError):
             client_service.delete(service_db, 1, role=Role.VIEWER)
 
-    def test_delete_happy_path(self, service_db):
-        result = client_service.delete(service_db, 1)
-        assert result == {"id": 1, "status": "removed"}
+    def test_delete_happy_path_hard_removes_row(self, service_db):
+        # Insert a fresh client with no dependents so the hard delete succeeds.
+        service_db.execute(
+            """INSERT INTO clients (id, name, slug, client_type, status)
+               VALUES (99, 'Disposable', 'disposable', 'external', 'listed')"""
+        )
+        service_db.commit()
+        result = client_service.delete(service_db, 99)
+        assert result == {"id": 99, "deleted": True}
+        row = service_db.execute("SELECT id FROM clients WHERE id = 99").fetchone()
+        assert row is None
 
-    def test_delete_excluded_from_list(self, service_db):
-        client_service.delete(service_db, 1)
-        listed = client_service.list_(service_db)
-        ids = [c["id"] for c in listed["clients"]]
-        assert 1 not in ids
+    def test_delete_blocks_when_dependents_exist(self, service_db):
+        # Client 1 (Acme) has project 1 (Alpha) attached — hard delete must block.
+        with pytest.raises(ValueError, match="dependents"):
+            client_service.delete(service_db, 1)
+        row = service_db.execute("SELECT id FROM clients WHERE id = 1").fetchone()
+        assert row is not None
 
     def test_delete_not_found(self, service_db):
         result = client_service.delete(service_db, 9999)
         assert result is None
-
-    def test_delete_sets_status_reason(self, service_db):
-        client_service.delete(service_db, 1)
-        row = service_db.execute("SELECT status_reason FROM clients WHERE id = ?", (1,)).fetchone()
-        assert row["status_reason"] == "cli:delete"
 
     # -- Include tests ---------------------------------------------------------
 
@@ -428,24 +432,28 @@ class TestProjectService:
         with pytest.raises(PermissionError):
             project_service.delete(service_db, 1, role=Role.VIEWER)
 
-    def test_delete_happy_path(self, service_db):
-        result = project_service.delete(service_db, 1)
-        assert result == {"id": 1, "status": "removed"}
+    def test_delete_happy_path_hard_removes_row(self, service_db):
+        # Insert a fresh project with no dependents so the hard delete succeeds.
+        service_db.execute(
+            """INSERT INTO projects (id, project_name, project_type, root_path, status)
+               VALUES (99, 'Disposable', 'python', '/tmp/disposable', 'listed')"""
+        )
+        service_db.commit()
+        result = project_service.delete(service_db, 99)
+        assert result == {"id": 99, "deleted": True}
+        row = service_db.execute("SELECT id FROM projects WHERE id = 99").fetchone()
+        assert row is None
 
-    def test_delete_excluded_from_list(self, service_db):
-        project_service.delete(service_db, 1)
-        listed = project_service.list_(service_db)
-        ids = [p["id"] for p in listed["projects"]]
-        assert 1 not in ids
+    def test_delete_blocks_when_dependents_exist(self, service_db):
+        # Project 1 (Alpha) has files/folders/chats attached — hard delete must block.
+        with pytest.raises(ValueError, match="dependents"):
+            project_service.delete(service_db, 1)
+        row = service_db.execute("SELECT id FROM projects WHERE id = 1").fetchone()
+        assert row is not None
 
     def test_delete_not_found(self, service_db):
         result = project_service.delete(service_db, 9999)
         assert result is None
-
-    def test_delete_sets_status_reason(self, service_db):
-        project_service.delete(service_db, 1)
-        row = service_db.execute("SELECT status_reason FROM projects WHERE id = ?", (1,)).fetchone()
-        assert row["status_reason"] == "cli:delete"
 
     # -- Include tests ---------------------------------------------------------
 

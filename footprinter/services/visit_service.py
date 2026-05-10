@@ -1,6 +1,7 @@
 """Visit (browser history) read service — get/list with role-based visibility filtering."""
 
 import sqlite3
+from typing import Optional
 
 from footprinter.db import browser as db
 from footprinter.services.access_service import filter_result, filter_results_list
@@ -54,9 +55,10 @@ def list_(
     role: Role = Role.ADMIN,
     limit: int = 50,
     page: int = 1,
+    status: Optional[str | list[str]] = None,
 ) -> dict:
     """List browser visits with pagination, filtered by role."""
-    response = db.list_visits(conn, limit=limit, page=page)
+    response = db.list_visits(conn, limit=limit, page=page, status=status)
     if role.sees_all:
         return response
     filtered, suppressed = filter_results_list("visit", response["visits"])
