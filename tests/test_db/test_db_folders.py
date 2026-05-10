@@ -349,3 +349,47 @@ class TestGetFolderNavigationStatusFilter:
         folder_id = self._setup(tool_db)
         result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
         assert result["recursive_file_count"] == 3
+
+    def _setup_with_subfolders(self, conn) -> int:
+        """Mirror _setup but with mixed-status subfolders instead of files."""
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, status, mcp_view)
+               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'listed', 'visible')"""
+        )
+        folder_id = cur.lastrowid
+        conn.executemany(
+            """INSERT INTO folders
+                   (path, relative_path, name, source, status, status_reason,
+                    parent_folder_id, mcp_view, mcp_read)
+               VALUES (?, ?, ?, 'local', ?, ?, ?, 'visible', 'allow')""",
+            [
+                ("/Users/u/proj/listed_sub", "/proj/listed_sub", "listed_sub",
+                 "listed", None, folder_id),
+                ("/Users/u/proj/unlisted_sub", "/proj/unlisted_sub", "unlisted_sub",
+                 "unlisted", "user_hidden", folder_id),
+                ("/Users/u/proj/removed_sub", "/proj/removed_sub", "removed_sub",
+                 "removed", "deleted_by_user", folder_id),
+            ],
+        )
+        conn.commit()
+        return folder_id
+
+    def test_default_returns_only_listed_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj")
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub"]
+
+    def test_status_all_returns_all_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub", "removed_sub", "unlisted_sub"]
+
+    def test_status_widens_subfolders(self, tool_db):
+        folder_id = self._setup_with_subfolders(tool_db)
+        result = get_folder_navigation(
+            tool_db, folder_id, "/Users/u/proj", status=["listed", "unlisted"]
+        )
+        names = sorted(sf["name"] for sf in result["subfolders"])
+        assert names == ["listed_sub", "unlisted_sub"]
