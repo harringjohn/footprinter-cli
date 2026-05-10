@@ -1,10 +1,10 @@
-"""Tests for fp delete — soft-delete entity records.
+"""Tests for fp delete — hard-delete entity records.
 
 Validates:
-  1. fp delete --help exits 0 and lists noun subcommands
+  1. fp delete --help exits 0, lists noun subcommands, and surfaces irreversibility
   2. Bare fp delete shows help (exits 0)
   3. Routing: fp delete client <id> dispatches to client_service.delete()
-  4. Errors: invalid ID and not-found record exit 1
+  4. Errors: invalid ID, not-found, and dependent-blocked records exit 1
   5. Confirmation: SafeConfirm gate respected unless --yes
   6. JSON output via --json
 """
@@ -40,6 +40,11 @@ class TestDeleteHelp:
         for noun in ("client", "project"):
             assert noun in output, f"'{noun}' not in fp delete --help"
 
+    def test_help_signals_hard_delete(self):
+        stdout, stderr, _ = run_fp("delete", "--help")
+        output = (stdout + stderr).lower()
+        assert "hard delete" in output or "irreversible" in output
+
 
 # ---------------------------------------------------------------------------
 # 2. Bare invocation
@@ -68,7 +73,7 @@ class TestDeleteRouting:
         _patched_open_db(mock_open_db)
         mock_svc = MagicMock()
         mock_svc.get.return_value = {"id": 42, "name": "Acme"}
-        mock_svc.delete.return_value = {"id": 42, "status": "removed"}
+        mock_svc.delete.return_value = {"id": 42, "deleted": True}
         mock_get_svc.return_value = mock_svc
 
         _, _, code = run_fp("delete", "client", "42", "--yes")
@@ -85,7 +90,7 @@ class TestDeleteRouting:
         _patched_open_db(mock_open_db)
         mock_svc = MagicMock()
         mock_svc.get.return_value = {"id": 7, "project_name": "demo"}
-        mock_svc.delete.return_value = {"id": 7, "status": "removed"}
+        mock_svc.delete.return_value = {"id": 7, "deleted": True}
         mock_get_svc.return_value = mock_svc
 
         _, _, code = run_fp("delete", "project", "7", "--yes")
@@ -120,6 +125,22 @@ class TestDeleteErrors:
         assert code == 1
         mock_svc.delete.assert_not_called()
 
+    @patch("footprinter.cli.delete._get_service")
+    @patch("footprinter.cli.delete.open_db")
+    def test_dependent_blocked_exits_one(self, mock_open_db, mock_get_svc):
+        _patched_open_db(mock_open_db)
+        mock_svc = MagicMock()
+        mock_svc.get.return_value = {"id": 42, "name": "Acme"}
+        mock_svc.delete.side_effect = ValueError(
+            "client 42 has dependents (3 projects); reassign or delete them first"
+        )
+        mock_get_svc.return_value = mock_svc
+
+        stdout, stderr, code = run_fp("delete", "client", "42", "--yes")
+
+        assert code == 1
+        assert "dependents" in (stdout + stderr)
+
 
 # ---------------------------------------------------------------------------
 # 5. Confirmation
@@ -153,7 +174,7 @@ class TestDeleteConfirmation:
         _patched_open_db(mock_open_db)
         mock_svc = MagicMock()
         mock_svc.get.return_value = {"id": 42, "name": "Acme"}
-        mock_svc.delete.return_value = {"id": 42, "status": "removed"}
+        mock_svc.delete.return_value = {"id": 42, "deleted": True}
         mock_get_svc.return_value = mock_svc
 
         _, _, code = run_fp("delete", "client", "42")
@@ -178,7 +199,7 @@ class TestDeleteJson:
         _patched_open_db(mock_open_db)
         mock_svc = MagicMock()
         mock_svc.get.return_value = {"id": 42, "name": "Acme"}
-        mock_svc.delete.return_value = {"id": 42, "status": "removed"}
+        mock_svc.delete.return_value = {"id": 42, "deleted": True}
         mock_get_svc.return_value = mock_svc
 
         stdout, _, code = run_fp("delete", "client", "42", "--yes", "--json")
@@ -186,4 +207,4 @@ class TestDeleteJson:
         assert code == 0
         data = json.loads(stdout)
         assert data["id"] == 42
-        assert data["status"] == "removed"
+        assert data["deleted"] is True

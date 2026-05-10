@@ -28,7 +28,7 @@ def conn():
         "  indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
         "  metadata TEXT,"
         "  metadata_vectorized_at DATETIME,"
-        "  status TEXT DEFAULT 'active',"
+        "  status TEXT DEFAULT 'listed',"
         "  mcp_read TEXT DEFAULT 'inherit',"
         "  mcp_view TEXT DEFAULT 'inherit',"
         "  client_id INTEGER,"
@@ -42,7 +42,7 @@ def conn():
     return db
 
 
-def _insert(conn, chat_id, title="Chat", account="claude", status="active"):
+def _insert(conn, chat_id, title="Chat", account="claude", status="listed"):
     conn.execute(
         "INSERT INTO chats (id, external_id, account, title, status) VALUES (?, ?, ?, ?, ?)",
         (chat_id, f"ext-{chat_id}", account, title, status),
@@ -51,12 +51,12 @@ def _insert(conn, chat_id, title="Chat", account="claude", status="active"):
 
 
 class TestListChatsStatusFilter:
-    """list_chats with default status=None excludes merged, removed, and NULL."""
+    """list_chats with default status=None excludes removed and NULL."""
 
     def test_includes_active(self, conn):
         from footprinter.db.chats import list_chats
 
-        _insert(conn, 1, "Active chat", status="active")
+        _insert(conn, 1, "Active chat", status="listed")
         result = list_chats(conn)
         assert len(result["chats"]) == 1
         assert result["chats"][0]["title"] == "Active chat"
@@ -64,28 +64,18 @@ class TestListChatsStatusFilter:
     def test_excludes_removed(self, conn):
         from footprinter.db.chats import list_chats
 
-        _insert(conn, 1, "Active chat", status="active")
+        _insert(conn, 1, "Active chat", status="listed")
         _insert(conn, 2, "Removed chat", status="removed")
         result = list_chats(conn)
         titles = [c["title"] for c in result["chats"]]
         assert "Active chat" in titles
         assert "Removed chat" not in titles
 
-    def test_excludes_merged(self, conn):
-        from footprinter.db.chats import list_chats
-
-        _insert(conn, 1, "Active chat", status="active")
-        _insert(conn, 2, "Merged chat", status="merged")
-        result = list_chats(conn)
-        titles = [c["title"] for c in result["chats"]]
-        assert "Active chat" in titles
-        assert "Merged chat" not in titles
-
     def test_excludes_null_status(self, conn):
         """NULL status should be excluded by default — not silently included."""
         from footprinter.db.chats import list_chats
 
-        _insert(conn, 1, "Active chat", status="active")
+        _insert(conn, 1, "Active chat", status="listed")
         # Force NULL status to bypass the DEFAULT
         conn.execute(
             "INSERT INTO chats (id, external_id, account, title, status) VALUES (?, ?, ?, ?, ?)",
@@ -102,7 +92,7 @@ class TestListChatsStatusFilter:
         """status='all' bypasses all filtering, including NULL rows."""
         from footprinter.db.chats import list_chats
 
-        _insert(conn, 1, "Active chat", status="active")
+        _insert(conn, 1, "Active chat", status="listed")
         conn.execute(
             "INSERT INTO chats (id, external_id, account, title, status) VALUES (?, ?, ?, ?, ?)",
             (2, "ext-2", "claude", "Null chat", None),
@@ -122,7 +112,7 @@ class TestGetActiveChatsStatusFilter:
         """NULL status should be excluded from dedup scan."""
         from footprinter.db.chats import _get_active_chats
 
-        _insert(conn, 1, "Active chat", status="active")
+        _insert(conn, 1, "Active chat", status="listed")
         conn.execute(
             "INSERT INTO chats (id, external_id, account, title, status) VALUES (?, ?, ?, ?, ?)",
             (2, "ext-2", "claude", "Null chat", None),

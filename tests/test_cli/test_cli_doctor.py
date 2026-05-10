@@ -151,6 +151,31 @@ class TestDoctorSemanticDeps:
         assert "WARN" in output
         assert "semantic" in output.lower() or "pipx install" in output.lower()
 
+    def test_semantic_deps_checks_onnxruntime_not_sentence_transformers(self, monkeypatch):
+        from footprinter.cli import doctor
+
+        recorded = []
+
+        def record(name):
+            recorded.append(name)
+            return None
+
+        monkeypatch.setattr(doctor, "_find_spec", record)
+        doctor._check_semantic_deps()
+
+        assert "onnxruntime" in recorded
+        assert "sentence_transformers" not in recorded
+
+    def test_semantic_deps_ok_message_mentions_onnxruntime(self, monkeypatch):
+        from footprinter.cli import doctor
+
+        monkeypatch.setattr(doctor, "_find_spec", lambda name: object())
+        result = doctor._check_semantic_deps()
+
+        assert result.status == "OK"
+        assert "onnxruntime" in result.message
+        assert "sentence_transformers" not in result.message
+
     def test_find_spec_valueerror_returns_none(self, monkeypatch):
         """find_spec raises ValueError when a package's __spec__ is None."""
         from footprinter.cli.doctor import _find_spec
@@ -170,6 +195,94 @@ class TestDoctorSemanticDeps:
             lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name)),
         )
         assert _find_spec("nonexistent.sub") is None
+
+
+class TestDoctorParseDeps:
+    def test_parse_deps_checks_pypdf_not_pdfplumber(self, monkeypatch):
+        from footprinter.cli import doctor
+
+        recorded = []
+
+        def record(name):
+            recorded.append(name)
+            return None
+
+        monkeypatch.setattr(doctor, "_find_spec", record)
+        doctor._check_parse_deps()
+
+        assert "pypdf" in recorded
+        assert "pdfplumber" not in recorded
+
+    def test_parse_deps_checks_all_four_extras(self, monkeypatch):
+        from footprinter.cli import doctor
+
+        recorded = []
+
+        def record(name):
+            recorded.append(name)
+            return None
+
+        monkeypatch.setattr(doctor, "_find_spec", record)
+        doctor._check_parse_deps()
+
+        assert {"docx", "pypdf", "openpyxl", "pptx"}.issubset(recorded)
+
+
+class TestDoctorWarnMessageRendering:
+    """Rich must not swallow the [full] markup in install hints."""
+
+    def _force_missing(self, monkeypatch, *names):
+        from footprinter.cli import doctor
+
+        targets = set(names)
+        real = doctor._find_spec
+
+        def fake(name):
+            if name in targets:
+                return None
+            return real(name)
+
+        monkeypatch.setattr(doctor, "_find_spec", fake)
+
+    def _setup_home(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text("directories:\n  - ~/Work\n")
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+    def test_full_extra_renders_in_semantic_warn_hint(self, tmp_path, monkeypatch):
+        self._force_missing(
+            monkeypatch, "chromadb", "onnxruntime", "sentence_transformers"
+        )
+        self._setup_home(tmp_path, monkeypatch)
+
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        assert "footprinter-cli[full]" in output
+
+    def test_full_extra_renders_in_parse_warn_hint(self, tmp_path, monkeypatch):
+        self._force_missing(monkeypatch, "docx", "pypdf", "pdfplumber")
+        self._setup_home(tmp_path, monkeypatch)
+
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        assert "footprinter-cli[full]" in output
+
+    def test_json_warn_message_contains_unescaped_full_extra(
+        self, tmp_path, monkeypatch
+    ):
+        self._force_missing(
+            monkeypatch, "chromadb", "onnxruntime", "sentence_transformers"
+        )
+        self._setup_home(tmp_path, monkeypatch)
+
+        stdout, stderr, code = run_fp("doctor", "--json")
+        data = json.loads(stdout)
+
+        semantic_check = next(c for c in data if c["name"] == "semantic_deps")
+        assert semantic_check["status"] == "WARN"
+        assert "footprinter-cli[full]" in semantic_check["message"]
+        assert "\\[full]" not in semantic_check["message"]
 
 
 # ---------------------------------------------------------------------------

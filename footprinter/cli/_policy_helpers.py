@@ -128,7 +128,7 @@ def check_file_path(conn: sqlite3.Connection, path: str, json_output: bool, verb
     expanded = os.path.expanduser(os.path.normpath(path))
 
     row = conn.execute(
-        "SELECT id, name, project_id FROM files WHERE path = ? AND status != 'removed'",
+        "SELECT id, name, project_id FROM files WHERE path = ? AND status = 'listed'",
         (expanded,),
     ).fetchone()
 
@@ -200,7 +200,7 @@ def check_folder(conn: sqlite3.Connection, path: str, json_output: bool, verbose
         expanded += os.sep
 
     rows = conn.execute(
-        "SELECT id, name FROM files WHERE path LIKE ? AND status != 'removed'",
+        "SELECT id, name FROM files WHERE path LIKE ? AND status = 'listed'",
         (expanded + "%",),
     ).fetchall()
 
