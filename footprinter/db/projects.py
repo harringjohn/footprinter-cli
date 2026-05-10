@@ -98,21 +98,21 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     """
     _not_hidden = "AND COALESCE(mcp_view, 'inherit') != 'hidden'"
 
-    # File stats (hidden files excluded)
+    # File stats (removed excluded)
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size,
                   SUM(CASE WHEN source = 'local' THEN 1 ELSE 0 END) as local_count,
                   SUM(CASE WHEN source != 'local' THEN 1 ELSE 0 END) as drive_count
            FROM files
-           WHERE project_id = ? AND status = 'listed' {_not_hidden}""",
+           WHERE project_id = ? AND status != 'removed' {_not_hidden}""",
         (project_id,),
     ).fetchone()
 
-    # Top content types (hidden files excluded)
+    # Top content types (removed excluded)
     types = conn.execute(
         f"""SELECT content_type, COUNT(*) as count
            FROM files
-           WHERE project_id = ? AND status = 'listed' AND content_type IS NOT NULL
+           WHERE project_id = ? AND status != 'removed' AND content_type IS NOT NULL
                  {_not_hidden}
            GROUP BY content_type ORDER BY count DESC LIMIT 10""",
         (project_id,),
@@ -128,17 +128,17 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
         (project_id,),
     ).fetchall()
 
-    # Entity counts (hidden excluded)
+    # Entity counts (removed excluded)
     email_count = conn.execute(
-        f"SELECT COUNT(*) FROM emails WHERE project_id = ? AND status = 'listed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM emails WHERE project_id = ? AND status != 'removed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
     chat_count = conn.execute(
-        f"SELECT COUNT(*) FROM chats WHERE project_id = ? AND status = 'listed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM chats WHERE project_id = ? AND status != 'removed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
     browser_count = conn.execute(
-        f"SELECT COUNT(*) FROM visits WHERE project_id = ? AND status = 'listed' {_not_hidden}",
+        f"SELECT COUNT(*) FROM visits WHERE project_id = ? AND status != 'removed' {_not_hidden}",
         (project_id,),
     ).fetchone()[0]
 
@@ -248,7 +248,7 @@ def list_projects(
     cursor.execute(
         """
         SELECT project_id, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
-        FROM files WHERE status = 'listed'
+        FROM files WHERE status != 'removed'
         GROUP BY project_id
         """
     )
@@ -290,12 +290,12 @@ def list_projects(
     """)
     clients = [r["name"] for r in cursor.fetchall()]
 
-    # Count files with no project (active only)
+    # Count files with no project (excluding removed)
     cursor.execute(
         """
         SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
         FROM files
-        WHERE project_id IS NULL AND status = 'listed'
+        WHERE project_id IS NULL AND status != 'removed'
         """
     )
     no_project_stats = cursor.fetchone()
@@ -328,9 +328,9 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
                project.created_at, project.updated_at,
                client.name AS client_name,
                (SELECT COUNT(*) FROM files file
-                WHERE file.project_id = project.id AND file.status = 'listed') AS file_count,
+                WHERE file.project_id = project.id AND file.status != 'removed') AS file_count,
                (SELECT COALESCE(SUM(file.size_bytes), 0) FROM files file
-                WHERE file.project_id = project.id AND file.status = 'listed') AS total_size,
+                WHERE file.project_id = project.id AND file.status != 'removed') AS total_size,
                (SELECT COUNT(*) FROM folders folder
                 WHERE folder.project_id = project.id) AS folder_count
         FROM projects project

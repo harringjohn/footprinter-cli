@@ -57,7 +57,7 @@ def list_clients(
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
-                WHERE project.client_id = client.id AND file.status = 'listed') as file_count
+                WHERE project.client_id = client.id AND file.status != 'removed') as file_count
         FROM clients client
         {where}
         ORDER BY client.name
@@ -258,7 +258,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor.execute(
         """SELECT COUNT(*) as cnt FROM files file
            JOIN projects project ON file.project_id = project.id
-           WHERE project.client_id = ? AND file.status = 'listed'""",
+           WHERE project.client_id = ? AND file.status != 'removed'""",
         (client_id,),
     )
     client["file_count"] = cursor.fetchone()["cnt"]
@@ -305,7 +305,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
             FROM files
-            WHERE project_id IN ({ph}) AND status = 'listed' {_nh}""",
+            WHERE project_id IN ({ph}) AND status != 'removed' {_nh}""",
         project_ids,
     ).fetchone()
 
@@ -315,15 +315,15 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     ).fetchone()[0]
 
     email_count = conn.execute(
-        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM emails WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
     chat_count = conn.execute(
-        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM chats WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
     browser_count = conn.execute(
-        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status = 'listed' {_nh}",
+        f"SELECT COUNT(*) FROM visits WHERE project_id IN ({ph}) AND status != 'removed' {_nh}",
         project_ids,
     ).fetchone()[0]
 
