@@ -417,6 +417,146 @@ class TestIngestSourceBanner:
         assert local_found, "Local files should show checkmark when directories configured"
         assert browser_found, "Browser history should show checkmark when browsers configured"
 
+    def test_banner_pipe_filter_local_files_only(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "browsers": ["safari"]}
+
+        with patch("footprinter.connectors.is_installed", return_value=False):
+            _print_source_banner(config, pipes=["local_files"], console=test_console)
+
+        output = buf.getvalue()
+        assert "Local files" in output
+        assert "✓" in output  # at least one checkmark for the active source
+        assert "Browser history" not in output, "Browser history should be hidden when not in --pipe list"
+
+    def test_banner_pipe_filter_browser_only(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "browsers": ["safari"]}
+
+        with patch("footprinter.connectors.is_installed", return_value=False):
+            _print_source_banner(config, pipes=["browser"], console=test_console)
+
+        output = buf.getvalue()
+        assert "Browser history" in output
+        assert "✓" in output
+        assert "Local files" not in output, "Local files should be hidden when not in --pipe list"
+
+    def test_banner_pipe_filter_local_folders_alias(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "browsers": ["safari"]}
+
+        with patch("footprinter.connectors.is_installed", return_value=False):
+            _print_source_banner(config, pipes=["local_folders"], console=test_console)
+
+        output = buf.getvalue()
+        assert "Local files" in output, "local_folders should map to the Local files display"
+        assert "✓" in output
+        assert "Browser history" not in output
+
+    def test_banner_pipe_filter_multiple_pipes(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "browsers": ["safari"]}
+
+        with patch("footprinter.connectors.is_installed", return_value=False):
+            _print_source_banner(config, pipes=["local_files", "browser"], console=test_console)
+
+        output = buf.getvalue()
+        local_active = any("Local files" in line and "✓" in line for line in output.splitlines())
+        browser_active = any("Browser history" in line and "✓" in line for line in output.splitlines())
+        assert local_active
+        assert browser_active
+
+    def test_banner_pipe_filter_hides_unrequested_connector(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "google_drive": {"enabled": True}}
+
+        with (
+            patch("footprinter.connectors.is_installed", return_value=True),
+            patch("footprinter.connectors.discover_connectors", return_value=self._google_connectors()),
+        ):
+            _print_source_banner(config, pipes=["local_files"], console=test_console)
+
+        output = buf.getvalue()
+        assert "Google" not in output and "google" not in output, (
+            "Google connector line should be hidden when none of its pipes are in --pipe"
+        )
+
+    def test_banner_pipe_filter_shows_requested_connector(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"google_drive": {"enabled": True}, "gmail": {"enabled": True}}
+
+        with (
+            patch("footprinter.connectors.is_installed", return_value=True),
+            patch("footprinter.connectors.discover_connectors", return_value=self._google_connectors()),
+        ):
+            _print_source_banner(config, pipes=["drive_files"], console=test_console)
+
+        output = buf.getvalue()
+        assert "Google" in output or "google" in output
+        assert "✓" in output
+
+    def test_banner_no_pipe_filter_preserves_today_behavior(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from footprinter.cli.ingest import _print_source_banner
+
+        buf = StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        config = {"directories": ["~/Work"], "browsers": ["safari"]}
+
+        with patch("footprinter.connectors.is_installed", return_value=False):
+            _print_source_banner(config, pipes=None, console=test_console)
+
+        output = buf.getvalue()
+        local_active = any("Local files" in line and "✓" in line for line in output.splitlines())
+        browser_active = any("Browser history" in line and "✓" in line for line in output.splitlines())
+        assert local_active, "pipes=None must show Local files (regression guard)"
+        assert browser_active, "pipes=None must show Browser history (regression guard)"
+
 
 # ---------------------------------------------------------------------------
 # 7. Per-stage result reporting
