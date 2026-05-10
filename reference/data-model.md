@@ -46,7 +46,9 @@ The database never leaves the local machine:
 
 ### AI access control
 
-When Footprinter exposes data to AI assistants via MCP (Model Context Protocol), a two-layer access control model governs what the AI can see:
+When Footprinter exposes data to AI assistants via MCP (Model Context Protocol), a three-layer access control model governs what the AI can see:
+
+0. **Status filtering** — data lifecycle layer (not security). Only `listed` items pass through for VIEWER callers. `unlisted` and `removed` items are excluded. ADMIN callers bypass this layer but can opt in to non-listed items via `include_unlisted`/`include_removed` params.
 
 1. **Visibility** — controls whether an item appears in results at all:
    - `hidden` — item doesn't exist to the AI (excluded from all results)
@@ -57,21 +59,23 @@ When Footprinter exposes data to AI assistants via MCP (Model Context Protocol),
    - `allow` — content readable (e.g., `content_preview`, search snippets)
    - `deny` — metadata visible but content blocked
 
-Both layers use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp mcp view set` and `fp mcp read set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
+Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp mcp view set` and `fp mcp read set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
 
-See `reference/mcp-access-control.md` for the full reference: policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
+See `reference/mcp-access-control.md` for the full reference: the three-layer model, policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
 
 ---
 
 ## Schema Overview
 
+Super entities are marked with `[S]`, content entities with `[C]`.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                              CORE TABLES                                 │
+│                          CORE TABLES                                     │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌──────────────┐         ┌──────────────────┐       ┌─────────────┐   │
-│  │   projects   │◄────────│      files       │──────►│  folders    │   │
+│  │ projects [S] │◄────────│    files [C]     │──────►│ folders [S] │   │
 │  │              │         │                  │       │             │   │
 │  │  id          │         │  id              │       │             │   │
 │  │  project_name│         │  source          │       │  id         │   │
@@ -82,11 +86,11 @@ See `reference/mcp-access-control.md` for the full reference: policy tables, sco
 │                           │  ...              │       │  ...        │   │
 │                           └──────────────────┘       └─────────────┘   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                            SOURCE TABLES                                │
+│                        CONTENT TABLES                                    │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌──────────────────┐  ┌──────────────┐  ┌────────────────────────┐   │
-│  │    visits       │  │    emails    │  │        chats           │   │
+│  │  visits [C]     │  │ emails [C]  │  │      chats [C]         │   │
 │  │                  │  │              │  │                        │   │
 │  │  url, title      │  │  message_id  │  │  external_id           │   │
 │  │  visit_time      │  │  subject     │  │  title, summary        │   │
@@ -95,7 +99,7 @@ See `reference/mcp-access-control.md` for the full reference: policy tables, sco
 │                        └──────────────┘  │        ▲               │   │
 │                                          │        │               │   │
 │                                          │  ┌─────┴──────────┐   │   │
-│                                          │  │ messages       │   │   │
+│                                          │  │ messages [C]   │   │   │
 │                                          │  │                │   │   │
 │                                          │  │ chat_id        │   │   │
 │                                          │  │ role, content  │   │   │
@@ -105,12 +109,67 @@ See `reference/mcp-access-control.md` for the full reference: policy tables, sco
 │                           SUPPORT TABLES                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  clients                  (client grouping, FK target for projects)     │
+│  clients [S]              (client grouping, FK target for projects)     │
 │  sources                  (runtime source registry)                     │
 │  ingests                  (per-pipe run history & watermarks)           │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Entity Architecture: Super Entities & Content Entities
+
+Footprinter's entity tables fall into two tiers based on how they are created, managed, and how they relate to each other.
+
+### Super Entities
+
+**Tables:** `projects`, `clients`, `folders`
+
+Organizational containers that group and influence content entities.
+
+| Aspect | Detail |
+|--------|--------|
+| **Created by** | User via `fp upsert` (projects, clients) or pipeline-discovered (folders) |
+| **Status management** | User-controlled via `fp upsert --status` (soft-delete) or `fp delete` (hard delete) |
+| **Influence on children** | Scope-based policy propagation (`project:{id}`, `client:{id}`, `folder:{path}`) affects children's visibility and permissions |
+| **Status cascade** | Status does **not** cascade to children — only policies propagate |
+| **Child references** | Children reference super entities via FK columns (`project_id`, `client_id`, `folder_id`) |
+
+### Content Entities
+
+**Tables:** `files`, `emails`, `chats`, `visits`, `messages`
+
+Data items discovered by the ingest pipeline and categorized by the user.
+
+| Aspect | Detail |
+|--------|--------|
+| **Created by** | Pipeline-discovered during `fp ingest` |
+| **Status management** | Pipeline-managed (`_determine_file_status`, `mark_removed_files`) — not directly by user |
+| **User interaction** | Categorized via `fp assign` (sets `project_id`/`client_id` FK) |
+| **Visibility resolution** | Resolved through the scope hierarchy of their parent super entities |
+
+### Folders: A Special Super Entity
+
+Folders occupy a unique position — they are both structural (filesystem hierarchy) and organizational (content grouping):
+
+| Aspect | Detail |
+|--------|--------|
+| **Structural role** | Tree hierarchy via `parent_folder_id` — represents the filesystem or remote folder structure |
+| **Organizational role** | Groups files via `folder_id` FK on the `files` table |
+| **Cascade operations** | `cascade_project_id()` and `cascade_client_id()` propagate assignments to descendant folders + their files |
+| **Policy scoping** | Supports path-scoped policies (`folder:/path` prefix matching) — unique among super entities |
+| **Status behavior** | Status does **not** cascade to children (same as projects/clients) |
+
+### Service Layer Verbs
+
+The CLI uses distinct verbs for each entity tier:
+
+| Verb | Applies to | Effect |
+|------|-----------|--------|
+| `fp upsert` | Super entities (projects, clients) | Create or edit the entity itself. `--status removed` for soft-delete. |
+| `fp assign` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
+| `fp delete` | Super entities only | Hard `DELETE FROM` — permanently removes the record. Refuses when dependent rows exist. |
 
 ---
 
@@ -142,13 +201,13 @@ All 8 entity tables (files, folders, visits, projects, chats, messages, emails, 
 | Column | Type | Default | Constraint | Purpose |
 |--------|------|---------|------------|---------|
 | `id` | INTEGER | — | PRIMARY KEY AUTOINCREMENT | Row ID |
-| `status` | TEXT | `'active'` | CHECK (status IN ('active', 'hidden', 'removed')) | Lifecycle state |
+| `status` | TEXT | `'listed'` | CHECK (status IN ('listed', 'unlisted', 'removed')) | Lifecycle state |
 | `created_at` | DATETIME | CURRENT_TIMESTAMP | — | Record creation time |
 | `display_name` | TEXT | — | — | Uniform display label (auto-populated via trigger) |
 | `mcp_read` | TEXT | `'inherit'` | CHECK (mcp_read IN ('allow', 'deny', 'inherit')) | MCP read access |
 | `mcp_view` | TEXT | `'inherit'` | CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')) | MCP visibility |
 
-**Note:** `projects` has an extended CHECK on `status` — see the [projects table](#projects) for the full value set.
+All entity tables share this same status CHECK constraint — there are no per-table extensions.
 
 Data-source entities (files, folders, emails, chats, visits, messages) also carry:
 
@@ -306,7 +365,7 @@ The primary table for all indexed files. Stores both local files and remote file
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 | `status_reason` | TEXT | Why file has this status |
 | `status_changed_at` | DATETIME | When status last changed |
 
@@ -389,7 +448,7 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -431,7 +490,7 @@ Project metadata for detected code projects and work projects.
 | `description` | TEXT | Project description |
 | `root_path` | TEXT | Filesystem path to project root (UNIQUE) |
 | `project_type` | TEXT | `'code'`, `'data'`, `'docs'`, etc. |
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'`, `'paused'`, `'completed'`, `'abandoned'`, `'archived'`, `'merged'` |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 | `status_reason` | TEXT | Why project has this status (e.g., `'cli:delete'`) |
 | `created_at` | DATETIME | When project was created (default: CURRENT_TIMESTAMP) |
 | `updated_at` | DATETIME | Last update (default: CURRENT_TIMESTAMP) |
@@ -480,7 +539,7 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `slug` | TEXT | URL-friendly identifier (NOT NULL, UNIQUE) |
 | `client_type` | TEXT | Client type classification (NOT NULL) |
 | `path_pattern` | TEXT | Folder path pattern for matching |
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 | `status_reason` | TEXT | Why client has this status (e.g., `'cli:delete'`) |
 | `created_at` | DATETIME | When created (default: CURRENT_TIMESTAMP) |
 | `metadata` | TEXT | JSON: additional metadata |
@@ -526,7 +585,7 @@ Web browsing history from Safari and Chrome.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -593,7 +652,7 @@ Email messages populated by email connector plugins (e.g. `footprinter-google` f
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -667,7 +726,7 @@ Claude and ChatGPT conversation exports.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'`, `'merged'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -687,7 +746,7 @@ Claude and ChatGPT conversation exports.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `merged_into_id` | INTEGER | FK to `chats` — when duplicate chats are merged, points to the surviving record |
+| `merged_into_id` | INTEGER | Historical — column preserved, merge functionality removed. Previously pointed to the surviving record when duplicate chats were merged. |
 
 **Display:**
 
@@ -732,7 +791,7 @@ Individual messages within conversations.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `status` | TEXT | CHECK: `'active'`, `'hidden'`, `'removed'` (default: `'active'`) |
+| `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -914,7 +973,7 @@ folder:~/Work/clients/acme/ | opaque
 
 ## Relationship Semantics
 
-The schema tables above document columns and types. This section explains what the relationships between tables *mean* — how foreign keys are populated, what re-indexing preserves, and how manual overrides interact with the ingest pipeline.
+The schema tables above document columns and types. This section explains what the relationships between tables *mean* — how foreign keys are populated, what re-indexing preserves, and how manual overrides interact with the ingest pipeline. See [Entity Architecture](#entity-architecture-super-entities--content-entities) for the super entity / content entity distinction that shapes these relationships.
 
 ### Structural vs Stamped Foreign Keys
 
@@ -964,26 +1023,26 @@ Step 3 is an explicit user action, not part of the ingest pipeline. Once a file'
 
 ### Cross-table Relationship Map
 
-Every FK relationship and how it is populated:
+Every FK relationship and how it is populated. Content entities [C] reference super entities [S]; super entities reference each other for hierarchy:
 
-| From | To | FK Column | How populated |
-|---|---|---|---|
-| `files` | `folders` | `folder_id` | Auto-linked by parent directory path during ingest |
-| `files` | `projects` | `project_id` | Path-prefix match or folder inheritance at ingest; preserved on re-index |
-| `files` | `clients` | `client_id` | Follows project assignment or direct CLI assignment |
-| `folders` | `folders` | `parent_folder_id` | Filesystem hierarchy (local) or Drive API parent (remote) |
-| `folders` | `projects` | `project_id` | User assignment via CLI, cascaded to descendants |
-| `folders` | `clients` | `client_id` | User assignment via CLI, cascaded to descendants |
-| `projects` | `clients` | `client_id` | User assignment via CLI |
-| `projects` | `folders` | `root_folder_id` | Links project to its root folder entry |
-| `messages` | `chats` | `chat_id` | Set on insert from chat export data |
-| `chats` | `projects` | `project_id` | User assignment |
-| `chats` | `clients` | `client_id` | Follows project or direct assignment |
-| `chats` | `chats` | `merged_into_id` | Deduplication merge (points to surviving record) |
-| `emails` | `projects` | `project_id` | User assignment |
-| `emails` | `clients` | `client_id` | Follows project or direct assignment |
-| `visits` | `projects` | `project_id` | User assignment |
-| `visits` | `clients` | `client_id` | Follows project or direct assignment |
+| From | Tier | To | Tier | FK Column | How populated |
+|---|---|---|---|---|---|
+| `files` | C | `folders` | S | `folder_id` | Auto-linked by parent directory path during ingest |
+| `files` | C | `projects` | S | `project_id` | Path-prefix match or folder inheritance at ingest; preserved on re-index |
+| `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp assign`) |
+| `folders` | S | `folders` | S | `parent_folder_id` | Filesystem hierarchy (local) or Drive API parent (remote) |
+| `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp assign`), cascaded to descendants |
+| `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp assign`), cascaded to descendants |
+| `projects` | S | `clients` | S | `client_id` | User assignment via CLI (`fp upsert`) |
+| `projects` | S | `folders` | S | `root_folder_id` | Links project to its root folder entry |
+| `messages` | C | `chats` | C | `chat_id` | Set on insert from chat export data |
+| `chats` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `chats` | C | `clients` | S | `client_id` | Follows project or direct assignment |
+| `chats` | C | `chats` | C | `merged_into_id` | Historical — column preserved, merge functionality removed |
+| `emails` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `emails` | C | `clients` | S | `client_id` | Follows project or direct assignment |
+| `visits` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `visits` | C | `clients` | S | `client_id` | Follows project or direct assignment |
 
 ### Local↔Remote File Matching
 
@@ -1073,26 +1132,21 @@ Content columns (`content_preview`, `body_preview`, `summary`) are NULLed in the
 
 ## Terminology Note: `status` Columns
 
-The column name `status` appears in multiple tables with different meanings:
+The column name `status` appears in multiple tables. All 8 entity tables now share the same trichotomy; support tables use independent value sets:
 
-| Table | `status` Values | Purpose |
-|-------|----------------|---------|
-| `files` | **`active`**, `hidden`, `removed` | File lifecycle state (controls indexing; connectors may use it to gate their own sync behavior) |
-| `visits` | **`active`** | Visit lifecycle state |
-| `chats` | **`active`**, `merged`, `removed` | Conversation lifecycle state (`merged` = deduplicated into another chat) |
-| `emails` | **`active`** | Email lifecycle state |
-| `projects` | **`active`**, `paused`, `completed`, `abandoned`, `merged`, `archived`, `removed` | Project lifecycle state |
-| `clients` | **`active`**, `archived`, `removed` | Client relationship status |
+| Table group | `status` Values | Purpose |
+|-------------|----------------|---------|
+| **All entity tables** (files, folders, visits, projects, chats, messages, emails, clients) | **`listed`**, `unlisted`, `removed` | Uniform data lifecycle state — see [Status & Exclusion Model](#status--exclusion-model) |
 | `uploads` | **`pending`**, `processing`, `completed`, `failed` | Upload pipeline state |
 | `ingests` | **`running`**, `completed`, `failed`, `interrupted` | Per-pipe run state (CHECK constraint enforced) |
 
-When reading code or queries, always check which table's `status` is being referenced—the values and semantics differ.
+Entity table status values are uniform by design — the trichotomy enables consistent filtering across all entity types via `build_status_filter()`. Support tables (`uploads`, `ingests`) track pipeline execution state and are unrelated to the data lifecycle model.
 
 ---
 
 ## Status & Exclusion Model
 
-Footprinter uses three mechanisms to control which files appear in queries and results. They operate at different stages of the pipeline.
+Footprinter uses three mechanisms to control which files appear in queries and results. They operate at different stages of the pipeline. For how status filtering integrates with MCP access control (Layer 0), see `reference/mcp-access-control.md` — [Data Scoping (Layer 0)](mcp-access-control.md#data-scoping-layer-0).
 
 ### 1. Config exclusions — never scanned
 
@@ -1150,12 +1204,14 @@ Records why an entity has its current status. Present on `files`, `clients`, and
 
 ## Key Query Patterns
 
-### Active files by source
+### Listed files by source
 
 ```sql
 SELECT * FROM files
-WHERE source = 'local' AND status != 'removed';
+WHERE source = 'local' AND status = 'listed';
 ```
+
+In Python code, use `build_status_filter()` from `footprinter/db/sql_utils.py` instead of hand-writing status WHERE clauses.
 
 ### Folder hierarchy traversal
 
@@ -1181,7 +1237,7 @@ SELECT * FROM descendants;
 SELECT file.* FROM files file
 JOIN folders folder ON file.folder_id = folder.id
 WHERE folder.path LIKE '/Users/.../Work/clients/acme%'
-  AND file.status != 'removed';
+  AND file.status = 'listed';
 ```
 
 ### Duplicate detection
@@ -1189,7 +1245,7 @@ WHERE folder.path LIKE '/Users/.../Work/clients/acme%'
 ```sql
 SELECT sha256_hash, COUNT(*) as copies, SUM(size_bytes) as total_size
 FROM files
-WHERE status != 'removed' AND sha256_hash IS NOT NULL
+WHERE status = 'listed' AND sha256_hash IS NOT NULL
 GROUP BY sha256_hash
 HAVING COUNT(*) > 1
 ORDER BY total_size DESC;

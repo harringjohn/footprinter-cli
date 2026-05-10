@@ -21,15 +21,31 @@ Interface layers assign the role at the entry point:
 
 ---
 
-## Two-Layer Model
+## Three-Layer Model
 
-VIEWER requests pass through two layers before content is returned:
+VIEWER requests pass through three layers before content is returned. Layer 0 is a data lifecycle filter; Layers 1–2 are security controls.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         MCP Request                              │
 └─────────────────────────────────────────────────────────────────┘
                               │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LAYER 0: STATUS FILTERING                     │
+│                                                                  │
+│  Status           │ Effect (VIEWER)                              │
+│  ─────────────────────────────────────────────────────────────  │
+│  listed           │ Pass through to Layer 1                      │
+│  unlisted         │ Excluded (item doesn't exist)                │
+│  removed          │ Excluded (item doesn't exist)                │
+│                                                                  │
+│  ADMIN bypasses this layer — status rides along in metadata.    │
+│  ADMIN callers can opt in to non-listed items via                │
+│  include_unlisted / include_removed params on discovery tools.  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ (only if listed)
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    LAYER 1: VISIBILITY                          │
@@ -63,25 +79,82 @@ VIEWER requests pass through two layers before content is returned:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
+## Data Scoping (Layer 0)
+
+Status filtering is a **data lifecycle** layer, not a security layer. It controls which records are considered "current" — the equivalent of a recycle bin, not an access control list.
+
+### Status Trichotomy
+
+Every entity table uses a uniform `status` column with three values:
+
+| Status | Meaning | Default filter |
+|--------|---------|----------------|
+| `listed` | Current, active record | Included |
+| `unlisted` | Cataloged but de-emphasized (e.g., dotfiles, paused projects) | Excluded by default |
+| `removed` | Soft-deleted — record preserved for audit trail | Excluded |
+
+All 8 entity tables (files, folders, visits, projects, chats, messages, emails, clients) share this same CHECK constraint: `CHECK (status IN ('listed', 'unlisted', 'removed'))` with default `'listed'`.
+
+See `reference/data-model.md` — [Status & Exclusion Model](data-model.md#status--exclusion-model) for `status_reason` values and how status is set, and [Entity Architecture](data-model.md#entity-architecture-super-entities--content-entities) for the super entity / content entity distinction.
+
+### Role-Based Filtering
+
+| Role | Default behavior | Override |
+|------|-----------------|----------|
+| **VIEWER** | Sees `listed` items only | No override — always filtered to `listed` |
+| **ADMIN** | Sees `listed` items by default | `include_unlisted=true` and/or `include_removed=true` on discovery tools |
+
+ADMIN filtering logic (implemented in `services/includes.py`):
+
+| Params | Status filter |
+|--------|--------------|
+| Neither set | `listed` only (default) |
+| `include_unlisted=true` | `listed` + `unlisted` |
+| `include_removed=true` | `listed` + `removed` |
+| Both `true` | No status filter (all records) |
+
+### Layer 0 vs Layers 1–2
+
+Status filtering and visibility/permissions serve different purposes:
+
+| Aspect | Layer 0 (Status) | Layers 1–2 (Visibility + Permissions) |
+|--------|-----------------|--------------------------------------|
+| **Purpose** | Data lifecycle management | Security and access control |
+| **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp upsert --status`) | User via policy commands (`fp mcp view set`, `fp mcp read set`) |
+| **Storage** | `status` column on entity tables | `visibility_policies` and `permission_policies` tables, cached in `mcp_view`/`mcp_read` columns |
+| **Semantics** | Exact match (listed/unlisted/removed) | Most-restrictive-wins (visibility), deny-wins (permissions) |
+| **ADMIN bypass** | ADMIN filters by default but can opt in to non-listed items | ADMIN bypasses entirely |
+
+---
+
+## Access Gating (Layers 1–2)
+
+Layer 0 (status filtering) runs first — items that don't pass status filtering never reach these layers. The visibility and permissions layers below apply only to items with `status='listed'` (for VIEWER) or items the ADMIN has opted in to.
+
 **Key insight**: Visibility is a precondition for permissions. Hidden items cannot be read (they don't exist). Opaque items cannot be read (content not exposed). Only visible items proceed to permission checks.
 
 ---
 
 ## Gating Pipeline
 
-The access service (`footprinter/services/access_service.py`) implements a 3-stage pipeline for VIEWER callers via `gate_access()`:
+The access service (`footprinter/services/access_service.py`) implements a 4-stage pipeline for VIEWER callers via `gate_access()`:
 
 1. **Existence** — item must exist in the database
-2. **Visibility** — `mcp_view` must not be `hidden` or `opaque`
-3. **Permission** — `mcp_read` must not be `deny`
+2. **Status** — `status` must be `'listed'` (VIEWER only; ADMIN passes through with status in metadata)
+3. **Visibility** — `mcp_view` must not be `hidden` or `opaque`
+4. **Permission** — `mcp_read` must not be `deny`
 
-ADMIN callers bypass stages 2 and 3 (checked via `role.sees_all`). Stage 1 always applies.
+ADMIN callers bypass stages 2–4 (checked via `role.sees_all`). Stage 1 always applies.
 
 Return statuses from `gate_access()`:
 
 | Status | Meaning |
 |--------|---------|
 | `ok` | Access granted — includes metadata and content |
+| `removed` | Item has `status='removed'` (VIEWER only) |
+| `unlisted` | Item has `status='unlisted'` (VIEWER only) |
 | `hidden` | Item hidden from this role |
 | `opaque` | Minimal metadata only |
 | `denied` | Permission denied — metadata visible, content blocked |
@@ -285,27 +358,31 @@ Entities whose resolution traces back to only the `global` policy or the hardcod
 
 ## MCP Tool Enforcement
 
-MCP tools read the cached `mcp_view` and `mcp_read` columns at query time. For most values, no live policy resolution happens. The exception is `inherit`: the MCP server loads the global visibility and permission policies once per request via `load_globals()`, and `inherit` values are resolved to the global policy on the fly by `resolve_inherit_visibility()` and `resolve_inherit_permission()` (in `footprinter/services/access_service.py`).
+MCP tools apply Layer 0 status filtering via `build_status_filter()` at the db query layer, then read the cached `mcp_view` and `mcp_read` columns for Layers 1–2. For most visibility/permission values, no live policy resolution happens. The exception is `inherit`: the MCP server loads the global visibility and permission policies once per request via `load_globals()`, and `inherit` values are resolved to the global policy on the fly by `resolve_inherit_visibility()` and `resolve_inherit_permission()` (in `footprinter/services/access_service.py`).
+
+For single-item reads, `gate_access()` enforces all three layers in sequence — status (stage 2), visibility (stage 3), permission (stage 4). Both `removed` and `unlisted` statuses map to `NOT_FOUND` for VIEWER callers.
 
 ### Error Codes
 
 | Code | Meaning | When Returned |
 |------|---------|---------------|
-| `NOT_FOUND` | Item is hidden | `mcp_view = 'hidden'` |
+| `NOT_FOUND` | Item is hidden, removed, or unlisted | `mcp_view = 'hidden'`, or `status` is `'removed'`/`'unlisted'` (VIEWER) |
 | `VISIBILITY_RESTRICTED` | Item is opaque | `mcp_view = 'opaque'` (returns minimal metadata) |
 | `PERMISSION_DENIED` | Read access denied | Item is visible but `mcp_read = 'deny'` |
 
-### Tool Behavior by Visibility
+### Tool Behavior by Status and Visibility
 
-| Tool | hidden | opaque | visible |
-|------|--------|--------|---------|
-| `footprinter_status` | N/A (aggregates) | N/A (aggregates) | Aggregate counts |
-| `footprinter_search` | Excluded | Excluded (FTS), minimal fields (list) | Full metadata |
-| `footprinter_project` | NOT_FOUND | Minimal fields | Full metadata |
-| `footprinter_client` | NOT_FOUND | Minimal fields | Full metadata |
-| `footprinter_folder` | NOT_FOUND | Minimal fields | Full metadata |
-| `footprinter_semantic` | Excluded | Excluded | Requires `mcp_read = 'allow'` |
-| `footprinter_read` | NOT_FOUND | VISIBILITY_RESTRICTED | Check permissions |
+For VIEWER callers, items must be `listed` AND pass visibility checks. ADMIN callers bypass both status and visibility (and can use `include_unlisted`/`include_removed` on discovery tools).
+
+| Tool | removed / unlisted (VIEWER) | hidden | opaque | visible + listed |
+|------|----------------------------|--------|--------|-----------------|
+| `footprinter_status` | Excluded from counts | N/A (aggregates) | N/A (aggregates) | Aggregate counts |
+| `footprinter_search` | Excluded | Excluded | Excluded (FTS), minimal fields (list) | Full metadata |
+| `footprinter_project` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_client` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_folder` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
+| `footprinter_semantic` | Excluded | Excluded | Excluded | Requires `mcp_read = 'allow'` |
+| `footprinter_read` | NOT_FOUND | NOT_FOUND | VISIBILITY_RESTRICTED | Check permissions |
 
 Semantic search tools are stricter than metadata tools: opaque and denied items are excluded entirely (not metadata-limited), because match relevance itself is content-derived.
 
