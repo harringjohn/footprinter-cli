@@ -209,16 +209,13 @@ def _handle_ingest(args) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_source_banner(config: dict, *, pipes=None, quiet: bool = False, console=None):
+def _print_source_banner(config: dict, *, pipes=None, console=None):
     """Print a startup banner listing active and inactive data sources.
 
     When ``pipes`` is a list (from ``--pipe``), sources whose pipe names are
     not in the list are omitted entirely. When ``pipes`` is None, every
     configured source is shown as today.
     """
-    if quiet:
-        return
-
     if console is None:
         from footprinter.cli._common import console as _console
 
