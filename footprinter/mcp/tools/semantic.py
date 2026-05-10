@@ -9,7 +9,13 @@ _SEMANTIC_AVAILABLE = True
 
 
 @handle_db_errors
-def footprinter_semantic(query: str, source: str = "all", limit: int = 10) -> dict:
+def footprinter_semantic(
+    query: str,
+    source: str = "all",
+    limit: int = 10,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
+) -> dict:
     """Search chats and/or files by meaning using semantic (embedding-based) search.
 
     SEARCH BEHAVIOR:
@@ -44,6 +50,10 @@ def footprinter_semantic(query: str, source: str = "all", limit: int = 10) -> di
         query: Natural language search query (minimum 3 characters).
         source: Which collection(s) to search: "chats", "files", or "all" (default).
         limit: Max results per collection (default 10).
+        include_unlisted: ADMIN-only. Include items with status='unlisted'. VIEWER
+            (the default for MCP) accepts this but always sees listed-only.
+        include_removed: ADMIN-only. Include items with status='removed'. VIEWER
+            (the default for MCP) accepts this but always sees listed-only.
 
     Returns:
         Dict with source-specific keys. "chats" and/or "files" lists are present
@@ -76,4 +86,6 @@ def footprinter_semantic(query: str, source: str = "all", limit: int = 10) -> di
             role=Role.VIEWER,
             source=source,
             limit=limit,
+            include_unlisted=include_unlisted,
+            include_removed=include_removed,
         )
