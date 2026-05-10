@@ -18,6 +18,7 @@ from footprinter.services.access_service import (
     filter_results_list,
     strip_content_for_denied,
 )
+from footprinter.services.includes import status_arg_for_role
 from footprinter.services.roles import Role
 from footprinter.visibility import get_source_visibility
 
@@ -40,15 +41,26 @@ def search(
     days_back: Optional[int] = None,
     folder: Optional[str] = None,
     mime_type: Optional[str] = None,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
 ) -> dict:
     """Search across indexed sources by keyword.
 
     Returns dict with per-source result lists and a ``suppressed`` count.
     VIEWER role: hidden items excluded, opaque items minimized, content
     stripped for permission-denied items.
+
+    ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
+    accept them but the service ignores them and applies the listed-only default.
     """
     if not sources:
         sources = list(DEFAULT_SOURCES)
+
+    status_arg = status_arg_for_role(
+        role,
+        include_unlisted=include_unlisted,
+        include_removed=include_removed,
+    )
 
     results: dict = {}
     total_suppressed = 0
@@ -70,6 +82,7 @@ def search(
             mime_type=mime_type,
             limit=limit,
             exclude_hidden=not role.sees_all,
+            status=status_arg,
         )
         if role.sees_all:
             results["files"] = file_results
@@ -92,6 +105,7 @@ def search(
             days_back=days_back,
             limit=limit,
             exclude_hidden=not role.sees_all,
+            status=status_arg,
         )
         if role.sees_all:
             results["emails"] = email_results
@@ -112,6 +126,7 @@ def search(
             date_to=date_to,
             limit=limit,
             exclude_hidden=not role.sees_all,
+            status=status_arg,
         )
         if role.sees_all:
             results["chats"] = chat_results
@@ -130,6 +145,7 @@ def search(
             date_to=date_to,
             limit=limit,
             role=role,
+            status=status_arg,
         )
         if browser_results is not None:
             results["browser"] = browser_results
@@ -149,6 +165,7 @@ def _search_browser_with_visibility(
     date_to: Optional[str] = None,
     limit: int = 50,
     role: Role = Role.ADMIN,
+    status: "str | list[str] | None" = None,
 ) -> Optional[list[dict]]:
     """Search browser visits with source-level visibility gating.
 
@@ -168,6 +185,7 @@ def _search_browser_with_visibility(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        status=status,
     )
 
     # Source-level opaque gating

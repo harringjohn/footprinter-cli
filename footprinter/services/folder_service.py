@@ -9,6 +9,7 @@ from footprinter.services.access_service import (
     filter_result,
     filter_results_list,
 )
+from footprinter.services.includes import status_arg_for_role
 from footprinter.services.roles import Role
 
 
@@ -89,12 +90,17 @@ def get_by_path(
     path: str,
     *,
     role: Role = Role.ADMIN,
+    include_unlisted: bool = False,
+    include_removed: bool = False,
 ) -> dict | None:
     """Look up a folder by exact path with navigation data, filtered by role.
 
     Returns None if folder doesn't exist or is hidden (for VIEWER).
     Returns opaque dict (no children) for opaque folders (for VIEWER).
     Returns full navigation dict for visible folders.
+
+    ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
+    accept them but the listed-only default still applies.
     """
     row = db.get_folder_by_path(conn, path)
     if row is None:
@@ -108,8 +114,14 @@ def get_by_path(
         if visibility == "opaque":
             return filter_result("folder", row)
 
+    status_arg = status_arg_for_role(
+        role,
+        include_unlisted=include_unlisted,
+        include_removed=include_removed,
+    )
+
     # Fetch navigation data (files, subfolders, recursive count)
-    nav = db.get_folder_navigation(conn, row["id"], path)
+    nav = db.get_folder_navigation(conn, row["id"], path, status=status_arg)
     result = {**row, **nav}
 
     if role.sees_all:
