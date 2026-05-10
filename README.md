@@ -1,11 +1,11 @@
 # Footprinter
 
-[![Tests](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml/badge.svg)](https://github.com/swellcitygroup/footprinter/actions/workflows/test.yml)
+[![Tests](https://github.com/harringjohn/footprinter-cli/actions/workflows/test.yml/badge.svg)](https://github.com/harringjohn/footprinter-cli/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/footprinter-cli)](https://pypi.org/project/footprinter-cli/)
 
 **A local context layer for your files, browser history, chats, and email — searchable, user-owned, and served to AI agents through [MCP](https://modelcontextprotocol.io/).**
 
-Your work lives across a filesystem, a browser, an inbox, a chat history, and whatever other tools you reach for. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings *you* define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
+Your work lives across filesystems, browsers, inboxes, chat histories, and other tools. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings you define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
 
 ## Prerequisites
 
