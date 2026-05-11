@@ -254,7 +254,13 @@ def _query_all_counts(cursor, counts: dict) -> dict:
 
     # Per-entity status breakdown — JSON keeps only non-zero by_status entries
     # to match the documented JSON contract (Rich rendering fills zeros itself).
-    counts["entity_breakdown"] = get_entity_status_breakdown(cursor.connection)
+    # Wrapped to match the "each query wrapped in try/except" convention used
+    # throughout this function, even though _safe_fetchall handles per-table
+    # OperationalError inside the helper.
+    try:
+        counts["entity_breakdown"] = get_entity_status_breakdown(cursor.connection)
+    except sqlite3.OperationalError:
+        counts["entity_breakdown"] = {}
 
     return counts
 

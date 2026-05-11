@@ -39,9 +39,13 @@ def _safe_fetchall(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
 
 # -- Entity status breakdown -------------------------------------------------
 
-# Display order matches the fp status `Entity Counts` table. Each table's
-# status column is nullable in older databases, so we COALESCE to 'listed'
-# uniformly — matches the convention used by get_mcp_status for chats/messages.
+# Display order matches the fp status `Entity Counts` table. COALESCE to
+# 'listed' is applied uniformly across all 8 entities here — this differs
+# from get_mcp_status which uses bare `status = 'listed'` for files/emails/
+# visits (now NOT NULL) and COALESCE only for chats/messages (still
+# nullable). The audit table is a raw diagnostic that should report every
+# legacy NULL row as 'listed' regardless of which schema generation the
+# table predates, so the wider COALESCE is intentional.
 ENTITY_TABLES: tuple[tuple[str, str], ...] = (
     ("clients", "clients"),
     ("projects", "projects"),
@@ -60,7 +64,8 @@ def get_entity_status_breakdown(conn: sqlite3.Connection) -> dict[str, dict]:
     Returns a dict keyed by entity name (in canonical display order) with the
     shape ``{entity: {"total": int, "by_status": {status: count}}}``. Missing
     tables yield ``{"total": 0, "by_status": {}}``. NULL status rows are
-    bucketed as ``listed`` — matches the COALESCE convention used elsewhere.
+    bucketed as ``listed`` — see ENTITY_TABLES comment for why COALESCE is
+    applied uniformly here rather than per-table.
     """
     breakdown: dict[str, dict] = {}
     for entity, table in ENTITY_TABLES:
