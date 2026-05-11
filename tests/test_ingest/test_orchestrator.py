@@ -148,6 +148,35 @@ browsers:
         orchestrator.full_mode = True
         assert orchestrator.full_mode == True
 
+    def test_exposes_run_vectorization(self, temp_dir):
+        """FPR-1721: orchestrator exposes run_vectorization that delegates to the runner.
+
+        Phased ingest needs the orchestrator to drive vectorization as a
+        follow-up stage after the main pipeline returns. CLI/setup callers
+        invoke this method instead of running it inline during ingest.
+        """
+        from footprinter.ingest.adapters.protocol import PipeResult
+        from footprinter.ingest.orchestrator import DataPipelineOrchestrator
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text("directories: ['~/Work']")
+
+        orchestrator = DataPipelineOrchestrator(config_path=str(config_path))
+        assert hasattr(orchestrator, "run_vectorization")
+
+        sentinel = PipeResult.completed("vectorization", vectorized_new=0)
+        with patch(
+            "footprinter.ingest.orchestrator.run_vectorization",
+            return_value=sentinel,
+        ) as mock_runner:
+            result = orchestrator.run_vectorization()
+
+        assert result is sentinel
+        mock_runner.assert_called_once()
+        # Must receive the orchestrator's db handle (not a path or None).
+        called_db = mock_runner.call_args[0][0]
+        assert called_db is orchestrator.db
+
 
 class TestOrchestratorStatus:
     """Test orchestrator status reporting."""
