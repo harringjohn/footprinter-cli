@@ -94,6 +94,104 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
 
 
 # ---------------------------------------------------------------------------
+# Vectorization runner (FPR-1721)
+# ---------------------------------------------------------------------------
+
+
+def run_vectorization(
+    db: "Database",
+    full_mode: bool = False,
+    on_progress: Optional[Callable[[int], None]] = None,
+) -> PipeResult:
+    """Embed files that haven't been vectorized yet.
+
+    Split off from inline file ingest so the index is usable before
+    embedding completes. Queries the files manifest, extracts chunks,
+    upserts to the vector store, and stamps ``vectorized_at`` on each
+    successfully embedded row.
+
+    Args:
+        db: Database instance.
+        full_mode: When True, re-embed every listed file (drop the
+            ``vectorized_at IS NULL`` clause).
+        on_progress: Optional callback fired with cumulative file count
+            after each file is processed.
+
+    Returns:
+        PipeResult — ``skipped`` when ``file_vectorization`` is disabled,
+        otherwise ``completed`` (or ``completed_with_errors``) with
+        per-row counts in data.
+    """
+    from footprinter.semantic.vector_store import VectorStore, _file_vectorization_enabled
+
+    if not _file_vectorization_enabled():
+        return PipeResult.skipped("vectorization", "file_vectorization disabled")
+
+    where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+    if not full_mode:
+        where += " AND vectorized_at IS NULL"
+
+    rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
+
+    counts = {"vectorized_new": 0, "vectorized_failed": 0, "vectorized_skipped_missing": 0}
+    if not rows:
+        return PipeResult.completed("vectorization", **counts)
+
+    try:
+        store = VectorStore.get_instance()
+    except Exception as e:  # Intentional broad catch: vector store init failure must not crash the stage
+        logger.warning("Vectorization stage: vector store unavailable: %s", e)
+        return PipeResult.make_error("vectorization", f"vector store unavailable: {e}", ErrorType.RUNTIME)
+
+    from pathlib import Path
+
+    from footprinter.ingest.full_content_extractor import FullContentExtractor
+    from footprinter.source_registry import get_config
+
+    extractor = FullContentExtractor.from_config(get_config())
+
+    processed = 0
+    failures: List[str] = []
+    for row in rows:
+        file_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+        file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
+        processed += 1
+        try:
+            path = Path(file_path) if file_path else None
+            if path is None or not path.exists():
+                counts["vectorized_skipped_missing"] += 1
+                continue
+            chunks = extractor.extract_with_chunking(path)
+            if not chunks:
+                counts["vectorized_skipped_missing"] += 1
+                continue
+            metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
+            store.upsert_file(file_id, str(path), chunks, metadata)
+            db.conn.execute(
+                "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
+                (len(chunks), file_id),
+            )
+            counts["vectorized_new"] += 1
+        except Exception as e:  # Intentional broad catch: per-row failure must not abort the stage
+            counts["vectorized_failed"] += 1
+            failures.append(f"id={file_id}: {e}")
+            logger.debug("Vectorization failed for file_id=%s path=%s: %s", file_id, file_path, e)
+        finally:
+            if on_progress is not None:
+                on_progress(processed)
+
+    db.conn.commit()
+
+    if failures:
+        return PipeResult.completed_with_errors(
+            "vectorization",
+            f"{len(failures)} file(s) failed to vectorize",
+            **counts,
+        )
+    return PipeResult.completed("vectorization", **counts)
+
+
+# ---------------------------------------------------------------------------
 # Folder stats runner
 # ---------------------------------------------------------------------------
 
