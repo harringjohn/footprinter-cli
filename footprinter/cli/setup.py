@@ -845,6 +845,12 @@ def run_interactive_wizard():
         # _offer_csv_import_wizard can open it and insert rows. Asking earlier
         # (in Data Sources) would silently skip on fresh installs.
         _offer_csv_import_wizard()
+        # FPR-1721: phased ingest — main pipeline returned, so the index is
+        # usable now. Print the "ready" line then run vectorization with its
+        # own progress UI as a follow-up.
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        run_vectorization_stage()
     else:
         console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
 
