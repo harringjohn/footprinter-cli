@@ -202,23 +202,21 @@ def get_folder_navigation(
     ).fetchall()
     subfolder_results = [dict(sf) for sf in subfolders]
 
-    # Recursive file count across all descendants (excludes hidden files; respects status filter)
+    # Recursive file count across all descendants (excludes hidden files; respects status filter).
+    # Uses path-prefix matching rather than parent_folder_id because ingestion
+    # populates parent_path (string) but not the FK column (FPR-1619).
     recursive_status_sql = (
         " AND " + " AND ".join(status_conds) if status_conds else ""
     )
     recursive = conn.execute(
-        f"""WITH RECURSIVE descendants(id) AS (
-               SELECT id FROM folders WHERE id = ?
-               UNION ALL
-               SELECT f.id FROM folders f
-               JOIN descendants d ON f.parent_folder_id = d.id
-           )
-           SELECT COUNT(*) as total
+        f"""SELECT COUNT(*) as total
            FROM files
-           WHERE folder_id IN (SELECT id FROM descendants)
+           WHERE folder_id IN (
+               SELECT id FROM folders WHERE path LIKE ? OR path = ?
+           )
              AND COALESCE(mcp_view, 'inherit') != 'hidden'
              {recursive_status_sql}""",
-        [folder_id, *status_params],
+        [path + "/%", path, *status_params],
     ).fetchone()
 
     return {

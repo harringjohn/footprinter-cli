@@ -393,3 +393,66 @@ class TestGetFolderNavigationStatusFilter:
         )
         names = sorted(sf["name"] for sf in result["subfolders"])
         assert names == ["listed_sub", "unlisted_sub"]
+
+
+class TestRecursiveFileCountWithNestedFolders:
+    """recursive_file_count must count files in descendant folders even when
+    parent_folder_id is NULL (FPR-1619).
+
+    Production ingestion (folder_indexer.py) populates parent_path but never
+    parent_folder_id, so the descendant relationship must be derived from the
+    path string, not the FK.
+    """
+
+    def _insert_folder(self, conn, path: str, name: str) -> int:
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, mcp_view)
+               VALUES (?, ?, ?, 'local', 'visible')""",
+            (path, path, name),
+        )
+        return cur.lastrowid
+
+    def _insert_file(self, conn, folder_id: int, name: str, path: str) -> None:
+        conn.execute(
+            """INSERT INTO files
+                   (name, path, source, status, folder_id, mcp_view, mcp_read)
+               VALUES (?, ?, 'local', 'listed', ?, 'visible', 'allow')""",
+            (name, path, folder_id),
+        )
+
+    def test_recursive_count_includes_files_in_nested_subfolders_without_fk(
+        self, tool_db
+    ):
+        root_id = self._insert_folder(tool_db, "/Users/u/proj", "proj")
+        sub_id = self._insert_folder(tool_db, "/Users/u/proj/sub", "sub")
+        self._insert_file(tool_db, sub_id, "deep.py", "/Users/u/proj/sub/deep.py")
+        tool_db.commit()
+
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
+        assert result["recursive_file_count"] == 1
+
+    def test_recursive_count_includes_files_two_levels_deep(self, tool_db):
+        root_id = self._insert_folder(tool_db, "/Users/u/proj", "proj")
+        sub_id = self._insert_folder(tool_db, "/Users/u/proj/sub", "sub")
+        inner_id = self._insert_folder(tool_db, "/Users/u/proj/sub/inner", "inner")
+        self._insert_file(tool_db, sub_id, "mid.py", "/Users/u/proj/sub/mid.py")
+        self._insert_file(
+            tool_db, inner_id, "deep.py", "/Users/u/proj/sub/inner/deep.py"
+        )
+        tool_db.commit()
+
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
+        assert result["recursive_file_count"] == 2
+
+    def test_recursive_count_excludes_files_in_sibling_folder(self, tool_db):
+        root_id = self._insert_folder(tool_db, "/Users/u/proj", "proj")
+        sub_id = self._insert_folder(tool_db, "/Users/u/proj/sub", "sub")
+        sibling_id = self._insert_folder(tool_db, "/Users/u/proj_other", "proj_other")
+        self._insert_file(tool_db, sub_id, "mine.py", "/Users/u/proj/sub/mine.py")
+        self._insert_file(
+            tool_db, sibling_id, "theirs.py", "/Users/u/proj_other/theirs.py"
+        )
+        tool_db.commit()
+
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
+        assert result["recursive_file_count"] == 1
