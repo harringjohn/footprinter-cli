@@ -461,9 +461,13 @@ def create_project(
     project_type: Optional[str] = None,
     description: Optional[str] = None,
     github_url: Optional[str] = None,
-    status: str = "listed",
+    status: Optional[str] = None,
 ) -> dict:
     """Create a new project.
+
+    ``status`` is included in the INSERT only when the caller passes a value;
+    otherwise the schema DEFAULT ('listed') applies. The column list is built
+    dynamically so the schema stays the single source of truth.
 
     Returns a dict of the full project row.
     Raises ValueError on invalid input.
@@ -505,7 +509,7 @@ def create_project(
         description,
         github_url,
     ]
-    if status != "listed":
+    if status is not None:
         columns.append("status")
         values.append(status)
 
