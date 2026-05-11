@@ -594,6 +594,74 @@ class TestContexterSearch:
 
         assert len(result["files"]) == 2
 
+    def _seed_files(self, conn, count):
+        cursor = conn.cursor()
+        for i in range(count):
+            cursor.execute(
+                "INSERT INTO files (id, source, name, path, status, modified_at) "
+                "VALUES (?, 'local', ?, ?, 'listed', '2024-01-01')",
+                (i + 1, f"file{i}.txt", f"/test/file{i}.txt"),
+            )
+        self._set_visible(conn, "source:files")
+        conn.commit()
+
+    def test_search_limit_capped_at_200_when_caller_exceeds(self, mcp_db):
+        self._seed_files(mcp_db, 250)
+
+        with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            result = footprinter_search("file", sources=["files"], limit=10000)
+
+        assert len(result["files"]) == 200
+
+    def test_search_limit_summary_mentions_truncation_when_capped(self, mcp_db):
+        self._seed_files(mcp_db, 250)
+
+        with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            result = footprinter_search("file", sources=["files"], limit=10000)
+
+        summary = result["summary"]
+        assert "200" in summary
+        assert "limit capped" in summary
+        assert "Narrow" in summary
+
+    def test_search_limit_under_cap_no_truncation_message(self, mcp_db):
+        self._seed_files(mcp_db, 5)
+
+        with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            result = footprinter_search("file", sources=["files"], limit=50)
+
+        assert len(result["files"]) == 5
+        assert "limit capped" not in result["summary"]
+
+    def test_search_limit_exactly_200_no_truncation_message(self, mcp_db):
+        self._seed_files(mcp_db, 200)
+
+        with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            result = footprinter_search("file", sources=["files"], limit=200)
+
+        assert len(result["files"]) == 200
+        assert "limit capped" not in result["summary"]
+
     def test_search_emails_include_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
