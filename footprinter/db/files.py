@@ -570,6 +570,11 @@ def insert_file(
                 md5_hash = ?,
                 project_id = CASE WHEN project_id IS NULL THEN ? ELSE project_id END,
                 folder_id = ?,
+                -- FPR-1721: any UPDATE invalidates the prior embedding. The fast-path
+                -- `unchanged` branch returns earlier without issuing this UPDATE, so
+                -- only genuinely changed rows reach here.
+                vectorized_at = NULL,
+                vectorized_chunks = 0,
                 status = CASE
                     WHEN status = 'removed' THEN ?
                     WHEN status IS NULL THEN ?
@@ -656,7 +661,10 @@ def insert_drive_file(
                 metadata = ?,
                 folder_id = ?,
                 project_id = CASE WHEN project_id IS NULL THEN ? ELSE project_id END,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = CURRENT_TIMESTAMP,
+                -- FPR-1721: any UPDATE invalidates the prior embedding.
+                vectorized_at = NULL,
+                vectorized_chunks = 0
             WHERE id = ?
         """,
             (

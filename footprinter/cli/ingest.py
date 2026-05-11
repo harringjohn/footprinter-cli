@@ -489,6 +489,12 @@ def _ingest_pipeline(args) -> None:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
 
+    # FPR-1721: vectorization runs as a follow-up stage when local_files was touched.
+    if pipes is None or "local_files" in pipes:
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        run_vectorization_stage(quiet=quiet)
+
 
 def _ingest_status(args) -> None:
     """Show pipeline diagnostics (data counts)."""
@@ -589,3 +595,9 @@ def _ingest_refresh(args) -> None:
     except KeyboardInterrupt:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
+
+    # FPR-1721: vectorization follow-up when this refresh touched local_files.
+    if "local_files" in stages:
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        run_vectorization_stage(quiet=quiet)

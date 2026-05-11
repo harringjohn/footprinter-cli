@@ -163,9 +163,6 @@ class FileIndexer:
             f" {unchanged_count:,} unchanged,"
             f" {skipped_count:,} skipped,"
             f" {error_count:,} errors"
-            f" | vectors: {self._vec_counts['vectorized_new']:,} new,"
-            f" {self._vec_counts['vectorized_refreshed']:,} refreshed,"
-            f" {self._vec_counts['vectorized_skipped_unchanged']:,} skipped-unchanged"
         )
         return {
             "inserted": inserted_count,
@@ -255,17 +252,14 @@ class FileIndexer:
             if result is None:
                 skipped += 1
                 continue
-            result_type, file_id = result
+            # FPR-1721: vectorization moved to follow-up stage
+            # (footprinter.ingest.processing.run_vectorization) — fast ingest only.
+            result_type, _file_id = result
             if result_type == "inserted":
                 inserted += 1
             elif result_type == "unchanged":
                 unchanged += 1
             else:
                 updated += 1
-            self._vectorize_file(
-                file_id,
-                file_metadata.get("file_path") or file_metadata.get("path"),
-                result_type=result_type,
-            )
         self.db.conn.commit()
         return inserted, updated, skipped, unchanged
