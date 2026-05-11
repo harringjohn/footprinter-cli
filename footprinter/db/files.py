@@ -530,11 +530,9 @@ def insert_file(
             INSERT INTO files (
                 source, name, path, content_type, mime_type, size_bytes,
                 created_at, modified_at, accessed_at,
-                indexed_at, updated_at,
                 content_preview, sha256_hash, md5_hash, project_id, folder_id, metadata,
                 status, status_reason, status_changed_at
             ) VALUES ('local', ?, ?, ?, ?, ?, ?, ?, ?,
-                      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
                       ?, ?, ?, ?, ?, ?,
                       ?, ?, CURRENT_TIMESTAMP)
         """,

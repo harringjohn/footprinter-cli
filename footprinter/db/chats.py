@@ -446,9 +446,8 @@ def insert_message(conn: sqlite3.Connection, msg_data: Dict[str, Any]) -> int:
     cursor.execute(
         """
         INSERT INTO messages
-        (chat_id, message_id, role, content, created_at, metadata,
-         indexed_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        (chat_id, message_id, role, content, created_at, metadata)
+        VALUES (?, ?, ?, ?, ?, ?)
     """,
         (
             msg_data["chat_id"],
