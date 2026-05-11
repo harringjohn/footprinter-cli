@@ -197,9 +197,8 @@ def insert_visit(conn: sqlite3.Connection, history_data: Dict[str, Any]) -> Unio
     cursor.execute(
         """
         INSERT OR IGNORE INTO visits
-        (url, title, visit_time, browser, visit_count,
-         indexed_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        (url, title, visit_time, browser, visit_count)
+        VALUES (?, ?, ?, ?, ?)
     """,
         (
             history_data["url"],

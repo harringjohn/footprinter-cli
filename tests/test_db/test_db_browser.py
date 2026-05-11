@@ -5,7 +5,7 @@ mcp_view and mcp_read in returned dicts and that the
 standardized default_exclude=["removed"] filter is applied.
 """
 
-from footprinter.db.browser import get_visit, list_visits
+from footprinter.db.browser import get_visit, insert_visit, list_visits
 
 
 def _insert_visits_mixed_status(conn):
@@ -105,3 +105,26 @@ class TestBrowserAccessColumns:
         visit = get_visit(tool_db, visit_id)
         assert visit is not None
         assert "assignment_source" not in visit, "get_visit() should not return assignment_source"
+
+
+class TestInsertVisitSchemaDefaults:
+    """Guards FPR-1717: indexed_at / updated_at must come from the schema
+    DEFAULT after the hardcoded CURRENT_TIMESTAMP literals are removed."""
+
+    def test_insert_visit_populates_timestamps_via_default(self, tool_db):
+        visit_id = insert_visit(
+            tool_db,
+            {
+                "url": "https://defaults.example.com",
+                "title": "Defaults",
+                "visit_time": "2026-01-15 10:00:00",
+                "browser": "safari",
+            },
+        )
+        assert isinstance(visit_id, int)
+
+        row = tool_db.execute(
+            "SELECT indexed_at, updated_at FROM visits WHERE id = ?", (visit_id,)
+        ).fetchone()
+        assert row["indexed_at"] is not None
+        assert row["updated_at"] is not None

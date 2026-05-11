@@ -91,6 +91,20 @@ class TestSaveFoldersChangeDetection:
 
         assert result == (1, 1, 1)
 
+    def test_insert_populates_timestamps_via_schema_default(self, folder_db):
+        """Guards FPR-1717: indexed_at + updated_at must come from the schema
+        DEFAULT after the hardcoded CURRENT_TIMESTAMP literals are removed."""
+        indexer = FolderIndexer({}, folder_db)
+        folder = _make_folder("/Users/test/Work/defaults")
+        indexer.save_folders([folder])
+
+        row = folder_db.conn.execute(
+            "SELECT indexed_at, updated_at FROM folders WHERE path = ?",
+            (folder["path"],),
+        ).fetchone()
+        assert row["indexed_at"] is not None
+        assert row["updated_at"] is not None
+
 
 class TestSaveFoldersReactivation:
     """FPR-1708: save_folders() must reactivate folders previously marked status='removed'.
