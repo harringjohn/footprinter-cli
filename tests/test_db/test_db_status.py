@@ -117,3 +117,73 @@ def test_get_mcp_status_counts_null_status_chats():
     status = get_mcp_status(conn)
     assert status["sources"]["chats"]["count"] == 2
     conn.close()
+
+
+# --- MCP messages status filter ---
+
+
+def test_get_mcp_status_excludes_removed_messages():
+    """Messages with status='removed' must not be counted by MCP, matching
+    the chats/emails/browser pattern."""
+    from footprinter.ingest.database import Database
+
+    db = Database(":memory:")
+    conn = db.conn
+
+    conn.execute(
+        "INSERT INTO chats (external_id, account, title, status) "
+        "VALUES ('chat-1', 'claude', 'parent chat', 'listed')"
+    )
+    chat_id = conn.execute(
+        "SELECT id FROM chats WHERE external_id = 'chat-1'"
+    ).fetchone()[0]
+    conn.execute(
+        "INSERT INTO messages (chat_id, role, content, status) "
+        "VALUES (?, 'user', 'kept', 'listed')",
+        (chat_id,),
+    )
+    conn.execute(
+        "INSERT INTO messages (chat_id, role, content, status) "
+        "VALUES (?, 'user', 'dropped', 'removed')",
+        (chat_id,),
+    )
+    conn.commit()
+
+    status = get_mcp_status(conn)
+    assert status["sources"]["messages"]["count"] == 1
+    conn.close()
+
+
+def test_get_mcp_status_counts_null_status_messages():
+    """Legacy messages with status=NULL must be counted by MCP, matching the
+    chats COALESCE pattern. Bare ``status != 'removed'`` fails on NULL."""
+    from footprinter.ingest.database import Database
+
+    db = Database(":memory:")
+    conn = db.conn
+
+    conn.execute(
+        "INSERT INTO chats (external_id, account, title, status) "
+        "VALUES ('chat-1', 'claude', 'parent chat', 'listed')"
+    )
+    chat_id = conn.execute(
+        "SELECT id FROM chats WHERE external_id = 'chat-1'"
+    ).fetchone()[0]
+    conn.execute(
+        "INSERT INTO messages (chat_id, role, content, status) "
+        "VALUES (?, 'user', 'active', 'listed')",
+        (chat_id,),
+    )
+    conn.execute(
+        "INSERT INTO messages (chat_id, role, content) "
+        "VALUES (?, 'user', 'legacy')",
+        (chat_id,),
+    )
+    conn.execute(
+        "UPDATE messages SET status = NULL WHERE content = 'legacy'"
+    )
+    conn.commit()
+
+    status = get_mcp_status(conn)
+    assert status["sources"]["messages"]["count"] == 2
+    conn.close()
