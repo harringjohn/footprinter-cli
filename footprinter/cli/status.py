@@ -23,10 +23,16 @@ from rich.panel import Panel
 from rich.table import Table
 
 from footprinter.connectors import discover_connectors, is_installed, resolve_hook
+from footprinter.db.status import get_entity_status_breakdown
 from footprinter.paths import get_chroma_path, get_config_path, get_db_path
 from footprinter.source_registry import get_config
 
 console = Console()
+
+# Column ordering for the Entity Counts table: current statuses on the left,
+# legacy values pushed right so migration drift reads as a visual outlier.
+_CURRENT_STATUS_ORDER = ("listed", "unlisted", "removed")
+_LEGACY_STATUS_ORDER = ("active", "hidden")
 
 
 def get_data_counts(db_path: Path) -> dict:
@@ -246,6 +252,9 @@ def _query_all_counts(cursor, counts: dict) -> dict:
     except sqlite3.OperationalError:
         counts["last_run"] = None
 
+    # Per-entity status breakdown — JSON keeps only non-zero by_status entries
+    # to match the documented JSON contract (Rich rendering fills zeros itself).
+    counts["entity_breakdown"] = get_entity_status_breakdown(cursor.connection)
 
     return counts
 
@@ -364,6 +373,46 @@ def visible_totals(counts: dict, health: dict) -> dict:
     }
 
 
+def _ordered_status_columns(breakdown: dict) -> list[str]:
+    """Union of status keys across entities in current → legacy → other order."""
+    present = set()
+    for info in breakdown.values():
+        present.update(info.get("by_status", {}).keys())
+
+    ordered: list[str] = []
+    for status in _CURRENT_STATUS_ORDER:
+        if status in present:
+            ordered.append(status)
+    for status in _LEGACY_STATUS_ORDER:
+        if status in present:
+            ordered.append(status)
+    extras = sorted(present - set(_CURRENT_STATUS_ORDER) - set(_LEGACY_STATUS_ORDER))
+    ordered.extend(extras)
+    return ordered
+
+
+def _print_entity_counts(counts: dict) -> None:
+    """Render the per-entity status breakdown as a Rich table."""
+    breakdown = counts.get("entity_breakdown") or {}
+    if not breakdown:
+        return
+
+    columns = _ordered_status_columns(breakdown)
+    table = Table(show_header=True, header_style="bold", title="Entity Counts")
+    table.add_column("Entity", style="cyan")
+    table.add_column("Total", justify="right")
+    for status in columns:
+        table.add_column(status.title(), justify="right")
+
+    for entity, info in breakdown.items():
+        by_status = info.get("by_status", {})
+        row = [entity, f"{info.get('total', 0):,}"]
+        row.extend(f"{by_status.get(status, 0):,}" for status in columns)
+        table.add_row(*row)
+
+    console.print(table)
+
+
 def _print_source_health(health: dict) -> None:
     """Render the Source Health table. Skip entirely if no rows would appear."""
     connector_rows = health.get("connector_rows", [])
@@ -421,11 +470,15 @@ def print_status(data: dict, health: dict) -> None:
     header_lines.append(f"[bold]Config:[/bold]    {config_status}")
     console.print(Panel("\n".join(header_lines), title="Footprinter Status", expand=False))
 
+    counts = data["counts"]
+
     # Section 2: Source health (skip if no connectors configured)
     _print_source_health(health)
 
+    # Section 2.5: Per-entity status breakdown (FPR-1720)
+    _print_entity_counts(counts)
+
     # Section 3: Data counts table
-    counts = data["counts"]
     table = Table(show_header=True, header_style="bold")
     table.add_column("Source", style="cyan")
     table.add_column("Count", justify="right")
