@@ -9,6 +9,11 @@ from footprinter.services.roles import Role
 
 HOME = str(Path.home())
 
+# Per-source result cap enforced at the MCP layer to stay under the
+# 1MB tool-result protocol limit. The service layer remains uncapped
+# so CLI/API callers can request larger result sets directly.
+MCP_SEARCH_LIMIT_CAP = 200
+
 # Display names for source keys in summary text
 _SOURCE_LABELS = {
     "files": ("file", "files"),
@@ -18,7 +23,9 @@ _SOURCE_LABELS = {
 }
 
 
-def _build_search_summary(results: dict, query: str, sources: list[str]) -> str:
+def _build_search_summary(
+    results: dict, query: str, sources: list[str], was_capped: bool = False
+) -> str:
     """Build a human-readable summary of search results."""
     found_parts = []
     empty_parts = []
@@ -52,6 +59,12 @@ def _build_search_summary(results: dict, query: str, sources: list[str]) -> str:
     if total_suppressed > 0:
         item_word = "item" if total_suppressed == 1 else "items"
         summary += f" ({total_suppressed} {item_word} hidden by visibility policy)"
+
+    if was_capped:
+        summary += (
+            f" Showing up to {MCP_SEARCH_LIMIT_CAP} results per source (limit capped). "
+            "Narrow with folder, date_from, or query keywords."
+        )
 
     return summary
 
@@ -118,7 +131,9 @@ def footprinter_search(
         client: Filter to a client name (exact match, applies to files, emails, chats).
         date_from: ISO date string lower bound (e.g. "2026-02-01").
         date_to: ISO date string upper bound (e.g. "2026-02-14").
-        limit: Max results per source (default 50).
+        limit: Max results per source (default 50). MCP callers are capped
+            at 200 per source to stay within the 1MB tool-result protocol
+            limit; the response summary notes when this cap has been applied.
         account: Filter by account (e.g. "personal", "work"). Applies to emails and files.
         sender: Partial match on sender name or address (e.g. "alice"). Emails only.
         days_back: Only include emails from the last N days. Emails only.
@@ -137,6 +152,9 @@ def footprinter_search(
     if not sources:
         sources = ["files", "emails", "chats", "browser"]
 
+    effective_limit = min(limit, MCP_SEARCH_LIMIT_CAP)
+    was_capped = limit > MCP_SEARCH_LIMIT_CAP
+
     with get_db() as conn:
         results = search_service.search(
             conn,
@@ -147,7 +165,7 @@ def footprinter_search(
             client=client,
             date_from=date_from,
             date_to=date_to,
-            limit=limit,
+            limit=effective_limit,
             account=account,
             sender=sender,
             days_back=days_back,
@@ -162,5 +180,5 @@ def footprinter_search(
         if "path" in f:
             f["path"] = _shorten_path(f["path"])
 
-    results["summary"] = _build_search_summary(results, query, sources)
+    results["summary"] = _build_search_summary(results, query, sources, was_capped=was_capped)
     return results
