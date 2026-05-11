@@ -88,7 +88,8 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         "messages": {
             "count": (
                 "SELECT COUNT(*) FROM messages message "
-                "WHERE NOT EXISTS ("
+                "WHERE COALESCE(message.status, 'listed') != 'removed' "
+                "AND NOT EXISTS ("
                 "  SELECT 1 FROM chats chat"
                 "  JOIN clients client ON client.id = chat.client_id"
                 "  WHERE chat.id = message.chat_id AND client.mcp_view = 'hidden'"
@@ -96,7 +97,8 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
             ),
             "latest": (
                 "SELECT MAX(created_at) FROM messages message "
-                "WHERE NOT EXISTS ("
+                "WHERE COALESCE(message.status, 'listed') != 'removed' "
+                "AND NOT EXISTS ("
                 "  SELECT 1 FROM chats chat"
                 "  JOIN clients client ON client.id = chat.client_id"
                 "  WHERE chat.id = message.chat_id AND client.mcp_view = 'hidden'"
