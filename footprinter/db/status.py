@@ -37,6 +37,51 @@ def _safe_fetchall(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
         return []
 
 
+# -- Entity status breakdown -------------------------------------------------
+
+# Display order matches the fp status `Entity Counts` table. COALESCE to
+# 'listed' is applied uniformly across all 8 entities here — this differs
+# from get_mcp_status which uses bare `status = 'listed'` for files/emails/
+# visits (now NOT NULL) and COALESCE only for chats/messages (still
+# nullable). The audit table is a raw diagnostic that should report every
+# legacy NULL row as 'listed' regardless of which schema generation the
+# table predates, so the wider COALESCE is intentional.
+ENTITY_TABLES: tuple[tuple[str, str], ...] = (
+    ("clients", "clients"),
+    ("projects", "projects"),
+    ("folders", "folders"),
+    ("files", "files"),
+    ("chats", "chats"),
+    ("messages", "messages"),
+    ("emails", "emails"),
+    ("visits", "visits"),
+)
+
+
+def get_entity_status_breakdown(conn: sqlite3.Connection) -> dict[str, dict]:
+    """Per-entity status breakdown for ``fp status``.
+
+    Returns a dict keyed by entity name (in canonical display order) with the
+    shape ``{entity: {"total": int, "by_status": {status: count}}}``. Missing
+    tables yield ``{"total": 0, "by_status": {}}``. NULL status rows are
+    bucketed as ``listed`` — see ENTITY_TABLES comment for why COALESCE is
+    applied uniformly here rather than per-table.
+    """
+    breakdown: dict[str, dict] = {}
+    for entity, table in ENTITY_TABLES:
+        rows = _safe_fetchall(
+            conn,
+            f"SELECT COALESCE(status, 'listed') AS status, COUNT(*) AS count "
+            f"FROM {table} GROUP BY 1",
+        )
+        by_status = {row["status"]: row["count"] for row in rows}
+        breakdown[entity] = {
+            "total": sum(by_status.values()),
+            "by_status": by_status,
+        }
+    return breakdown
+
+
 # -- Hidden-client NOT EXISTS clause (reused across source queries) -----------
 _NOT_HIDDEN_CLIENT = (
     "NOT EXISTS (  SELECT 1 FROM clients client  WHERE client.id = {alias}.client_id AND client.mcp_view = 'hidden')"

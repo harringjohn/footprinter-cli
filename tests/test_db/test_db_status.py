@@ -6,7 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from footprinter.db.status import _safe_count, get_mcp_status, get_system_status
+from footprinter.db.status import (
+    _safe_count,
+    get_entity_status_breakdown,
+    get_mcp_status,
+    get_system_status,
+)
 
 # --- _safe_count ---
 
@@ -186,4 +191,144 @@ def test_get_mcp_status_counts_null_status_messages():
 
     status = get_mcp_status(conn)
     assert status["sources"]["messages"]["count"] == 2
+    conn.close()
+
+
+# --- get_entity_status_breakdown -------------------------------------------
+
+_ENTITY_ORDER = (
+    "clients",
+    "projects",
+    "folders",
+    "files",
+    "chats",
+    "messages",
+    "emails",
+    "visits",
+)
+
+
+def test_entity_status_breakdown_basic():
+    """Returns per-entity total and by_status dict; totals match by_status sums."""
+    from footprinter.ingest.database import Database
+
+    db = Database(":memory:")
+    conn = db.conn
+
+    conn.execute(
+        "INSERT INTO clients (name, slug, client_type, status) "
+        "VALUES ('Acme', 'acme', 'external', 'listed')"
+    )
+    conn.execute(
+        "INSERT INTO projects (project_name, project_type, root_path, status) "
+        "VALUES ('Alpha', 'python', '/tmp/alpha', 'listed')"
+    )
+    conn.execute(
+        "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
+        "VALUES ('a.md', '/tmp/a.md', 'local', 'listed', 'markdown', 100)"
+    )
+    conn.execute(
+        "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
+        "VALUES ('b.md', '/tmp/b.md', 'local', 'removed', 'markdown', 200)"
+    )
+    conn.commit()
+
+    breakdown = get_entity_status_breakdown(conn)
+
+    assert tuple(breakdown.keys()) == _ENTITY_ORDER
+    for entity, info in breakdown.items():
+        assert set(info.keys()) == {"total", "by_status"}
+        assert info["total"] == sum(info["by_status"].values())
+
+    assert breakdown["clients"]["total"] == 1
+    assert breakdown["projects"]["total"] == 1
+    assert breakdown["files"]["total"] == 2
+    assert breakdown["files"]["by_status"] == {"listed": 1, "removed": 1}
+    conn.close()
+
+
+def test_entity_status_breakdown_columns_data_driven():
+    """by_status contains only statuses present in data, not zero-padded."""
+    from footprinter.ingest.database import Database
+
+    db = Database(":memory:")
+    conn = db.conn
+
+    conn.execute(
+        "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
+        "VALUES ('a.md', '/tmp/a.md', 'local', 'listed', 'markdown', 100)"
+    )
+    conn.execute(
+        "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
+        "VALUES ('b.md', '/tmp/b.md', 'local', 'removed', 'markdown', 200)"
+    )
+    conn.commit()
+
+    breakdown = get_entity_status_breakdown(conn)
+
+    assert set(breakdown["files"]["by_status"].keys()) == {"listed", "removed"}
+    assert "unlisted" not in breakdown["files"]["by_status"]
+    conn.close()
+
+
+def test_entity_status_breakdown_surfaces_legacy_values():
+    """Legacy 'active'/'hidden' values appear in by_status when present.
+
+    Schema CHECK constraints reject these values now, so we build raw tables
+    matching the schema shape but without the constraint to simulate a
+    pre-FPR-1659 database.
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT)")
+    conn.execute("CREATE TABLE folders (id INTEGER PRIMARY KEY, status TEXT)")
+    conn.execute("INSERT INTO files (status) VALUES ('active'), ('listed')")
+    conn.execute("INSERT INTO folders (status) VALUES ('hidden'), ('listed')")
+    conn.commit()
+
+    breakdown = get_entity_status_breakdown(conn)
+
+    assert breakdown["files"]["by_status"].get("active") == 1
+    assert breakdown["files"]["by_status"].get("listed") == 1
+    assert breakdown["folders"]["by_status"].get("hidden") == 1
+    assert breakdown["folders"]["by_status"].get("listed") == 1
+    conn.close()
+
+
+def test_entity_status_breakdown_coalesces_null_status():
+    """NULL status rows are bucketed as 'listed' (matches MCP query convention)."""
+    from footprinter.ingest.database import Database
+
+    db = Database(":memory:")
+    conn = db.conn
+
+    conn.execute(
+        "INSERT INTO chats (external_id, account, title, status) "
+        "VALUES ('ext-listed', 'claude', 'visible', 'listed')"
+    )
+    conn.execute(
+        "INSERT INTO chats (external_id, account, title) "
+        "VALUES ('ext-null', 'claude', 'legacy')"
+    )
+    conn.execute("UPDATE chats SET status = NULL WHERE external_id = 'ext-null'")
+    conn.commit()
+
+    breakdown = get_entity_status_breakdown(conn)
+
+    assert breakdown["chats"]["total"] == 2
+    assert breakdown["chats"]["by_status"]["listed"] == 2
+    assert None not in breakdown["chats"]["by_status"]
+    conn.close()
+
+
+def test_entity_status_breakdown_missing_table():
+    """Returns {total: 0, by_status: {}} for missing tables, not raise."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+
+    breakdown = get_entity_status_breakdown(conn)
+
+    assert tuple(breakdown.keys()) == _ENTITY_ORDER
+    for entity, info in breakdown.items():
+        assert info == {"total": 0, "by_status": {}}
     conn.close()
