@@ -5,13 +5,10 @@ from typing import Dict, List
 
 from footprinter.connectors import discover_connectors, get_connector_pipes, get_schema_specs
 from footprinter.ingest.pipe_runner import PipeRunner
+from footprinter.ingest.processing import run_vectorization
 from footprinter.ingest.registry import (
-    CORE_PIPE_REGISTRY,
-    POST_PIPES,
-    get_all_pipes,
-    get_pipelines,
-    get_refresh_pipes,
-    get_user_pipes,
+    CORE_PIPE_REGISTRY, POST_PIPES,
+    get_all_pipes, get_pipelines, get_refresh_pipes, get_user_pipes,
 )
 from footprinter.paths import get_config_path, get_db_path
 from footprinter.services.ingest_service import IngestService
@@ -113,6 +110,9 @@ class DataPipelineOrchestrator:
             on_pipe_start=on_pipe_start, on_pipe_end=on_pipe_end,
             on_progress=on_progress, pipe_hook=hook, scan_roots=scan_roots,
         )
+
+    def run_vectorization(self, on_progress=None):
+        return run_vectorization(self._get_db(), full_mode=self.full_mode, on_progress=on_progress)
 
     def get_status(self) -> Dict:
         """Return current data counts and pipeline health."""
