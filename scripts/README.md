@@ -15,20 +15,14 @@ Utility scripts for Footprinter operations. All scripts should be run from the p
 ./venv/bin/python3 scripts/migrate/backfill_md5_hashes.py             # Execute
 ```
 
-## Root — Testing and verification
+## `snapshot-qa/` — Post-install validation
 
 | Script | Purpose |
 |--------|---------|
-| `fresh_install_test.sh` | Clone, venv, install, verify. Tests base, full, wheel, or all modes. |
-| `cli_verify.sh` | Quick smoke test of installed CLI commands. |
+| `smoke.sh` | Minimal post-install canary (entry points, imports, fixture boundary). |
 
 ```bash
-bash scripts/fresh_install_test.sh              # base mode (default)
-bash scripts/fresh_install_test.sh full          # all extras
-bash scripts/fresh_install_test.sh wheel         # non-editable wheel install
-bash scripts/fresh_install_test.sh all           # run base + full sequentially
-
-bash scripts/cli_verify.sh                      # verify CLI entry points
+PY=./venv/bin/python3 bash scripts/snapshot-qa/smoke.sh
 ```
 
 ---
