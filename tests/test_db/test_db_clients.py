@@ -5,7 +5,8 @@ listed and unlisted clients are returned by default; removed clients are
 hidden unless ``status="all"`` (or an explicit value) is passed.
 """
 
-from footprinter.db.clients import list_clients
+from footprinter.db.clients import create_client, list_clients
+from footprinter.db.projects import create_project
 
 
 def _insert_clients(conn):
@@ -76,3 +77,45 @@ class TestListClientsFileCountAlignment:
         client = next(c for c in result["clients"] if c["name"] == "Acme")
         # listed (1) + unlisted (1), removed excluded
         assert client["file_count"] == 2
+
+
+class TestSchemaDefaultsForNewRows:
+    """New-row insert paths must produce status='listed' via the schema DEFAULT.
+
+    Guards FPR-1717: removing the hardcoded ``'listed'`` literal from
+    ``create_client`` / ``create_project`` INSERTs must not change the
+    observed value for new rows.
+    """
+
+    def test_create_client_status_default(self, tool_db):
+        result = create_client(
+            tool_db,
+            name="Defaults Co",
+            client_type="external",
+        )
+        row = tool_db.execute(
+            "SELECT status FROM clients WHERE id = ?", (result["id"],)
+        ).fetchone()
+        assert row["status"] == "listed"
+
+    def test_create_project_status_default(self, tool_db):
+        result = create_project(
+            tool_db,
+            project_name="Defaults Project",
+        )
+        row = tool_db.execute(
+            "SELECT status FROM projects WHERE id = ?", (result["id"],)
+        ).fetchone()
+        assert row["status"] == "listed"
+
+    def test_create_project_explicit_status_honored(self, tool_db):
+        """Caller-supplied status must still flow through to the row."""
+        result = create_project(
+            tool_db,
+            project_name="Unlisted Project",
+            status="unlisted",
+        )
+        row = tool_db.execute(
+            "SELECT status FROM projects WHERE id = ?", (result["id"],)
+        ).fetchone()
+        assert row["status"] == "unlisted"
