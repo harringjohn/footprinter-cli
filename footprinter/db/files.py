@@ -684,8 +684,8 @@ def insert_drive_file(
                 source, external_id, account, name, path,
                 content_type, mime_type, size_bytes,
                 created_at, modified_at, md5_hash, metadata,
-                folder_id, project_id, indexed_at, updated_at, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'listed')
+                folder_id, project_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 data["source"],

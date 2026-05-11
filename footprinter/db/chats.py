@@ -385,14 +385,24 @@ def detect_duplicates(
 def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
     """Insert or update a chat record, preserving the row id on conflict.
 
-    Populates ``status`` ('listed' unless overridden) and ``indexed_at`` on
-    insert so downstream MCP filters treat new rows as visible even on legacy
-    schemas that lack column DEFAULTs. On conflict, ``status`` and
-    ``indexed_at`` are preserved — a re-import must not reset a user-set
-    'unlisted' or bump the first-seen timestamp.
+    ``status`` and ``indexed_at`` come from schema DEFAULTs (``'listed'`` and
+    ``CURRENT_TIMESTAMP``) for new rows. An explicit ``status`` in ``conv_data``
+    is honored on insert. On conflict, ``status`` and ``indexed_at`` are
+    preserved — a re-import must not reset a user-set ``'unlisted'`` or bump
+    the first-seen timestamp.
     """
     cursor = conn.cursor()
-    params = (
+    columns = [
+        "external_id",
+        "account",
+        "title",
+        "summary",
+        "created_at",
+        "modified_at",
+        "message_count",
+        "metadata",
+    ]
+    params: list = [
         conv_data["external_id"],
         conv_data.get("account"),
         conv_data.get("title"),
@@ -401,14 +411,16 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
         conv_data.get("updated_at"),
         conv_data.get("message_count", 0),
         json.dumps(conv_data.get("metadata", {})),
-        conv_data.get("status", "listed"),
-    )
+    ]
+    if "status" in conv_data:
+        columns.append("status")
+        params.append(conv_data["status"])
+
+    placeholders = ", ".join(["?"] * len(params))
     cursor.execute(
-        """
-        INSERT INTO chats
-        (external_id, account, title, summary, created_at, modified_at,
-            message_count, metadata, status, indexed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        f"""
+        INSERT INTO chats ({', '.join(columns)})
+        VALUES ({placeholders})
         ON CONFLICT(external_id) DO UPDATE SET
             account = excluded.account,
             title = excluded.title,
@@ -418,7 +430,7 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
             message_count = excluded.message_count,
             metadata = excluded.metadata,
             updated_at = CURRENT_TIMESTAMP
-    """,
+        """,
         params,
     )
     cursor.execute(

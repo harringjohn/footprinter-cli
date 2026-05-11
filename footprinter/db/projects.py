@@ -487,23 +487,32 @@ def create_project(
         if client_name is None:
             raise ValueError("Client not found")
 
+    columns = [
+        "project_name",
+        "root_path",
+        "project_type",
+        "client_id",
+        "client",
+        "description",
+        "github_url",
+    ]
+    values: list = [
+        project_name,
+        root_path,
+        project_type,
+        client_id,
+        client_name,
+        description,
+        github_url,
+    ]
+    if status != "listed":
+        columns.append("status")
+        values.append(status)
+
+    placeholders = ", ".join(["?"] * len(values))
     cursor.execute(
-        """
-        INSERT INTO projects (project_name, root_path, project_type,
-                              client_id, client, description, github_url,
-                              status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            project_name,
-            root_path,
-            project_type,
-            client_id,
-            client_name,
-            description,
-            github_url,
-            status,
-        ),
+        f"INSERT INTO projects ({', '.join(columns)}) VALUES ({placeholders})",
+        values,
     )
     conn.commit()
     new_id = cursor.lastrowid
