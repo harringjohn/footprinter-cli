@@ -277,8 +277,13 @@ class TestFileVectorizationEnabled:
         indexer.db.conn.commit.assert_not_called()
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 42))
-    def test_insert_batch_triggers_vectorization(self, mock_insert):
-        """_insert_batch() should call _vectorize_file for each inserted file."""
+    def test_insert_batch_does_not_vectorize(self, mock_insert):
+        """FPR-1721: _insert_batch() must not call _vectorize_file inline.
+
+        Vectorization runs as a separate follow-up stage via
+        footprinter.ingest.processing.run_vectorization. The fast ingest pass
+        should only insert rows and commit — never embed.
+        """
         indexer = self._make_indexer()
 
         batch = [{"file_path": "/some/file.txt", "path": "/some/file.txt"}]
@@ -287,7 +292,7 @@ class TestFileVectorizationEnabled:
             indexer._insert_batch(batch)
 
         mock_insert.assert_called_once()
-        mock_vec.assert_called_once_with(42, "/some/file.txt", result_type="inserted")
+        mock_vec.assert_not_called()
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
     def test_insert_batch_commits_once(self, mock_insert):
@@ -300,8 +305,7 @@ class TestFileVectorizationEnabled:
             {"file_path": "/c.txt", "path": "/c.txt"},
         ]
 
-        with patch.object(indexer, "_vectorize_file"):
-            indexer._insert_batch(batch)
+        indexer._insert_batch(batch)
 
         indexer.db.conn.commit.assert_called_once()
 
@@ -447,8 +451,7 @@ class TestInsertBatchCounts:
             {"file_path": "/c.txt"},
         ]
 
-        with patch.object(indexer, "_vectorize_file"):
-            result = indexer._insert_batch(batch)
+        result = indexer._insert_batch(batch)
 
         assert result == (1, 1, 1, 0)  # 1 inserted, 1 updated, 1 skipped, 0 unchanged
 
@@ -466,17 +469,17 @@ class TestInsertBatchCounts:
             {"file_path": "/existing.txt"},
         ]
 
-        with patch.object(indexer, "_vectorize_file"):
-            result = indexer._insert_batch(batch)
+        result = indexer._insert_batch(batch)
 
         assert result == (1, 1, 0, 0)
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file")
     def test_insert_batch_counts_unchanged(self, mock_insert):
-        """'unchanged' results increment the counter AND still call _vectorize_file with result_type='unchanged'.
+        """'unchanged' results increment the counter; vectorization is no longer inline.
 
-        The gate (whether to actually re-embed) lives inside _vectorize_file — this lets
-        unchanged-but-not-yet-vectorized files get backfilled on incremental runs.
+        FPR-1721: vectorization moved to a follow-up stage. Backfilling of
+        unchanged-but-not-yet-vectorized files now happens in
+        ``run_vectorization`` via the ``vectorized_at IS NULL`` query.
         """
         indexer = self._make_indexer()
         mock_insert.side_effect = [
@@ -495,10 +498,7 @@ class TestInsertBatchCounts:
             result = indexer._insert_batch(batch)
 
         assert result == (1, 0, 0, 2)
-        assert mock_vec.call_count == 3
-        mock_vec.assert_any_call(1, "/new.txt", result_type="inserted")
-        mock_vec.assert_any_call(2, "/same1.txt", result_type="unchanged")
-        mock_vec.assert_any_call(3, "/same2.txt", result_type="unchanged")
+        mock_vec.assert_not_called()
 
 
 class TestVectorizeGate:
