@@ -112,6 +112,7 @@ class DataPipelineOrchestrator:
         )
 
     def run_vectorization(self, on_progress=None):
+        """Run the vectorization follow-up stage after the main pipeline."""
         return run_vectorization(self._get_db(), full_mode=self.full_mode, on_progress=on_progress)
 
     def get_status(self) -> Dict:

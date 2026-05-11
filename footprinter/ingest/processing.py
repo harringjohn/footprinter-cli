@@ -112,8 +112,8 @@ def run_vectorization(
 
     Args:
         db: Database instance.
-        full_mode: When True, re-embed every listed file (drop the
-            ``vectorized_at IS NULL`` clause).
+        full_mode: When True, re-embed every non-removed file
+            (listed and unlisted) by dropping the ``vectorized_at IS NULL`` clause.
         on_progress: Optional callback fired with cumulative file count
             after each file is processed.
 

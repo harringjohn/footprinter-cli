@@ -385,6 +385,41 @@ class TestInsertFileResultType:
         assert second[0] == "updated"
         assert second[1] == first[1]  # same file_id
 
+    def test_insert_file_clears_vectorized_at_on_update(self, db):
+        """FPR-1721: UPDATE must clear vectorized_at so run_vectorization re-embeds.
+
+        Without this, the phased-ingest follow-up stage (which queries
+        ``vectorized_at IS NULL``) silently skips files whose content
+        changed, leaving stale embeddings in the vector store.
+        """
+        data = self._make_file_data()
+        first = files_db.insert_file(db.conn, data)
+        file_id = first[1]
+
+        # Simulate a prior successful vectorization pass.
+        db.conn.execute(
+            "UPDATE files SET vectorized_at = '2024-06-01T00:00:00', vectorized_chunks = 4 WHERE id = ?",
+            (file_id,),
+        )
+        db.conn.commit()
+
+        # Re-insert with changed content (size + modified_at) → "updated".
+        updated_data = self._make_file_data()
+        updated_data["modified_at"] = "2025-09-12"
+        updated_data["file_size"] = 555
+        updated_data["sha256_hash"] = "deadbeef"
+        result = files_db.insert_file(db.conn, updated_data)
+        assert result == ("updated", file_id)
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        assert row["vectorized_at"] is None, (
+            "UPDATE must clear vectorized_at so the row is picked up by "
+            "run_vectorization's `vectorized_at IS NULL` predicate."
+        )
+        assert row["vectorized_chunks"] == 0
+
     def test_insert_file_reactivates_removed_path(self, db):
         """Re-inserting at a removed path should reactivate the record, not skip it."""
         data = self._make_file_data()
