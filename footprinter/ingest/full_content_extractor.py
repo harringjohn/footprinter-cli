@@ -22,6 +22,7 @@ class FullContentExtractor(ContentExtractor):
         chunk_size: int = 1000,
         chunk_overlap: float = 0.15,
         max_file_size_bytes: int = 50 * 1024 * 1024,
+        max_vectorize_size_bytes: int = 100 * 1024 * 1024,
         file_types: Optional[List[str]] = None,
         exclude_patterns: Optional[List[str]] = None,
     ):
@@ -33,6 +34,8 @@ class FullContentExtractor(ContentExtractor):
             chunk_overlap: Fractional overlap between chunks (0.0 to 1.0).
                         Note: chunking.py uses absolute chars; this uses a fraction.
             max_file_size_bytes: Maximum file size to read (0 = no limit)
+            max_vectorize_size_bytes: Always-on cap specific to vectorization.
+                Applied even when ``max_file_size_bytes == 0``. 0 disables.
             file_types: Allowlist of file extensions (e.g. [".md", ".txt"]).
                         None means all supported types are extracted.
             exclude_patterns: fnmatch patterns for file paths to skip.
@@ -41,6 +44,7 @@ class FullContentExtractor(ContentExtractor):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_file_size_bytes = max_file_size_bytes
+        self.max_vectorize_size_bytes = max_vectorize_size_bytes
         self.file_types = [t.lower() for t in file_types] if file_types is not None else None
         self.exclude_patterns = exclude_patterns
 
@@ -64,8 +68,10 @@ class FullContentExtractor(ContentExtractor):
             vec_kwargs["file_types"] = vec_config["file_types"]
         if "exclude_patterns" in vec_config:
             vec_kwargs["exclude_patterns"] = vec_config["exclude_patterns"]
+        max_vec_mb = vec_config.get("max_vectorize_size_mb", 100)
         return cls(
             max_file_size_bytes=int(max_mb * 1024 * 1024),
+            max_vectorize_size_bytes=int(max_vec_mb * 1024 * 1024),
             **vec_kwargs,
         )
 
@@ -142,18 +148,27 @@ class FullContentExtractor(ContentExtractor):
                 logger.debug("Skipping %s: matched exclude pattern", file_path.name)
                 return None
 
-        # File size guard
-        if self.max_file_size_bytes > 0:
-            try:
-                file_size = file_path.stat().st_size
-                if file_size > self.max_file_size_bytes:
-                    logger.warning(
-                        f"Skipping {file_path.name}: {file_size} bytes "
-                        f"exceeds content extraction limit of {self.max_file_size_bytes} bytes"
-                    )
-                    return None
-            except OSError:
-                pass  # stat failed — let the read attempt handle the error
+        # File size guards — vectorize cap is always-on; max_file_size_bytes is broader (0=disabled).
+        try:
+            file_size = file_path.stat().st_size
+        except OSError:
+            file_size = None  # let the read attempt surface the error
+
+        if file_size is not None:
+            if self.max_file_size_bytes > 0 and file_size > self.max_file_size_bytes:
+                logger.warning(
+                    f"Skipping {file_path.name}: {file_size} bytes "
+                    f"exceeds content extraction limit of {self.max_file_size_bytes} bytes"
+                )
+                return None
+            if self.max_vectorize_size_bytes > 0 and file_size > self.max_vectorize_size_bytes:
+                logger.info(
+                    "Skipping vectorization of %s: %d bytes exceeds vectorize cap of %d bytes",
+                    file_path.name,
+                    file_size,
+                    self.max_vectorize_size_bytes,
+                )
+                return None
 
         try:
             # Text-based files
