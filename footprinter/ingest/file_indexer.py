@@ -50,12 +50,6 @@ class FileIndexer:
             logger.info("Full scan mode (no last_run provided)")
 
         self._vector_store = None  # lazy
-        self._full_extractor = None  # lazy
-        self._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
 
         self.file_scanner = FileScanner(
             self.config, since_datetime=last_run, scan_roots=scan_roots
@@ -80,12 +74,6 @@ class FileIndexer:
             Dict with keys: inserted, updated, skipped, unchanged, errors
         """
         logger.info("Starting file indexing to files...")
-
-        self._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
 
         inserted_count = 0
         updated_count = 0
@@ -171,7 +159,6 @@ class FileIndexer:
             "skipped": skipped_count,
             "unchanged": unchanged_count,
             "errors": error_count,
-            **self._vec_counts,
         }
 
     def _get_vector_store(self):
@@ -184,55 +171,6 @@ class FileIndexer:
                 logger.warning("Vector store unavailable: %s", e)
                 self._vector_store = False  # sentinel: don't retry
         return self._vector_store if self._vector_store is not False else None
-
-    def _vectorize_file(self, file_id, file_path, result_type="updated"):
-        try:
-            from footprinter.semantic.vector_store import _file_vectorization_enabled
-        except ImportError:
-            return
-        if not _file_vectorization_enabled():
-            return
-        row = self.db.conn.execute(
-            "SELECT COALESCE(json_extract(metadata, '$.vectorize'), 1) as vec,"
-            " vectorized_at, vectorized_chunks FROM files WHERE id = ?",
-            (file_id,),
-        ).fetchone()
-        if row and row["vec"] == 0:
-            return
-        already_vectorized = (
-            row is not None
-            and row["vectorized_at"] is not None
-            and (row["vectorized_chunks"] or 0) > 0
-        )
-        if result_type == "unchanged" and already_vectorized:
-            self._vec_counts["vectorized_skipped_unchanged"] += 1
-            return
-        store = self._get_vector_store()
-        if not store:
-            return
-        try:
-            path = Path(file_path)
-            if not path.exists():
-                return
-            if self._full_extractor is None:
-                from .full_content_extractor import FullContentExtractor
-
-                self._full_extractor = FullContentExtractor.from_config(self.config)
-            chunks = self._full_extractor.extract_with_chunking(path)
-            if not chunks:
-                return
-            metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
-            store.upsert_file(file_id, file_path, chunks, metadata)
-            self.db.conn.execute(
-                "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
-                (len(chunks), file_id),
-            )
-            if already_vectorized:
-                self._vec_counts["vectorized_refreshed"] += 1
-            else:
-                self._vec_counts["vectorized_new"] += 1
-        except Exception as e:  # Intentional broad catch: file vectorization is optional enhancement
-            logger.debug(f"Vectorization skipped for {file_path}: {e}")
 
     def _insert_batch(
         self,

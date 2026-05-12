@@ -1,9 +1,13 @@
 """
-Tests for FileIndexer file vectorization.
+Tests for FileIndexer.
 
-Verifies that file vectorization is active at ingest time: _vectorize_file()
-calls the vector store, updates the DB, and _insert_batch() triggers vectorization
-for each successfully inserted file.
+Vectorization moved out of file ingest in FPR-1721 — it now runs as a
+follow-up stage (footprinter.ingest.processing.run_vectorization). These
+tests pin the contracts the indexer still owns: config delegation,
+incremental cutoff, vector-store init for stale-file cleanup, the
+"no inline vectorization" guarantee for _insert_batch, insert/update
+result semantics, count aggregation, content-extraction gating, and
+per-file logging.
 """
 
 import sys
@@ -126,12 +130,6 @@ class TestVectorStoreInitWarning:
         indexer = FileIndexer.__new__(FileIndexer)
         indexer.db = MagicMock()
         indexer._vector_store = None
-        indexer._full_extractor = None
-        indexer._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
         return indexer
 
     def test_vector_store_import_error_logs_warning(self):
@@ -191,8 +189,8 @@ class TestVectorStoreInitWarning:
         mock_logger.warning.assert_not_called()
 
 
-class TestFileVectorizationEnabled:
-    """Test that file vectorization is active when the flag is on."""
+class TestInsertBatchVectorizationSkip:
+    """FPR-1721: _insert_batch() never vectorizes inline; commits exactly once."""
 
     def _make_indexer(self):
         """Create a FileIndexer instance without requiring config/db."""
@@ -201,99 +199,36 @@ class TestFileVectorizationEnabled:
         indexer = FileIndexer.__new__(FileIndexer)
         indexer.db = MagicMock()
         indexer._vector_store = None
-        indexer._full_extractor = None
-        indexer._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
         indexer.incremental = False
         return indexer
 
-    def test_vectorize_file_calls_vector_store(self, tmp_path):
-        """_vectorize_file() should call _get_vector_store() and upsert_file()."""
-        indexer = self._make_indexer()
-        indexer.db.conn.execute.return_value.fetchone.return_value = {
-            "vec": 1,
-            "vectorized_at": None,
-            "vectorized_chunks": 0,
-        }
-
-        # Create a real file so the path.exists() check passes
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [
-            {"content": "hello world", "chunk_index": 0, "total_chunks": 1}
-        ]
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file))
-
-        mock_store.upsert_file.assert_called_once()
-        call_args = mock_store.upsert_file.call_args
-        assert call_args[0][0] == 1  # file_id
-        assert call_args[0][1] == str(test_file)  # file_path
-
-    def test_vectorize_file_updates_db(self, tmp_path):
-        """_vectorize_file() should update vectorized_at and vectorized_chunks."""
-        indexer = self._make_indexer()
-        indexer.db.conn.execute.return_value.fetchone.return_value = {
-            "vec": 1,
-            "vectorized_at": None,
-            "vectorized_chunks": 0,
-        }
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [
-            {"content": "chunk1", "chunk_index": 0, "total_chunks": 2},
-            {"content": "chunk2", "chunk_index": 1, "total_chunks": 2},
-        ]
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file))
-
-        # Should update DB with chunk count (second call — first is metadata flag check)
-        calls = indexer.db.conn.execute.call_args_list
-        update_calls = [c for c in calls if "UPDATE files" in str(c)]
-        assert len(update_calls) == 1, f"Expected 1 UPDATE call, got {len(update_calls)}"
-        sql, params = update_calls[0][0]
-        assert "vectorized_at" in sql
-        assert "vectorized_chunks" in sql
-        assert params == (2, 1)  # (chunk_count, file_id)
-        indexer.db.conn.commit.assert_not_called()
-
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 42))
-    def test_insert_batch_does_not_vectorize(self, mock_insert):
-        """FPR-1721: _insert_batch() must not call _vectorize_file inline.
+    def test_insert_batch_does_not_call_vector_store(self, mock_insert):
+        """FPR-1721: _insert_batch() must not touch the vector store.
 
         Vectorization runs as a separate follow-up stage via
         footprinter.ingest.processing.run_vectorization. The fast ingest pass
-        should only insert rows and commit — never embed.
+        should only insert rows and commit — never embed. We pin this by
+        assigning a sentinel mock to both `_vector_store` (the direct
+        attribute) and patching `_get_vector_store` (the lazy getter), then
+        asserting neither was touched. Catches regressions that reach the
+        vector store by either path.
         """
         indexer = self._make_indexer()
+        sentinel_store = MagicMock()
+        indexer._vector_store = sentinel_store
 
         batch = [{"file_path": "/some/file.txt", "path": "/some/file.txt"}]
 
-        with patch.object(indexer, "_vectorize_file") as mock_vec:
+        with patch.object(indexer, "_get_vector_store") as mock_getter:
             indexer._insert_batch(batch)
 
         mock_insert.assert_called_once()
-        mock_vec.assert_not_called()
+        mock_getter.assert_not_called()
+        assert sentinel_store.mock_calls == [], (
+            f"_insert_batch must not touch the vector store; got calls: "
+            f"{sentinel_store.mock_calls}"
+        )
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
     def test_insert_batch_commits_once(self, mock_insert):
@@ -463,12 +398,6 @@ class TestInsertBatchCounts:
         indexer = FileIndexer.__new__(FileIndexer)
         indexer.db = MagicMock()
         indexer._vector_store = None
-        indexer._full_extractor = None
-        indexer._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
         indexer.incremental = False
         return indexer
 
@@ -519,6 +448,8 @@ class TestInsertBatchCounts:
         ``run_vectorization`` via the ``vectorized_at IS NULL`` query.
         """
         indexer = self._make_indexer()
+        sentinel_store = MagicMock()
+        indexer._vector_store = sentinel_store
         mock_insert.side_effect = [
             ("inserted", 1),
             ("unchanged", 2),
@@ -531,153 +462,12 @@ class TestInsertBatchCounts:
             {"file_path": "/same2.txt"},
         ]
 
-        with patch.object(indexer, "_vectorize_file") as mock_vec:
+        with patch.object(indexer, "_get_vector_store") as mock_getter:
             result = indexer._insert_batch(batch)
 
         assert result == (1, 0, 0, 2)
-        mock_vec.assert_not_called()
-
-
-class TestVectorizeGate:
-    """Freshness gate inside _vectorize_file: skip when unchanged AND already vectorized."""
-
-    def _make_indexer(self):
-        from footprinter.ingest.file_indexer import FileIndexer
-
-        indexer = FileIndexer.__new__(FileIndexer)
-        indexer.db = MagicMock()
-        indexer._vector_store = None
-        indexer._full_extractor = None
-        indexer._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
-        return indexer
-
-    def _set_row(self, indexer, *, vec=1, vectorized_at=None, vectorized_chunks=0):
-        row = {"vec": vec, "vectorized_at": vectorized_at, "vectorized_chunks": vectorized_chunks}
-        indexer.db.conn.execute.return_value.fetchone.return_value = row
-        return row
-
-    def test_skips_when_unchanged_and_already_vectorized(self, tmp_path):
-        """result_type='unchanged' + vectorized_at set + chunks>0 → no extract, no upsert."""
-        indexer = self._make_indexer()
-        self._set_row(indexer, vec=1, vectorized_at="2026-04-17T10:00:00", vectorized_chunks=3)
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file), result_type="unchanged")
-
-        mock_extractor.extract_with_chunking.assert_not_called()
-        mock_store.upsert_file.assert_not_called()
-        assert indexer._vec_counts["vectorized_skipped_unchanged"] == 1
-
-    def test_proceeds_when_unchanged_but_never_vectorized(self, tmp_path):
-        """result_type='unchanged' but vectorized_at IS NULL → still vectorize (backfill)."""
-        indexer = self._make_indexer()
-        self._set_row(indexer, vec=1, vectorized_at=None, vectorized_chunks=0)
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [
-            {"content": "hello world", "chunk_index": 0, "total_chunks": 1}
-        ]
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file), result_type="unchanged")
-
-        mock_store.upsert_file.assert_called_once()
-        assert indexer._vec_counts["vectorized_new"] == 1
-        assert indexer._vec_counts["vectorized_skipped_unchanged"] == 0
-
-    def test_proceeds_when_updated(self, tmp_path):
-        """result_type='updated' always runs extraction even if vectorized_at is set."""
-        indexer = self._make_indexer()
-        self._set_row(indexer, vec=1, vectorized_at="2026-04-17T10:00:00", vectorized_chunks=3)
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("changed content")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [
-            {"content": "changed content", "chunk_index": 0, "total_chunks": 1}
-        ]
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file), result_type="updated")
-
-        mock_store.upsert_file.assert_called_once()
-        assert indexer._vec_counts["vectorized_refreshed"] == 1
-
-    def test_proceeds_when_inserted(self, tmp_path):
-        """result_type='inserted' runs extraction and counts as vectorized_new."""
-        indexer = self._make_indexer()
-        self._set_row(indexer, vec=1, vectorized_at=None, vectorized_chunks=0)
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [
-            {"content": "hello world", "chunk_index": 0, "total_chunks": 1}
-        ]
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file), result_type="inserted")
-
-        mock_store.upsert_file.assert_called_once()
-        assert indexer._vec_counts["vectorized_new"] == 1
-
-    def test_respects_metadata_vectorize_flag_even_when_updated(self, tmp_path):
-        """metadata.vectorize=0 wins over any result_type — no extract, no upsert."""
-        indexer = self._make_indexer()
-        self._set_row(indexer, vec=0, vectorized_at="2026-04-17T10:00:00", vectorized_chunks=3)
-
-        test_file = tmp_path / "file.txt"
-        test_file.write_text("hello world")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        indexer._full_extractor = mock_extractor
-
-        with (
-            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
-            patch.object(indexer, "_get_vector_store", return_value=mock_store),
-        ):
-            indexer._vectorize_file(1, str(test_file), result_type="updated")
-
-        mock_extractor.extract_with_chunking.assert_not_called()
-        mock_store.upsert_file.assert_not_called()
-        assert indexer._vec_counts["vectorized_new"] == 0
-        assert indexer._vec_counts["vectorized_refreshed"] == 0
-        assert indexer._vec_counts["vectorized_skipped_unchanged"] == 0
+        mock_getter.assert_not_called()
+        assert sentinel_store.mock_calls == []
 
 
 class TestIndexFilesCountDict:
@@ -726,32 +516,6 @@ class TestIndexFilesCountDict:
         assert "errors" in result
         assert "unchanged" in result
         assert result["unchanged"] == 5
-
-    @patch("footprinter.ingest.file_indexer.files_db.mark_removed_files", return_value=0)
-    def test_index_files_returns_vector_counters(self, mock_mark_removed):
-        """index_files() exposes vectorized_new / vectorized_refreshed / vectorized_skipped_unchanged."""
-        indexer = self._make_indexer()
-        indexer.file_scanner.scan_all_directories.return_value = iter(
-            [
-                {"file_path": "/a.txt", "file_name": "a.txt"},
-                {"file_path": "/b.txt", "file_name": "b.txt"},
-                {"file_path": "/c.txt", "file_name": "c.txt"},
-            ]
-        )
-
-        def fake_insert_batch(batch, *args, **kwargs):
-            indexer._vec_counts["vectorized_new"] += 1
-            indexer._vec_counts["vectorized_refreshed"] += 1
-            indexer._vec_counts["vectorized_skipped_unchanged"] += 1
-            return (1, 1, 0, 1)
-
-        with patch.object(indexer, "_insert_batch", side_effect=fake_insert_batch):
-            result = indexer.index_files()
-
-        assert result["vectorized_new"] == 1
-        assert result["vectorized_refreshed"] == 1
-        assert result["vectorized_skipped_unchanged"] == 1
-
 
 class TestVectorCleanupOnRemoval:
     """Test that index_files() deletes vectors for files marked as removed."""
@@ -911,12 +675,6 @@ class TestInsertBatchPerFileLogging:
         indexer = FileIndexer.__new__(FileIndexer)
         indexer.db = MagicMock()
         indexer._vector_store = None
-        indexer._full_extractor = None
-        indexer._vec_counts = {
-            "vectorized_new": 0,
-            "vectorized_refreshed": 0,
-            "vectorized_skipped_unchanged": 0,
-        }
         indexer.incremental = incremental
         return indexer
 

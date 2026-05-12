@@ -1,8 +1,10 @@
 """Tests for per-record vectorization control via metadata flag.
 
 Validates that metadata.vectorize=0 causes records to be skipped across
-all vectorization paths: rebuild (cli.py), ingest-time (file_indexer.py,
-chat_indexer.py).
+the chat vectorization paths: rebuild (cli.py) and ingest-time
+(chat_indexer.py). File-ingest coverage moved to
+tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero
+when FPR-1721 split file vectorization into its own follow-up stage.
 """
 
 import json
@@ -173,87 +175,11 @@ class TestRebuildChatInfoRespectsFlag:
 
 
 # ---------------------------------------------------------------------------
-# RED 3: FileIndexer._vectorize_file() respects metadata.vectorize flag
-# ---------------------------------------------------------------------------
-
-
-class TestFileIndexerRespectsFlag:
-    """FileIndexer._vectorize_file() should skip files with metadata.vectorize=0."""
-
-    def test_flagged_file_skipped(self, tmp_path):
-        """File with metadata.vectorize=0 should not be sent to the vector store."""
-        from footprinter.ingest.database import Database
-
-        db = Database(str(tmp_path / "test.db"))
-        db.conn.execute(
-            "INSERT INTO files (id, name, path, source, status, content_type, "
-            "size_bytes, metadata) "
-            "VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed', 'text', "
-            "100, ?)",
-            (json.dumps({"vectorize": 0}),),
-        )
-        db.conn.commit()
-
-        # Create a real file so the path check passes
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("some content")
-
-        mock_store = MagicMock()
-
-        from footprinter.ingest.file_indexer import FileIndexer
-
-        indexer = FileIndexer.__new__(FileIndexer)
-        indexer.db = db
-        indexer.config = {}
-        indexer._vector_store = mock_store
-        indexer._full_extractor = None
-
-        with patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True):
-            indexer._vectorize_file(1, str(test_file))
-
-        # The vector store should NOT have been called to index
-        mock_store.upsert_file.assert_not_called()
-
-        db.close()
-
-    def test_unflagged_file_vectorized(self, tmp_path):
-        """Files without the flag should be vectorized normally."""
-        from footprinter.ingest.database import Database
-
-        db = Database(str(tmp_path / "test.db"))
-        db.conn.execute(
-            "INSERT INTO files (id, name, path, source, status, content_type, "
-            "size_bytes) "
-            "VALUES (1, 'test.txt', ?, 'local', 'listed', 'text', 100)",
-            (str(tmp_path / "test.txt"),),
-        )
-        db.conn.commit()
-
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("some content to vectorize")
-
-        mock_store = MagicMock()
-        mock_extractor = MagicMock()
-        mock_extractor.extract_with_chunking.return_value = [("chunk1", 0, 1)]
-
-        from footprinter.ingest.file_indexer import FileIndexer
-
-        indexer = FileIndexer.__new__(FileIndexer)
-        indexer.db = db
-        indexer.config = {}
-        indexer._vector_store = mock_store
-        indexer._full_extractor = mock_extractor
-
-        with patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True):
-            indexer._vectorize_file(1, str(test_file))
-
-        mock_store.upsert_file.assert_called_once()
-
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# RED 4: ChatIndexer._vectorize_message() respects metadata.vectorize flag
+# ChatIndexer._vectorize_message() respects metadata.vectorize flag
+#
+# (The FileIndexer equivalent was removed when vectorization moved out of
+# file ingest in FPR-1721. Coverage is now in
+# tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero.)
 # ---------------------------------------------------------------------------
 
 
