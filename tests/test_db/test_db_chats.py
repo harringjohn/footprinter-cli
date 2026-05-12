@@ -10,11 +10,12 @@ from footprinter.db.chats import insert_chat
 
 @pytest.fixture
 def conn():
-    """In-memory SQLite with a chats schema matching legacy production DBs.
+    """In-memory SQLite with a chats schema mirroring production DEFAULTs.
 
-    Deliberately omits DEFAULTs on ``status`` and ``indexed_at`` to reproduce
-    the legacy production state where ``insert_chat`` produced NULL columns
-    that the MCP status filter silently excluded.
+    ``status`` and ``indexed_at`` carry the same column DEFAULTs as the live
+    schema in ``footprinter/ingest/db/schema.py`` — they are the single source
+    of truth for new-row values, and these tests verify the DEFAULT path
+    rather than a Python-side workaround.
     """
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
@@ -29,10 +30,10 @@ def conn():
             created_at DATETIME,
             modified_at DATETIME,
             message_count INTEGER DEFAULT 0,
-            indexed_at DATETIME,
+            indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             metadata TEXT,
-            status TEXT
+            status TEXT DEFAULT 'listed'
         )
         """
     )

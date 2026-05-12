@@ -565,10 +565,8 @@ def insert_drive_folder(conn: sqlite3.Connection, data: Dict[str, Any]) -> tuple
             INSERT INTO folders (
                 source, external_id, account,
                 path, relative_path, name,
-                web_link, scanned_at, created_at,
-                indexed_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
-                      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                web_link, scanned_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """,
             (
                 data["source"],

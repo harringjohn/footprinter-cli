@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from footprinter.cli._policy_helpers import abbreviate_home
 from footprinter.db import files as files_db
 from footprinter.source_registry import get_config
 
@@ -247,6 +248,9 @@ class FileIndexer:
         updated = 0
         skipped = 0
         unchanged = 0
+        # Incremental mode logs per-file at INFO (counts are typically small);
+        # full mode emits at DEBUG so a fresh scan doesn't flood the log.
+        log_per_file = logger.info if self.incremental else logger.debug
         for file_metadata in batch:
             result = files_db.insert_file(self.db.conn, file_metadata, relationship_maps=relationship_maps)
             if result is None:
@@ -260,6 +264,9 @@ class FileIndexer:
             elif result_type == "unchanged":
                 unchanged += 1
             else:
+                result_type = "updated"
                 updated += 1
+            if result_type != "unchanged":
+                log_per_file("%s %s", result_type, abbreviate_home(file_metadata["file_path"]))
         self.db.conn.commit()
         return inserted, updated, skipped, unchanged

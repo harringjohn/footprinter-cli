@@ -218,9 +218,8 @@ class FolderIndexer:
                 cursor.execute(
                     """
                     INSERT INTO folders
-                    (path, relative_path, name, parent_path, scanned_at,
-                     indexed_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    (path, relative_path, name, parent_path, scanned_at)
+                    VALUES (?, ?, ?, ?, ?)
                 """,
                     (
                         folder["path"],

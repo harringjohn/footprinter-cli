@@ -200,8 +200,8 @@ def create_client(conn: sqlite3.Connection, *, name: str, client_type: str, path
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """INSERT INTO clients (name, slug, client_type, path_pattern, status)
-               VALUES (?, ?, ?, ?, 'listed')""",
+            """INSERT INTO clients (name, slug, client_type, path_pattern)
+               VALUES (?, ?, ?, ?)""",
             (name, slug, client_type, path_pattern),
         )
         conn.commit()
