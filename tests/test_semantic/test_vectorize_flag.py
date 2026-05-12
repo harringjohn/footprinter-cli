@@ -1,8 +1,10 @@
 """Tests for per-record vectorization control via metadata flag.
 
 Validates that metadata.vectorize=0 causes records to be skipped across
-all vectorization paths: rebuild (cli.py), ingest-time (file_indexer.py,
-chat_indexer.py).
+the chat vectorization paths: rebuild (cli.py) and ingest-time
+(chat_indexer.py). File-ingest coverage moved to
+tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero
+when FPR-1721 split file vectorization into its own follow-up stage.
 """
 
 import json

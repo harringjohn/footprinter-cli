@@ -208,17 +208,27 @@ class TestInsertBatchVectorizationSkip:
 
         Vectorization runs as a separate follow-up stage via
         footprinter.ingest.processing.run_vectorization. The fast ingest pass
-        should only insert rows and commit — never embed.
+        should only insert rows and commit — never embed. We pin this by
+        assigning a sentinel mock to both `_vector_store` (the direct
+        attribute) and patching `_get_vector_store` (the lazy getter), then
+        asserting neither was touched. Catches regressions that reach the
+        vector store by either path.
         """
         indexer = self._make_indexer()
+        sentinel_store = MagicMock()
+        indexer._vector_store = sentinel_store
 
         batch = [{"file_path": "/some/file.txt", "path": "/some/file.txt"}]
 
-        with patch.object(indexer, "_get_vector_store") as mock_store:
+        with patch.object(indexer, "_get_vector_store") as mock_getter:
             indexer._insert_batch(batch)
 
         mock_insert.assert_called_once()
-        mock_store.assert_not_called()
+        mock_getter.assert_not_called()
+        assert sentinel_store.mock_calls == [], (
+            f"_insert_batch must not touch the vector store; got calls: "
+            f"{sentinel_store.mock_calls}"
+        )
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
     def test_insert_batch_commits_once(self, mock_insert):
@@ -438,6 +448,8 @@ class TestInsertBatchCounts:
         ``run_vectorization`` via the ``vectorized_at IS NULL`` query.
         """
         indexer = self._make_indexer()
+        sentinel_store = MagicMock()
+        indexer._vector_store = sentinel_store
         mock_insert.side_effect = [
             ("inserted", 1),
             ("unchanged", 2),
@@ -450,11 +462,12 @@ class TestInsertBatchCounts:
             {"file_path": "/same2.txt"},
         ]
 
-        with patch.object(indexer, "_get_vector_store") as mock_store:
+        with patch.object(indexer, "_get_vector_store") as mock_getter:
             result = indexer._insert_batch(batch)
 
         assert result == (1, 0, 0, 2)
-        mock_store.assert_not_called()
+        mock_getter.assert_not_called()
+        assert sentinel_store.mock_calls == []
 
 
 class TestIndexFilesCountDict:
