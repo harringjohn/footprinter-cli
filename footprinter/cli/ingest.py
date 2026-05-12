@@ -34,6 +34,7 @@ def _build_parser(subparsers, name):
             "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
             "  fp ingest --rebuild-vectors            Rebuild vectors (incremental)\n"
             "  fp ingest --rebuild-vectors full       Rebuild vectors (full reset)\n"
+            "  fp ingest --preview                    Pre-scan summary (no ingest)\n"
             "  fp ingest status                       Show pipeline diagnostics\n"
             "  fp ingest import export.zip            Import a chat export"
         ),
@@ -84,6 +85,16 @@ def _build_parser(subparsers, name):
         choices=["files", "messages", "chat_info"],
         default=None,
         help="Run a single rebuild phase (default: all). Only used with --rebuild-vectors",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help=(
+            "Pre-scan configured directories and print a summary "
+            "(file counts by extension, top-N largest files/directories, "
+            "outliers above size threshold) without ingesting or vectorizing. "
+            "In a TTY, prompts to proceed with the real ingest."
+        ),
     )
     parser.add_argument(
         "--repair-fts",
@@ -185,6 +196,10 @@ def _handle_ingest(args) -> None:
             phase=getattr(args, "phase", None),
             mode=rebuild_mode,
         )
+        return
+
+    if getattr(args, "preview", False):
+        _ingest_preview(args)
         return
 
     action = getattr(args, "ingest_action", None)
@@ -494,6 +509,121 @@ def _ingest_pipeline(args) -> None:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
         run_vectorization_stage(quiet=quiet)
+
+
+# Defaults for the preview render. Configurable via the indexing.preview_*
+# config keys; tests pass plain configs without those keys.
+_PREVIEW_TOP_N_DEFAULT = 10
+_PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT = 50
+
+
+def _format_bytes(n: int) -> str:
+    """Human-readable byte size (binary units)."""
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    size = float(n)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{n} B"
+
+
+def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
+    """Render a ScanSummary to the Rich console."""
+    from rich.table import Table
+
+    console_.print()
+    console_.print(
+        f"[bold]Preview[/bold]  [dim]({summary.total_files} files, "
+        f"{_format_bytes(summary.total_bytes)} total)[/dim]"
+    )
+    console_.print()
+
+    by_ext = summary.by_extension()
+    if by_ext:
+        ext_table = Table(title="Files by extension", show_edge=False)
+        ext_table.add_column("Extension")
+        ext_table.add_column("Count", justify="right")
+        for ext, count in sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True):
+            ext_table.add_row(ext, str(count))
+        console_.print(ext_table)
+        console_.print()
+
+    top_files = summary.top_files(n=top_n)
+    if top_files:
+        files_table = Table(title=f"Top {len(top_files)} largest files", show_edge=False)
+        files_table.add_column("Size", justify="right")
+        files_table.add_column("Path")
+        for entry in top_files:
+            files_table.add_row(_format_bytes(int(entry.get("file_size") or 0)), entry["file_path"])
+        console_.print(files_table)
+        console_.print()
+
+    top_dirs = summary.top_directories(n=top_n)
+    if top_dirs:
+        dirs_table = Table(title=f"Top {len(top_dirs)} largest directories", show_edge=False)
+        dirs_table.add_column("Size", justify="right")
+        dirs_table.add_column("Directory")
+        for path, total in top_dirs:
+            dirs_table.add_row(_format_bytes(total), path)
+        console_.print(dirs_table)
+        console_.print()
+
+    outliers = summary.outliers(threshold_bytes=threshold_bytes)
+    if outliers:
+        out_table = Table(
+            title=f"Outliers ≥ {_format_bytes(threshold_bytes)}",
+            show_edge=False,
+        )
+        out_table.add_column("Size", justify="right")
+        out_table.add_column("Path")
+        for entry in outliers:
+            out_table.add_row(_format_bytes(int(entry.get("file_size") or 0)), entry["file_path"])
+        console_.print(out_table)
+        console_.print()
+
+
+def _ingest_preview(args) -> None:
+    """Pre-scan configured directories and print a summary (FPR-1723).
+
+    No DB writes, no vectorization. In a TTY (and not --quiet), prompts to
+    proceed with the real ingest pipeline. Non-TTY or --quiet exits 0.
+    """
+    from footprinter.ingest.file_scanner import FileScanner
+    from footprinter.ingest.scan_summary import ScanSummary
+    from footprinter.source_registry import ConfigError, get_config
+
+    quiet = getattr(args, "quiet", False)
+
+    try:
+        config = get_config()
+    except ConfigError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+    scanner = FileScanner(config)
+    summary = ScanSummary()
+    for entry in scanner.scan_all_directories(skip_hashing=True):
+        summary.add(entry)
+
+    indexing = config.get("indexing", {}) or {}
+    top_n = int(indexing.get("preview_top_n") or _PREVIEW_TOP_N_DEFAULT)
+    threshold_mb = indexing.get("preview_size_threshold_mb")
+    if threshold_mb is None:
+        threshold_mb = _PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT
+    threshold_bytes = int(threshold_mb) * 1024 * 1024
+
+    if not quiet:
+        _render_preview(summary, top_n=top_n, threshold_bytes=threshold_bytes, console_=console)
+
+    if quiet or not sys.stdin.isatty():
+        return
+
+    answer = input("Proceed with ingest? [y/N] ").strip().lower()
+    if answer == "y":
+        # Reset the preview flag so the dispatcher doesn't loop.
+        args.preview = False
+        _ingest_pipeline(args)
 
 
 def _ingest_status(args) -> None:
