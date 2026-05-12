@@ -517,6 +517,16 @@ _PREVIEW_TOP_N_DEFAULT = 10
 _PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT = 50
 
 
+def _stdout_is_tty() -> bool:
+    """Patch point for the preview prompt: True iff the user is at a terminal.
+
+    Wraps ``sys.stdout.isatty()`` so tests can override the result without
+    having to dodge ``run_fp``'s in-test stdout swap (which would otherwise
+    re-route the patch to the wrong StringIO).
+    """
+    return sys.stdout.isatty()
+
+
 def _format_bytes(n: int) -> str:
     """Human-readable byte size (binary units)."""
     units = ("B", "KiB", "MiB", "GiB", "TiB")
@@ -528,7 +538,17 @@ def _format_bytes(n: int) -> str:
     return f"{n} B"
 
 
-def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
+def _render_preview_plain(summary, *, threshold_bytes: int) -> str:
+    """Render a one-line, machine-friendly preview (used in --quiet mode)."""
+    by_ext = summary.by_extension()
+    ext_part = ", ".join(f"{ext}={n}" for ext, n in sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True))
+    return (
+        f"preview: files={summary.total_files} bytes={summary.total_bytes} "
+        f"outliers={len(summary.outliers())} threshold={threshold_bytes} {ext_part}"
+    )
+
+
+def _render_preview(summary, *, threshold_bytes: int, console_):
     """Render a ScanSummary to the Rich console."""
     from rich.table import Table
 
@@ -549,7 +569,7 @@ def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
         console_.print(ext_table)
         console_.print()
 
-    top_files = summary.top_files(n=top_n)
+    top_files = summary.top_files()
     if top_files:
         files_table = Table(title=f"Top {len(top_files)} largest files", show_edge=False)
         files_table.add_column("Size", justify="right")
@@ -559,7 +579,7 @@ def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
         console_.print(files_table)
         console_.print()
 
-    top_dirs = summary.top_directories(n=top_n)
+    top_dirs = summary.top_directories()
     if top_dirs:
         dirs_table = Table(title=f"Top {len(top_dirs)} largest directories", show_edge=False)
         dirs_table.add_column("Size", justify="right")
@@ -569,7 +589,7 @@ def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
         console_.print(dirs_table)
         console_.print()
 
-    outliers = summary.outliers(threshold_bytes=threshold_bytes)
+    outliers = summary.outliers()
     if outliers:
         out_table = Table(
             title=f"Outliers ≥ {_format_bytes(threshold_bytes)}",
@@ -586,11 +606,19 @@ def _render_preview(summary, *, top_n: int, threshold_bytes: int, console_):
 def _ingest_preview(args) -> None:
     """Pre-scan configured directories and print a summary (FPR-1723).
 
-    No DB writes, no vectorization. In a TTY (and not --quiet), prompts to
-    proceed with the real ingest pipeline. Non-TTY or --quiet exits 0.
+    No DB writes, no vectorization. Always prints a summary so ``--preview``
+    is meaningful even in scripts: ``--quiet`` switches to a single-line
+    plain-text summary, and the interactive prompt is shown only when
+    ``stdout`` is a TTY and ``--quiet`` is not set.
+
+    Acquires the same exclusive run lock as ``fp ingest`` so a preview cannot
+    race a real ingest scan over the same directories.
     """
+    import fcntl
+
     from footprinter.ingest.file_scanner import FileScanner
     from footprinter.ingest.scan_summary import ScanSummary
+    from footprinter.paths import get_run_lock_path
     from footprinter.source_registry import ConfigError, get_config
 
     quiet = getattr(args, "quiet", False)
@@ -601,11 +629,6 @@ def _ingest_preview(args) -> None:
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
-    scanner = FileScanner(config)
-    summary = ScanSummary()
-    for entry in scanner.scan_all_directories(skip_hashing=True):
-        summary.add(entry)
-
     indexing = config.get("indexing", {}) or {}
     top_n = int(indexing.get("preview_top_n") or _PREVIEW_TOP_N_DEFAULT)
     threshold_mb = indexing.get("preview_size_threshold_mb")
@@ -613,16 +636,32 @@ def _ingest_preview(args) -> None:
         threshold_mb = _PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT
     threshold_bytes = int(threshold_mb) * 1024 * 1024
 
-    if not quiet:
-        _render_preview(summary, top_n=top_n, threshold_bytes=threshold_bytes, console_=console)
+    lock_path = get_run_lock_path()
+    lock_fd = open(lock_path, "w")
+    try:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            console.print("[red]Error:[/red] Another fp ingest is already in progress.")
+            sys.exit(1)
 
-    if quiet or not sys.stdin.isatty():
+        scanner = FileScanner(config)
+        summary = ScanSummary(top_n=top_n, outlier_threshold_bytes=threshold_bytes)
+        for entry in scanner.scan_all_directories(skip_hashing=True):
+            summary.add(entry)
+    finally:
+        lock_fd.close()
+
+    if quiet:
+        print(_render_preview_plain(summary, threshold_bytes=threshold_bytes))
+    else:
+        _render_preview(summary, threshold_bytes=threshold_bytes, console_=console)
+
+    if quiet or not _stdout_is_tty():
         return
 
     answer = input("Proceed with ingest? [y/N] ").strip().lower()
     if answer == "y":
-        # Reset the preview flag so the dispatcher doesn't loop.
-        args.preview = False
         _ingest_pipeline(args)
 
 
