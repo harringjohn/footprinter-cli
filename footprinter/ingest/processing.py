@@ -172,17 +172,29 @@ def run_vectorization(
             if vectorize_cap > 0:
                 try:
                     file_size = path.stat().st_size
-                except OSError:
+                except OSError as stat_err:
+                    logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
                     file_size = None
                 if file_size is not None and file_size > vectorize_cap:
                     logger.info(
-                        "Skipping vectorization of %s: %d bytes exceeds cap of %d bytes",
-                        path.name,
-                        file_size,
-                        vectorize_cap,
+                        f"Skipping vectorization of {path.name}: {file_size} bytes "
+                        f"exceeds cap of {vectorize_cap} bytes"
                     )
                     counts["vectorized_skipped_large"] += 1
                     skipped_large_files.append({"path": str(path), "size_bytes": file_size})
+                    # Drop any prior vectors for this file_id so stale embeddings
+                    # don't linger when a previously-small file grows past the cap.
+                    try:
+                        store.delete_file(file_id)
+                    except Exception as e:  # Intentional broad catch: cleanup is best-effort
+                        logger.debug(f"delete_file failed for {file_id}: {e}")
+                    # Stamp vectorized_at with chunks=0 so the row is not re-evaluated
+                    # every incremental run. Upstream ingest clears vectorized_at on
+                    # file modification, so a shrunk file will be re-considered.
+                    db.conn.execute(
+                        "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = 0 WHERE id = ?",
+                        (file_id,),
+                    )
                     continue
             chunks = extractor.extract_with_chunking(path)
             if not chunks:

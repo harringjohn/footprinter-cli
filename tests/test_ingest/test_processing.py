@@ -177,10 +177,18 @@ class TestRunVectorization:
 
         # The big file was not embedded.
         mock_store.upsert_file.assert_not_called()
+
+        # Any prior vectors for this file_id are dropped (best-effort cleanup).
+        mock_store.delete_file.assert_called_once_with(big_id)
+
+        # vectorized_at is stamped (with chunks=0) so the row is not re-evaluated
+        # every incremental run. Upstream ingest clears it if the file later
+        # changes, giving us a chance to re-check whether it has shrunk.
         row = db.conn.execute(
-            "SELECT vectorized_at FROM files WHERE id = ?", (big_id,)
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (big_id,)
         ).fetchone()
-        assert row["vectorized_at"] is None
+        assert row["vectorized_at"] is not None
+        assert row["vectorized_chunks"] == 0
 
         # Result data records the skip with path + size.
         assert result.data.get("vectorized_skipped_large") == 1

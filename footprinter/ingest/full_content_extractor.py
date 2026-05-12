@@ -163,10 +163,8 @@ class FullContentExtractor(ContentExtractor):
                 return None
             if self.max_vectorize_size_bytes > 0 and file_size > self.max_vectorize_size_bytes:
                 logger.info(
-                    "Skipping vectorization of %s: %d bytes exceeds vectorize cap of %d bytes",
-                    file_path.name,
-                    file_size,
-                    self.max_vectorize_size_bytes,
+                    f"Skipping vectorization of {file_path.name}: {file_size} bytes "
+                    f"exceeds vectorize cap of {self.max_vectorize_size_bytes} bytes"
                 )
                 return None
 
