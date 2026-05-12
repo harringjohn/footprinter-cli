@@ -207,6 +207,7 @@ class TestFileVectorizationEnabled:
             "vectorized_refreshed": 0,
             "vectorized_skipped_unchanged": 0,
         }
+        indexer.incremental = False
         return indexer
 
     def test_vectorize_file_calls_vector_store(self, tmp_path):
@@ -468,6 +469,7 @@ class TestInsertBatchCounts:
             "vectorized_refreshed": 0,
             "vectorized_skipped_unchanged": 0,
         }
+        indexer.incremental = False
         return indexer
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file")
@@ -894,3 +896,145 @@ class TestContentExtractionGating:
             indexer.index_files()
 
         indexer.content_extractor.extract.assert_not_called()
+
+
+class TestInsertBatchPerFileLogging:
+    """FPR-1625: _insert_batch() logs each inserted/updated file path.
+
+    Incremental mode → INFO; full mode → DEBUG; unchanged/skipped → silent.
+    Paths under $HOME are abbreviated to ~/...; others stay verbatim.
+    """
+
+    def _make_indexer(self, *, incremental: bool):
+        from footprinter.ingest.file_indexer import FileIndexer
+
+        indexer = FileIndexer.__new__(FileIndexer)
+        indexer.db = MagicMock()
+        indexer._vector_store = None
+        indexer._full_extractor = None
+        indexer._vec_counts = {
+            "vectorized_new": 0,
+            "vectorized_refreshed": 0,
+            "vectorized_skipped_unchanged": 0,
+        }
+        indexer.incremental = incremental
+        return indexer
+
+    @staticmethod
+    def _messages(calls):
+        """Format mock log calls as ready-to-search strings."""
+        rendered = []
+        for call in calls:
+            args, _kwargs = call
+            if not args:
+                continue
+            fmt = args[0]
+            try:
+                rendered.append(fmt % args[1:] if len(args) > 1 else fmt)
+            except TypeError:
+                rendered.append(" ".join(str(a) for a in args))
+        return rendered
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
+    def test_incremental_logs_inserted_path_at_info(self, _mock_insert):
+        import os
+
+        indexer = self._make_indexer(incremental=True)
+        home = os.path.expanduser("~")
+        batch = [{"file_path": f"{home}/Documents/foo.txt"}]
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch(batch)
+
+        messages = self._messages(mock_logger.info.call_args_list)
+        assert any(
+            "~/Documents/foo.txt" in m and "inserted" in m for m in messages
+        ), f"expected per-file INFO log with abbreviated path; got {messages}"
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("updated", 2))
+    def test_incremental_logs_updated_path_at_info(self, _mock_insert):
+        import os
+
+        indexer = self._make_indexer(incremental=True)
+        home = os.path.expanduser("~")
+        batch = [{"file_path": f"{home}/Documents/bar.txt"}]
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch(batch)
+
+        messages = self._messages(mock_logger.info.call_args_list)
+        assert any(
+            "~/Documents/bar.txt" in m and "updated" in m for m in messages
+        ), f"expected per-file INFO log with abbreviated path; got {messages}"
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("unchanged", 3))
+    def test_incremental_does_not_log_unchanged(self, _mock_insert):
+        import os
+
+        indexer = self._make_indexer(incremental=True)
+        home = os.path.expanduser("~")
+        path = f"{home}/Documents/same.txt"
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch([{"file_path": path}])
+
+        info_messages = self._messages(mock_logger.info.call_args_list)
+        debug_messages = self._messages(mock_logger.debug.call_args_list)
+        assert not any(path in m or "~/Documents/same.txt" in m for m in info_messages), (
+            f"unchanged file should not log at INFO; got {info_messages}"
+        )
+        assert not any(path in m or "~/Documents/same.txt" in m for m in debug_messages), (
+            f"unchanged file should not log at DEBUG; got {debug_messages}"
+        )
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=None)
+    def test_incremental_does_not_log_skipped(self, _mock_insert):
+        import os
+
+        indexer = self._make_indexer(incremental=True)
+        home = os.path.expanduser("~")
+        path = f"{home}/Documents/skipped.txt"
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch([{"file_path": path}])
+
+        info_messages = self._messages(mock_logger.info.call_args_list)
+        debug_messages = self._messages(mock_logger.debug.call_args_list)
+        assert not any(path in m or "~/Documents/skipped.txt" in m for m in info_messages)
+        assert not any(path in m or "~/Documents/skipped.txt" in m for m in debug_messages)
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
+    def test_full_mode_logs_per_file_at_debug(self, _mock_insert):
+        import os
+
+        indexer = self._make_indexer(incremental=False)
+        home = os.path.expanduser("~")
+        batch = [{"file_path": f"{home}/Documents/full.txt"}]
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch(batch)
+
+        info_messages = self._messages(mock_logger.info.call_args_list)
+        debug_messages = self._messages(mock_logger.debug.call_args_list)
+        assert not any("~/Documents/full.txt" in m for m in info_messages), (
+            f"full mode must not log per-file at INFO; got {info_messages}"
+        )
+        assert any(
+            "~/Documents/full.txt" in m and "inserted" in m for m in debug_messages
+        ), f"full mode should log per-file at DEBUG; got {debug_messages}"
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 1))
+    def test_path_outside_home_logged_verbatim(self, _mock_insert):
+        indexer = self._make_indexer(incremental=True)
+        batch = [{"file_path": "/etc/something.conf"}]
+
+        with patch("footprinter.ingest.file_indexer.logger") as mock_logger:
+            indexer._insert_batch(batch)
+
+        messages = self._messages(mock_logger.info.call_args_list)
+        assert any("/etc/something.conf" in m for m in messages), (
+            f"path outside $HOME should be logged verbatim; got {messages}"
+        )
+        assert not any("~/etc/something.conf" in m for m in messages), (
+            f"path outside $HOME should not gain a ~/ prefix; got {messages}"
+        )
