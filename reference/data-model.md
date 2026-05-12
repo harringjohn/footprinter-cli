@@ -146,7 +146,7 @@ Data items discovered by the ingest pipeline and categorized by the user.
 |--------|--------|
 | **Created by** | Pipeline-discovered during `fp ingest` |
 | **Status management** | Pipeline-managed (`_determine_file_status`, `mark_removed_files`) — not directly by user |
-| **User interaction** | Categorized via `fp assign` (sets `project_id`/`client_id` FK) |
+| **User interaction** | Categorized via `fp upsert <entity> <id> --project-id <n>` (sets `project_id`/`client_id` FK) |
 | **Visibility resolution** | Resolved through the scope hierarchy of their parent super entities |
 
 ### Folders: A Special Super Entity
@@ -161,15 +161,17 @@ Folders occupy a unique position — they are both structural (filesystem hierar
 | **Policy scoping** | Supports path-scoped policies (`folder:/path` prefix matching) — unique among super entities |
 | **Status behavior** | Status does **not** cascade to children (same as projects/clients) |
 
-### Service Layer Verbs
+### CLI Verbs
 
-The CLI uses distinct verbs for each entity tier:
+A handful of CLI verbs cover the lifecycle of every entity. Mirrors the data scoping operations table in [interfaces.md](interfaces.md#data-scoping-operations).
 
 | Verb | Applies to | Effect |
 |------|-----------|--------|
-| `fp upsert` | Super entities (projects, clients) | Create or edit the entity itself. `--status removed` for soft-delete. |
-| `fp assign` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
+| `fp upsert` | Super entities (projects, clients) | Create or edit the entity itself. `--status removed` for soft-delete. Example: `fp upsert client --name Acme --type external`. |
+| `fp upsert` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Example: `fp upsert file 42 --project-id 3`. Bulk path form: `fp upsert files --folder /path --project-id 3`. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
 | `fp delete` | Super entities only | Hard `DELETE FROM` — permanently removes the record. Refuses when dependent rows exist. |
+
+The CLI `fp upsert` for content entities delegates to service-layer `assign()` methods (`file_service.assign()`, `folder_service.assign()`, etc.) — useful to know when navigating the codebase, but `assign` is not itself a CLI subcommand.
 
 ---
 
@@ -1029,19 +1031,19 @@ Every FK relationship and how it is populated. Content entities [C] reference su
 |---|---|---|---|---|---|
 | `files` | C | `folders` | S | `folder_id` | Auto-linked by parent directory path during ingest |
 | `files` | C | `projects` | S | `project_id` | Path-prefix match or folder inheritance at ingest; preserved on re-index |
-| `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp assign`) |
+| `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp upsert`) |
 | `folders` | S | `folders` | S | `parent_folder_id` | Filesystem hierarchy (local) or Drive API parent (remote) |
-| `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp assign`), cascaded to descendants |
-| `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp assign`), cascaded to descendants |
+| `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp upsert`), cascaded to descendants |
+| `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp upsert`), cascaded to descendants |
 | `projects` | S | `clients` | S | `client_id` | User assignment via CLI (`fp upsert`) |
 | `projects` | S | `folders` | S | `root_folder_id` | Links project to its root folder entry |
 | `messages` | C | `chats` | C | `chat_id` | Set on insert from chat export data |
-| `chats` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `chats` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
 | `chats` | C | `clients` | S | `client_id` | Follows project or direct assignment |
 | `chats` | C | `chats` | C | `merged_into_id` | Historical — column preserved, merge functionality removed |
-| `emails` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `emails` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
 | `emails` | C | `clients` | S | `client_id` | Follows project or direct assignment |
-| `visits` | C | `projects` | S | `project_id` | User assignment (`fp assign`) |
+| `visits` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
 | `visits` | C | `clients` | S | `client_id` | Follows project or direct assignment |
 
 ### Local↔Remote File Matching
