@@ -3,6 +3,7 @@
 from mcp.server.fastmcp import FastMCP
 
 from footprinter.mcp.resources.context import context_guidance, context_summary
+from footprinter.mcp.resources.discoverability import access_policies, projects_list, system_status
 from footprinter.mcp.tools.navigation import footprinter_client, footprinter_folder, footprinter_project
 from footprinter.mcp.tools.read import footprinter_read
 from footprinter.mcp.tools.search import footprinter_search
@@ -29,6 +30,9 @@ def _build_server():
     _server.tool()(footprinter_read)
     _server.resource("footprinter://context/summary")(context_summary)
     _server.resource("footprinter://context/guidance")(context_guidance)
+    _server.resource("footprinter://status")(system_status)
+    _server.resource("footprinter://projects")(projects_list)
+    _server.resource("footprinter://access-policies")(access_policies)
     return _server
 
 

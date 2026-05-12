@@ -316,7 +316,7 @@ class TestResourceRegistration:
         assert len(self._get_resource_uris(server)) >= 1
 
     def test_expected_resource_uris(self):
-        """v1 ships exactly two static resources: summary and guidance."""
+        """Server ships ambient-context resources plus the discoverability surface (FPR-786)."""
         from footprinter.mcp.server import _build_server
 
         server = _build_server()
@@ -325,6 +325,9 @@ class TestResourceRegistration:
         expected = {
             "footprinter://context/summary",
             "footprinter://context/guidance",
+            "footprinter://status",
+            "footprinter://projects",
+            "footprinter://access-policies",
         }
         assert self._get_resource_uris(server) == expected
 
