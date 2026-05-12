@@ -78,7 +78,7 @@ exclusions:
 # Indexing configuration - INDEX ALL FILE TYPES
 indexing:
   supported_extensions: []  # Empty = index ALL file types
-  max_file_size_mb: 0       # 0 = no size limit (index everything)
+  max_file_size_mb: 50      # MB; 0 = no size limit. 50 is generous for prose/docs.
   lookback_days: 14         # Browser history window (days back to index)
   content_snippets: false   # Extract file/email content previews for keyword search
   # `fp ingest --preview` (FPR-1723) — pre-scan summary tuning
