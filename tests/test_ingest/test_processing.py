@@ -79,6 +79,7 @@ class TestRunVectorization:
 
         mock_store = MagicMock()
         mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0  # disable size-cap check
         mock_extractor.extract_with_chunking.return_value = [
             {"content": "hello world", "chunk_index": 0, "total_chunks": 1}
         ]
@@ -144,6 +145,84 @@ class TestRunVectorization:
         mock_store.upsert_file.assert_not_called()
         # Should be a skipped or info result — never errored.
         assert result.status.value in ("skipped", "info")
+
+    def test_run_vectorization_records_skipped_large_files(self, tmp_path):
+        """Files larger than the configured vectorize cap are skipped and
+        listed in result.data with their path + size (FPR-1722)."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        big_path = tmp_path / "big.txt"
+        big_path.write_bytes(b"z" * 8192)
+        big_id = _insert_file(db, file_path=str(big_path))
+
+        # Build a real extractor with a low cap so the on-disk big.txt is skipped.
+        small_cap_extractor = FullContentExtractor(max_vectorize_size_bytes=1024)
+
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch(
+                "footprinter.semantic.vector_store.VectorStore.get_instance",
+                return_value=mock_store,
+            ),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=small_cap_extractor,
+            ),
+        ):
+            result = run_vectorization(db)
+
+        # The big file was not embedded.
+        mock_store.upsert_file.assert_not_called()
+        row = db.conn.execute(
+            "SELECT vectorized_at FROM files WHERE id = ?", (big_id,)
+        ).fetchone()
+        assert row["vectorized_at"] is None
+
+        # Result data records the skip with path + size.
+        assert result.data.get("vectorized_skipped_large") == 1
+        skipped = result.data.get("skipped_large_files") or []
+        assert len(skipped) == 1
+        assert skipped[0]["path"] == str(big_path)
+        assert skipped[0]["size_bytes"] == 8192
+
+    def test_run_vectorization_normal_file_still_vectorized(self, tmp_path):
+        """Regression: under-cap files are still vectorized (FPR-1722)."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        normal_path = tmp_path / "normal.txt"
+        normal_path.write_text("hello")
+        normal_id = _insert_file(db, file_path=str(normal_path))
+
+        extractor = FullContentExtractor(max_vectorize_size_bytes=1024)
+
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch(
+                "footprinter.semantic.vector_store.VectorStore.get_instance",
+                return_value=mock_store,
+            ),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=extractor,
+            ),
+        ):
+            result = run_vectorization(db)
+
+        mock_store.upsert_file.assert_called_once()
+        assert result.data.get("vectorized_new") == 1
+        assert result.data.get("vectorized_skipped_large", 0) == 0
+        row = db.conn.execute(
+            "SELECT vectorized_at FROM files WHERE id = ?", (normal_id,)
+        ).fetchone()
+        assert row["vectorized_at"] is not None
 
     def test_skips_metadata_vectorize_zero(self, tmp_path):
         """Rows with metadata.vectorize == 0 are excluded even when enabled."""
