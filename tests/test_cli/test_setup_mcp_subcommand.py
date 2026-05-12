@@ -139,7 +139,7 @@ class TestOfferSetupClaudeWiring:
         from tests.conftest import run_wizard_mocked
 
         mock_offer_claude = MagicMock()
-        mocks = run_wizard_mocked(offer_setup_claude=mock_offer_claude)
+        run_wizard_mocked(offer_setup_claude=mock_offer_claude)
         mock_offer_claude.assert_called_once()
 
     def test_wizard_passes_mcp_result_to_summary(self):
@@ -466,7 +466,7 @@ class TestMcpDependencyGating:
         with (
             patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True),
             patch("footprinter.cli.mcp_setup.console", test_console),
-            patch("footprinter.cli.mcp_setup.detect_config_path") as mock_detect,
+            patch("footprinter.cli.mcp_setup.detect_config_path") as mock_detect,  # noqa: F841
         ):
             import json
             import tempfile
@@ -479,7 +479,7 @@ class TestMcpDependencyGating:
             try:
                 from footprinter.cli.mcp_setup import check_config
 
-                result = check_config(config_path=tmp_path)
+                check_config(config_path=tmp_path)
             finally:
                 tmp_path.unlink()
 

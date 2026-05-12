@@ -19,6 +19,7 @@ from footprinter.db.sql_utils import (
     split_query_terms,
 )
 
+
 def _status_clause(
     status: "str | list[str] | None",
     *,

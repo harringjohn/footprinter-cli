@@ -113,7 +113,8 @@ def _check_fda() -> Check:
     return Check(
         "fda",
         "WARN",
-        "Cannot read Safari History.db — grant Full Disk Access to your terminal in System Settings > Privacy & Security",
+        "Cannot read Safari History.db — grant Full Disk Access to your terminal in"
+        " System Settings > Privacy & Security",
     )
 
 
@@ -127,7 +128,8 @@ def _check_semantic_deps() -> Check:
     return Check(
         "semantic_deps",
         "WARN",
-        f"Optional semantic search dependencies not installed: {', '.join(missing)} — install with: pipx install --force 'footprinter-cli[full]'",
+        f"Optional semantic search dependencies not installed: {', '.join(missing)}"
+        " — install with: pipx install --force 'footprinter-cli[full]'",
     )
 
 
@@ -141,7 +143,8 @@ def _check_parse_deps() -> Check:
     return Check(
         "parse_deps",
         "WARN",
-        f"Optional parsing dependencies not installed: {', '.join(missing)} — install with: pipx install --force 'footprinter-cli[full]'",
+        f"Optional parsing dependencies not installed: {', '.join(missing)}"
+        " — install with: pipx install --force 'footprinter-cli[full]'",
     )
 
 

@@ -29,10 +29,9 @@ def main(argv=None) -> None:
 
     if argv is None:
         argv = _sys.argv[1:]
-    from footprinter.source_registry import ConfigError as _ConfigError
-
     from footprinter import __version__
     from footprinter.cli._common import FORMATTER
+    from footprinter.source_registry import ConfigError as _ConfigError
 
     parser = argparse.ArgumentParser(
         prog="fp",

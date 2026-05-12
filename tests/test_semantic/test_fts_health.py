@@ -100,7 +100,7 @@ class TestRepairFts:
         fts_db.conn.execute("DROP TABLE IF EXISTS chats_fts")
         fts_db.conn.commit()
 
-        result = fts_db.repair_fts()
+        fts_db.repair_fts()
 
         # Verify tables exist and have correct row counts
         for fts_table, expected in [("files_fts", 1), ("emails_fts", 1), ("chats_fts", 1)]:

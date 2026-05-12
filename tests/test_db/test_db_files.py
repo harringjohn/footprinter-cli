@@ -845,7 +845,7 @@ class TestPrefixMaps:
             " VALUES ('local', '/Users/john/Work/myproj', '/Work/myproj', 'myproj', ?)",
             (proj_id,),
         )
-        folder_id = cursor.lastrowid
+        cursor.lastrowid  # folder inserted for FK; ID not needed
         db.conn.commit()
 
         file_data = {

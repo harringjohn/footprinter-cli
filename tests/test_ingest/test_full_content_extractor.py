@@ -2,8 +2,6 @@
 
 import logging
 
-import pytest
-
 
 class TestVectorizeSizeGate:
     """The vectorize size cap protects against oversized files regardless of

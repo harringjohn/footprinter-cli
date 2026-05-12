@@ -715,7 +715,8 @@ def _ingest_import(args) -> None:
                 messages = result.get("messages_imported", 0)
                 errors = result.get("errors", 0)
                 console.print(
-                    f"[green]Imported[/green] {added + updated} chats ({added} new, {updated} updated), {messages} messages"
+                    f"[green]Imported[/green] {added + updated} chats"
+                    f" ({added} new, {updated} updated), {messages} messages"
                 )
                 if errors:
                     console.print(f"[yellow]Warning:[/yellow] {errors} chats failed to import")

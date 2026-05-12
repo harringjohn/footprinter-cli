@@ -24,6 +24,8 @@ from footprinter.cli._common import (
     open_db,
     output_json,
 )
+from footprinter.db.clients import VALID_STATUSES as VALID_CLIENT_STATUSES
+from footprinter.db.projects import VALID_STATUSES as VALID_PROJECT_STATUSES
 
 # ---------------------------------------------------------------------------
 # Entity dispatch table
@@ -51,9 +53,6 @@ ENTITY_MAP: dict[str, tuple[str, str, str]] = {
 # ---------------------------------------------------------------------------
 # Status validation — imported from db layer (single source of truth)
 # ---------------------------------------------------------------------------
-
-from footprinter.db.clients import VALID_STATUSES as VALID_CLIENT_STATUSES
-from footprinter.db.projects import VALID_STATUSES as VALID_PROJECT_STATUSES
 
 VALID_STATUSES_BY_ENTITY: dict[str, frozenset[str]] = {
     "client": VALID_CLIENT_STATUSES,

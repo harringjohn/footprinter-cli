@@ -210,7 +210,10 @@ class TestUninstallFlow:
         with (
             patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
             patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
-            patch("footprinter.cli.uninstall.shutil.which", side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None),
+            patch(
+                "footprinter.cli.uninstall.shutil.which",
+                side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None,
+            ),
             patch(
                 "footprinter.cli.uninstall.subprocess.run",
                 return_value=subprocess.CompletedProcess(args=[], returncode=0),
@@ -242,7 +245,10 @@ class TestUninstallFlow:
         with (
             patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
             patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_ask),
-            patch("footprinter.cli.uninstall.shutil.which", side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None),
+            patch(
+                "footprinter.cli.uninstall.shutil.which",
+                side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None,
+            ),
             patch(
                 "footprinter.cli.uninstall.subprocess.run",
                 return_value=subprocess.CompletedProcess(args=[], returncode=0),
@@ -305,7 +311,10 @@ class TestUninstallFlow:
         with (
             patch("footprinter.cli.uninstall.detect_config_path", return_value=fake_mcp_config),
             patch("footprinter.cli.uninstall.SafeConfirm.ask", side_effect=_confirm_yes),
-            patch("footprinter.cli.uninstall.shutil.which", side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None),
+            patch(
+                "footprinter.cli.uninstall.shutil.which",
+                side_effect=lambda x: "/usr/local/bin/pipx" if x == "pipx" else None,
+            ),
             patch(
                 "footprinter.cli.uninstall.subprocess.run",
                 side_effect=subprocess.CalledProcessError(1, ["pipx", "uninstall", "footprinter-cli"]),

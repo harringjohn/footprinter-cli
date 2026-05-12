@@ -543,7 +543,7 @@ class TestPerAccountDriveRows:
         output = _capture_print_status(_minimal_data(), health)
         # Should not have a bare "Google Drive" row without account name
         lines = output.split("\n")
-        bare_drive_lines = [l for l in lines if "Google Drive" in l and "personal" not in l and "work" not in l]
+        bare_drive_lines = [ln for ln in lines if "Google Drive" in ln and "personal" not in ln and "work" not in ln]
         assert len(bare_drive_lines) == 0
 
 
@@ -996,7 +996,7 @@ class TestDateFormatting:
         # Raw ISO should not appear in the rendered output
         assert "2025-07-01T12:00:00" not in chats_section, "Top Chats should use relative time, not raw ISO"
         # Should show relative time (e.g., "Xd ago" or a formatted date)
-        chat_line = next(l for l in chats_section.split("\n") if "Chat 1" in l)
+        chat_line = next(ln for ln in chats_section.split("\n") if "Chat 1" in ln)
         assert "ago" in chat_line or "2025-07-01" in chat_line, "Should show relative time or formatted date"
 
     def test_uploads_uses_relative_time(self):
@@ -1015,7 +1015,7 @@ class TestDateFormatting:
         output = _capture_print_status(data, _minimal_health())
         uploads_section = output[output.find("Recent Uploads") :]
         assert "2025-07-01T12:00:00" not in uploads_section, "Uploads should use relative time, not raw ISO"
-        upload_line = next(l for l in uploads_section.split("\n") if "export.json" in l)
+        upload_line = next(ln for ln in uploads_section.split("\n") if "export.json" in ln)
         assert "ago" in upload_line or "2025-07-01" in upload_line, "Should show relative time or formatted date"
 
 

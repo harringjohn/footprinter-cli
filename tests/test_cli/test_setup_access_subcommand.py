@@ -489,7 +489,7 @@ class TestWizardSeedStep:
         from tests.conftest import run_wizard_mocked
 
         mock_seed = MagicMock()
-        mocks = run_wizard_mocked(seed_access_policies=mock_seed)
+        run_wizard_mocked(seed_access_policies=mock_seed)
         mock_seed.assert_called_once()
 
 

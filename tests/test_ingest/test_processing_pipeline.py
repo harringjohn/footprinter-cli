@@ -6,7 +6,6 @@ Validates phase registration, skip guards, and runner dispatch.
 
 from unittest.mock import MagicMock
 
-
 import footprinter.ingest.processing as processing_module
 from footprinter.ingest.adapters.protocol import PipeResult, PipeStatus
 from footprinter.ingest.processing import (

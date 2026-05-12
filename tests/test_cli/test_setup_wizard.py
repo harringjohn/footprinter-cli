@@ -15,7 +15,7 @@ _requires_darwin = pytest.mark.skipif(
     reason="Full Disk Access / Safari is a macOS-only prerequisite",
 )
 
-from footprinter.cli.setup import (
+from footprinter.cli.setup import (  # noqa: E402
     SAFARI_FDA_URL,
     _check_semantic_deps,
     check_existing_config,
@@ -32,7 +32,7 @@ from footprinter.cli.setup import (
     validate_config,
     write_config,
 )
-from footprinter.paths import get_bundled_path
+from footprinter.paths import get_bundled_path  # noqa: E402
 
 
 def _extract_printed_text(mock_console) -> str:
@@ -1138,7 +1138,7 @@ class TestGoogleSubcommand:
 # Shared helper for wizard flow tests
 # Moved to conftest.py as run_wizard_mocked()
 # ---------------------------------------------------------------------------
-from tests.conftest import run_wizard_mocked
+from tests.conftest import run_wizard_mocked  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1323,7 +1323,7 @@ class TestConsolidatedDataLoad:
             confirm_calls.append(str(prompt))
             return original_return
 
-        mocks = run_wizard_mocked(
+        run_wizard_mocked(
             **{"Confirm.ask": track_confirm},
         )
         # Should have ONE data-load prompt containing "Index and analyze"
@@ -1606,7 +1606,7 @@ class TestChatImportPhaseMove:
         def track_preview(*a, **kw):
             call_order.append("preview_config")
 
-        mocks = run_wizard_mocked(
+        run_wizard_mocked(
             collect_chat_export_path=MagicMock(side_effect=track_collect),
             preview_config=MagicMock(side_effect=track_preview),
         )
@@ -1647,7 +1647,7 @@ class TestChatImportPhaseMove:
     def test_phase_5_imports_chat_without_reprompt(self):
         """When chat path collected in Phase 2, Phase 5 calls import_chat_export."""
         import_mock = MagicMock(return_value={"chats_added": 5})
-        mocks = run_wizard_mocked(
+        run_wizard_mocked(
             collect_chat_export_path=MagicMock(return_value="/tmp/export.zip"),
             import_chat_export=import_mock,
         )
@@ -1656,7 +1656,7 @@ class TestChatImportPhaseMove:
     def test_phase_5_skips_chat_when_no_path(self):
         """When no chat path collected, import_chat_export is not called."""
         import_mock = MagicMock(return_value={})
-        mocks = run_wizard_mocked(
+        run_wizard_mocked(
             collect_chat_export_path=MagicMock(return_value=None),
             import_chat_export=import_mock,
         )
@@ -1736,7 +1736,7 @@ class TestWizardGoogleRemoval:
     def test_wizard_orchestrator_no_drive_stages(self):
         """Orchestrator always gets google={} — wizard never passes Google config."""
         orchestrator_mock = MagicMock()
-        mocks = run_wizard_mocked(
+        run_wizard_mocked(
             run_orchestrator=orchestrator_mock,
         )
         orchestrator_mock.assert_called_once()

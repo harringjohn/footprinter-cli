@@ -447,7 +447,7 @@ class TestPipeContext:
 
         from footprinter.ingest.adapters import PipeContext
 
-        cb = lambda n: None
+        def cb(n): return None
         ctx = PipeContext(
             source_config={"directories": ["~/Work"]},
             config_path="/etc/fp.yaml",

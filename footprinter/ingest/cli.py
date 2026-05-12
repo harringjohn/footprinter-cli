@@ -675,7 +675,7 @@ def _rebuild_vectors(
 
         # Pre-flight validation
         try:
-            counts = _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode=mode)
+            _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode=mode)
         except RuntimeError as e:
             if console:
                 console.print(f"\n[bold red]Pre-flight failed:[/bold red] {e}")

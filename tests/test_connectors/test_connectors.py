@@ -530,7 +530,7 @@ class TestCmdListJson:
 
         from footprinter.cli.connect import _cmd_list
 
-        buf = StringIO()
+        _buf = StringIO()  # noqa: F841
         args = SimpleNamespace(json=True)
         config = {"google_drive": {"enabled": False}}
 
@@ -808,7 +808,7 @@ class TestConfigUtils:
 
 
 class TestRegisterConnectorSchema:
-    def _make_db(self, tables: dict[str, str]) -> "sqlite3.Connection":
+    def _make_db(self, tables: dict[str, str]) -> "sqlite3.Connection":  # noqa: F821
         """Create an in-memory DB with the given tables (name → column SQL)."""
         import sqlite3
 
@@ -876,7 +876,7 @@ class TestRegisterConnectorSchema:
 
 
 class TestInitConnectorSchemas:
-    def _make_db_with_folders(self) -> "sqlite3.Connection":
+    def _make_db_with_folders(self) -> "sqlite3.Connection":  # noqa: F821
         import sqlite3
 
         conn = sqlite3.connect(":memory:")

@@ -216,7 +216,7 @@ class TestPhaseIsolation:
         executed_sqls = [str(c) for c in mock_cursor.execute.call_args_list]
         file_queries = [s for s in executed_sqls if "FROM files" in s and "COUNT" not in s]
         msg_queries = [s for s in executed_sqls if "FROM messages message" in s]
-        chat_queries = [s for s in executed_sqls if "FROM chats\n" in s or "FROM chats " in s]
+        _chat_queries = [s for s in executed_sqls if "FROM chats\n" in s or "FROM chats " in s]  # noqa: F841
         assert len(file_queries) > 0, "File vectorization did not run"
         assert len(msg_queries) > 0, "Message vectorization did not run"
 
@@ -431,7 +431,7 @@ class TestProgressOutput:
         mock_chroma_path = MagicMock()
         mock_chroma_path.exists.return_value = False
 
-        output = StringIO()
+        _output = StringIO()  # noqa: F841
         with (
             patch("footprinter.ingest.cli.sqlite3") as mock_sqlite,
             patch("footprinter.ingest.cli.get_db_path", return_value="/tmp/test.db"),
@@ -1362,7 +1362,7 @@ class TestSyncVerifyChunkCounting:
         mock_store = MagicMock()
         mock_store.ef.return_value = [[0.1] * 384] * 10  # enough embeddings
 
-        result = _vectorize_messages(mock_conn, mock_cursor, mock_store, console=None, mode="full")
+        _vectorize_messages(mock_conn, mock_cursor, mock_store, console=None, mode="full")
 
         # Check UPDATE SQLs include vectorized_chunks
         update_calls = [

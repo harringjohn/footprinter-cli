@@ -22,7 +22,7 @@ sys.modules.setdefault("chromadb.utils.embedding_functions", _ef_mod)
 _onnx_mod = types.ModuleType("onnxruntime")
 sys.modules.setdefault("onnxruntime", _onnx_mod)
 
-from footprinter.semantic.hybrid_search import (
+from footprinter.semantic.hybrid_search import (  # noqa: E402
     chat_snippet,
     extract_snippet,
     fts5_fallback_search,

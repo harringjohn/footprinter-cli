@@ -19,7 +19,7 @@ sys.modules.setdefault("chromadb.utils.embedding_functions", _ef_mod)
 _onnx_mod = types.ModuleType("onnxruntime")
 sys.modules.setdefault("onnxruntime", _onnx_mod)
 
-from footprinter.semantic.chunking import chunk_content
+from footprinter.semantic.chunking import chunk_content  # noqa: E402
 
 
 class TestChunkDefaults:

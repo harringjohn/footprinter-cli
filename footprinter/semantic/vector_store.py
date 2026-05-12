@@ -59,7 +59,10 @@ class VectorStore:
 
     def __init__(self, chroma_path: Optional[str] = None):
         if not _semantic_available():
-            raise ImportError("Semantic search libraries required.\nInstall with: pip install footprinter-cli[semantic]")
+            raise ImportError(
+                "Semantic search libraries required.\n"
+                "Install with: pip install footprinter-cli[semantic]"
+            )
         self.chroma_path = Path(chroma_path) if chroma_path else get_chroma_path()
         self.chroma_path.mkdir(parents=True, exist_ok=True)
 

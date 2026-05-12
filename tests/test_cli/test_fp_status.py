@@ -237,8 +237,8 @@ class TestStatusTotals:
         assert "60" not in output  # must NOT include Drive file counts
         assert "23" not in output  # must NOT include Drive folder counts
         lines = output.splitlines()
-        total_files_line = next(l for l in lines if "Total files" in l)
-        total_folders_line = next(l for l in lines if "Total folders" in l)
+        total_files_line = next(ln for ln in lines if "Total files" in ln)
+        total_folders_line = next(ln for ln in lines if "Total folders" in ln)
         assert "10" in total_files_line
         assert "3" in total_folders_line
 
@@ -258,8 +258,8 @@ class TestStatusTotals:
 
         # Totals should include everything: 60 files, 23 folders
         lines = output.splitlines()
-        total_files_line = next(l for l in lines if "Total files" in l)
-        total_folders_line = next(l for l in lines if "Total folders" in l)
+        total_files_line = next(ln for ln in lines if "Total files" in ln)
+        total_folders_line = next(ln for ln in lines if "Total folders" in ln)
         assert "60" in total_files_line
         assert "23" in total_folders_line
 

@@ -166,7 +166,7 @@ class TestVectorStoreInit:
         VectorStore.reset_instance()
         mock_settings = MagicMock()
         with patch("chromadb.config.Settings", mock_settings):
-            s = VectorStore(chroma_path=str(tmp_path / "chroma"))
+            VectorStore(chroma_path=str(tmp_path / "chroma"))
         mock_settings.assert_called_with(anonymized_telemetry=False)
         VectorStore.reset_instance()
 
@@ -708,7 +708,7 @@ class TestSearchChats:
             patch("footprinter.semantic.hybrid_search.keyword_search", return_value=[]) as kw_mock,
             patch("footprinter.ingest.database.get_db_path", return_value="/tmp/test.db"),
         ):
-            results = store.search_chats("test query", min_score=0.0)
+            store.search_chats("test query", min_score=0.0)
         conv_col.query.assert_called_once()
         kw_mock.assert_called_once()
 

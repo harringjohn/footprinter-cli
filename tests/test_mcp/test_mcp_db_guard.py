@@ -45,7 +45,7 @@ class TestGetDbGuard:
         """Empty database (no tables) raises DatabaseNotInitializedError."""
         with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
             with pytest.raises(DatabaseNotInitializedError):
-                with get_db() as conn:
+                with get_db() as _conn:
                     pass
 
     def test_get_db_closes_connection_on_init_failure(self):
@@ -57,7 +57,7 @@ class TestGetDbGuard:
             patch("footprinter.mcp.db._check_db_initialized", side_effect=DatabaseNotInitializedError),
         ):
             with pytest.raises(DatabaseNotInitializedError):
-                with get_db() as conn:
+                with get_db() as _conn:
                     pass
         mock_conn.close.assert_called_once()
 

@@ -547,7 +547,7 @@ class TestInsertChatMessage:
 
         db = Database(temp_db)
         # Insert chat first (FK reference)
-        chat_id = chats_db.insert_chat(
+        chats_db.insert_chat(
             db.conn,
             {
                 "external_id": "conv-msg-test",

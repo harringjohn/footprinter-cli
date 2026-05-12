@@ -354,9 +354,9 @@ class TestFileScannerIntegration:
         scanner = FileScanner(config=mock_config)
 
         # Test exclusion
-        assert scanner.should_exclude("/test/.git/config") == True
-        assert scanner.should_exclude("/test/node_modules/pkg/index.js") == True
-        assert scanner.should_exclude("/test/src/main.py") == False
+        assert scanner.should_exclude("/test/.git/config") is True
+        assert scanner.should_exclude("/test/node_modules/pkg/index.js") is True
+        assert scanner.should_exclude("/test/src/main.py") is False
 
 
 class TestConfigFiltering:
