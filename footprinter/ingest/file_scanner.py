@@ -134,8 +134,14 @@ class FileScanner:
             return True  # No filter = support all
         return file_path.suffix.lower() in self.supported_extensions
 
-    def get_file_metadata(self, file_path: Path) -> Optional[Dict]:
-        """Extract file metadata."""
+    def get_file_metadata(self, file_path: Path, skip_hashing: bool = False) -> Optional[Dict]:
+        """Extract file metadata.
+
+        When ``skip_hashing`` is True, the expensive sha256/md5 reads are
+        skipped and the corresponding fields are returned as ``None``. Used
+        by ``fp ingest --preview`` (FPR-1723) where hashing dominates wall
+        clock on large trees and is unnecessary for a summary.
+        """
         try:
             stat = file_path.stat()
 
@@ -146,11 +152,15 @@ class FileScanner:
 
             file_path_str = str(file_path.absolute())
 
-            # Calculate both hashes:
-            # - SHA-256 for content deduplication
-            # - MD5 for Google Drive matching (Drive uses MD5)
-            sha256_hash = compute_sha256(file_path_str)
-            md5_hash = compute_md5(file_path_str)
+            if skip_hashing:
+                sha256_hash = None
+                md5_hash = None
+            else:
+                # Calculate both hashes:
+                # - SHA-256 for content deduplication
+                # - MD5 for Google Drive matching (Drive uses MD5)
+                sha256_hash = compute_sha256(file_path_str)
+                md5_hash = compute_md5(file_path_str)
 
             return {
                 "file_path": file_path_str,
@@ -170,12 +180,13 @@ class FileScanner:
             logger.error(f"Error reading metadata for {file_path}: {e}")
             return None
 
-    def scan_directory(self, directory: str) -> Generator[Dict, None, None]:
+    def scan_directory(self, directory: str, skip_hashing: bool = False) -> Generator[Dict, None, None]:
         """
         Scan directory and yield file metadata.
 
         Yields file metadata dictionaries for indexing.
         If since_datetime is set, only yields files modified after that time.
+        When ``skip_hashing`` is True, sha256/md5 are not computed (FPR-1723 preview).
         """
         directory_path = Path(directory).expanduser().resolve()
 
@@ -286,7 +297,7 @@ class FileScanner:
                             logger.debug("Could not check mtime for %s, processing anyway", file_path)
 
                     # Get metadata
-                    metadata = self.get_file_metadata(file_path)
+                    metadata = self.get_file_metadata(file_path, skip_hashing=skip_hashing)
                     if metadata:
                         file_count += 1
                         yield metadata
@@ -307,11 +318,15 @@ class FileScanner:
         else:
             logger.info(f"Scan complete: {file_count} files, {excluded_count} excluded, {error_count} errors")
 
-    def scan_all_directories(self) -> Generator[Dict, None, None]:
-        """Scan all configured directories (or only ``scan_roots`` when set)."""
+    def scan_all_directories(self, skip_hashing: bool = False) -> Generator[Dict, None, None]:
+        """Scan all configured directories (or only ``scan_roots`` when set).
+
+        ``skip_hashing`` propagates to ``scan_directory`` for the preview path
+        (FPR-1723), where the heavy md5/sha256 reads are unnecessary.
+        """
         directories = (
             self.scan_roots if self.scan_roots is not None else self.config.get("directories", [])
         )
 
         for directory in directories:
-            yield from self.scan_directory(directory)
+            yield from self.scan_directory(directory, skip_hashing=skip_hashing)
