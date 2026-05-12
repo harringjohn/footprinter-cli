@@ -562,6 +562,34 @@ class TestDriveFiles:
         assert row["status"] == "listed"
         db.close()
 
+    def test_insert_drive_file_uses_schema_defaults(self, temp_db):
+        """Guards FPR-1717: status + indexed_at + updated_at must come from
+        the schema DEFAULTs after the hardcoded literals are removed."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        self._seed_drive_source(db)
+
+        aid = files_db.insert_drive_file(
+            db.conn,
+            {
+                "source": "test_drive",
+                "external_id": "drive_defaults",
+                "account": "test_account",
+                "name": "x.pdf",
+                "path": "/Work/x.pdf",
+            },
+        )
+
+        row = db.conn.execute(
+            "SELECT status, indexed_at, updated_at FROM files WHERE id = ?",
+            (aid,),
+        ).fetchone()
+        assert row["status"] == "listed"
+        assert row["indexed_at"] is not None
+        assert row["updated_at"] is not None
+        db.close()
+
     def test_insert_drive_file_duplicate_updates(self, temp_db):
         from footprinter.ingest.database import Database
 
