@@ -104,6 +104,11 @@ vectorization:
     - .txt
     - .pdf
     - .docx
+  # Maximum file size (MB) eligible for vectorization. Applies even when
+  # indexing.max_file_size_mb is 0 (no limit). Chunking a multi-GB file
+  # produces millions of chunks and can OOM the host — this guardrail is
+  # always on. Skipped files appear in the post-ingest summary.
+  max_vectorize_size_mb: 100
   # Chunk size in characters — tuned for MiniLM-L6-v2 (256-token input window).
   # ~1000 chars ≈ 250 tokens. Larger chunks get silently truncated by the model,
   # meaning content past the window is invisible to semantic search.
