@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from footprinter.ingest.adapters.protocol import ErrorType, PipeResult
 
@@ -133,9 +133,15 @@ def run_vectorization(
 
     rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
 
-    counts = {"vectorized_new": 0, "vectorized_failed": 0, "vectorized_skipped_missing": 0}
+    counts = {
+        "vectorized_new": 0,
+        "vectorized_failed": 0,
+        "vectorized_skipped_missing": 0,
+        "vectorized_skipped_large": 0,
+    }
+    skipped_large_files: List[Dict[str, Any]] = []
     if not rows:
-        return PipeResult.completed("vectorization", **counts)
+        return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 
     try:
         store = VectorStore.get_instance()
@@ -149,6 +155,7 @@ def run_vectorization(
     from footprinter.source_registry import get_config
 
     extractor = FullContentExtractor.from_config(get_config())
+    vectorize_cap = getattr(extractor, "max_vectorize_size_bytes", 0)
 
     processed = 0
     failures: List[str] = []
@@ -161,6 +168,34 @@ def run_vectorization(
             if path is None or not path.exists():
                 counts["vectorized_skipped_missing"] += 1
                 continue
+            # Size-cap check before extraction so we can record the skip with size.
+            if vectorize_cap > 0:
+                try:
+                    file_size = path.stat().st_size
+                except OSError as stat_err:
+                    logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
+                    file_size = None
+                if file_size is not None and file_size > vectorize_cap:
+                    logger.info(
+                        f"Skipping vectorization of {path.name}: {file_size} bytes "
+                        f"exceeds cap of {vectorize_cap} bytes"
+                    )
+                    counts["vectorized_skipped_large"] += 1
+                    skipped_large_files.append({"path": str(path), "size_bytes": file_size})
+                    # Drop any prior vectors for this file_id so stale embeddings
+                    # don't linger when a previously-small file grows past the cap.
+                    try:
+                        store.delete_file(file_id)
+                    except Exception as e:  # Intentional broad catch: cleanup is best-effort
+                        logger.debug(f"delete_file failed for {file_id}: {e}")
+                    # Stamp vectorized_at with chunks=0 so the row is not re-evaluated
+                    # every incremental run. Upstream ingest clears vectorized_at on
+                    # file modification, so a shrunk file will be re-considered.
+                    db.conn.execute(
+                        "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = 0 WHERE id = ?",
+                        (file_id,),
+                    )
+                    continue
             chunks = extractor.extract_with_chunking(path)
             if not chunks:
                 counts["vectorized_skipped_missing"] += 1
@@ -186,9 +221,14 @@ def run_vectorization(
         return PipeResult.completed_with_errors(
             "vectorization",
             f"{len(failures)} file(s) failed to vectorize",
+            skipped_large_files=skipped_large_files,
             **counts,
         )
-    return PipeResult.completed("vectorization", **counts)
+    return PipeResult.completed(
+        "vectorization",
+        skipped_large_files=skipped_large_files,
+        **counts,
+    )
 
 
 # ---------------------------------------------------------------------------

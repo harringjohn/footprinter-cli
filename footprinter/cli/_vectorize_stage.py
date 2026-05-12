@@ -83,16 +83,31 @@ def run_vectorization_stage(*, quiet: bool = False) -> None:
         new = data.get("vectorized_new", 0)
         failed = data.get("vectorized_failed", 0)
         skipped_missing = data.get("vectorized_skipped_missing", 0)
+        skipped_large = data.get("vectorized_skipped_large", 0)
+        skipped_large_files = data.get("skipped_large_files") or []
         if status == "completed_with_errors" or failed:
             console.print(
                 f"  [yellow]⚠[/yellow] Deep Read: {new} embedded, {failed} failed, "
                 f"{skipped_missing} skipped"
+                + (f", {skipped_large} too large" if skipped_large else "")
             )
         else:
+            trail = ""
+            if skipped_missing:
+                trail += f", {skipped_missing} skipped"
+            if skipped_large:
+                trail += f", {skipped_large} too large"
+            console.print(f"  [green]✓[/green] Deep Read complete: {new} embedded" + trail)
+        if skipped_large_files:
+            from footprinter.cli._policy_helpers import abbreviate_home
+
             console.print(
-                f"  [green]✓[/green] Deep Read complete: {new} embedded"
-                + (f", {skipped_missing} skipped" if skipped_missing else "")
+                f"  [yellow]⚠[/yellow] Skipped {len(skipped_large_files)}"
+                f" file(s) over vectorize cap:"
             )
+            for entry in skipped_large_files:
+                size_mb = entry.get("size_bytes", 0) / (1024 * 1024)
+                console.print(f"      {size_mb:>7.1f} MB  {abbreviate_home(entry.get('path', ''))}")
     except Exception as e:  # Intentional broad catch: follow-up stage must not crash setup/ingest
         if progress is not None:
             progress.stop()
