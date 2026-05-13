@@ -140,7 +140,7 @@ def _safe_readline(password: bool = False) -> str:
                 raise PromptCancelled("Ctrl+D")
 
             if byte in (0x0D, 0x0A):  # Enter
-                sys.stdout.write("\n")
+                sys.stdout.write("\r\n")
                 sys.stdout.flush()
                 return "".join(buf)
 
