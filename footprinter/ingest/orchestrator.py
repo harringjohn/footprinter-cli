@@ -95,7 +95,7 @@ class DataPipelineOrchestrator:
         post = [p for p in pipes if p in POST_PIPES]
         if post:
             raise ValueError(f"{post[0]} is a post-processing stage, not a user-selectable pipe. Use 'fp ingest' or 'fp ingest --pipe <source>' to trigger it implicitly.")  # noqa: E501
-        return self._dispatch_pipes(pipes, on_pipe_start, on_pipe_end, on_progress, scan_roots=scan_roots)
+        return self._dispatch_pipes(pipes + list(POST_PIPES), on_pipe_start, on_pipe_end, on_progress, scan_roots=scan_roots)
 
     def run_refresh(self, source: str, on_pipe_start=None, on_pipe_end=None, on_progress=None) -> List[Dict]:
         """Execute a refresh group. Shares _dispatch_pipes with run_pipeline so POST_PIPES run inline."""
