@@ -654,8 +654,9 @@ def update_drive_folder_parents(conn: sqlite3.Connection, source: str, folder_ma
 def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
     """Refresh pre-computed file counts for all folders.
 
-    Uses folder_id FK for direct counts, then propagates totals up
-    the parent_folder_id hierarchy by processing from leaves to roots.
+    Uses folder_id FK for direct counts with a path-prefix fallback for
+    files where folder_id is NULL (FPR-1768). Propagates totals up the
+    parent_folder_id hierarchy by processing from leaves to roots.
 
     Returns stats about the refresh operation.
     """
@@ -666,11 +667,25 @@ def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
         UPDATE folders
         SET direct_file_count = COALESCE((
                 SELECT COUNT(*) FROM files file
-                WHERE file.folder_id = folders.id AND file.status = 'listed'
+                WHERE file.status = 'listed'
+                  AND (
+                      file.folder_id = folders.id
+                      OR (file.folder_id IS NULL
+                          AND file.source = folders.source
+                          AND file.path LIKE folders.path || '/%'
+                          AND file.path NOT LIKE folders.path || '/%/%')
+                  )
             ), 0),
             total_size_bytes = COALESCE((
                 SELECT SUM(file.size_bytes) FROM files file
-                WHERE file.folder_id = folders.id AND file.status = 'listed'
+                WHERE file.status = 'listed'
+                  AND (
+                      file.folder_id = folders.id
+                      OR (file.folder_id IS NULL
+                          AND file.source = folders.source
+                          AND file.path LIKE folders.path || '/%'
+                          AND file.path NOT LIKE folders.path || '/%/%')
+                  )
             ), 0)
     """
     )
