@@ -99,6 +99,56 @@ class TestOpenDb:
         assert "fp ingest" in output
 
 
+class TestOpenDbLoadsGlobals:
+    """Verify that open_db() populates the global visibility/permission cache."""
+
+    def test_global_visibility_loaded(self, tmp_path):
+        """open_db() populates _global_visibility from the database."""
+        from footprinter.services import access_service as _vis
+        from footprinter.services.access_service import resolve_inherit_visibility
+
+        db_path = tmp_path / "test_globals.db"
+        db = Database(str(db_path))
+        db.conn.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')"
+        )
+        db.conn.commit()
+        db.close()
+
+        old_vis, old_perm = _vis._global_visibility, _vis._global_permission
+        _vis._global_visibility = None
+        _vis._global_permission = None
+        try:
+            with open_db(db_path=db_path):
+                assert _vis._global_visibility == "visible"
+                assert resolve_inherit_visibility("inherit") == "visible"
+        finally:
+            _vis._global_visibility = old_vis
+            _vis._global_permission = old_perm
+
+    def test_global_permission_loaded(self, tmp_path):
+        """open_db() populates _global_permission from the database."""
+        from footprinter.services import access_service as _vis
+
+        db_path = tmp_path / "test_globals.db"
+        db = Database(str(db_path))
+        db.conn.execute(
+            "INSERT INTO permission_policies (scope, setting) VALUES ('global', 'allow')"
+        )
+        db.conn.commit()
+        db.close()
+
+        old_vis, old_perm = _vis._global_visibility, _vis._global_permission
+        _vis._global_visibility = None
+        _vis._global_permission = None
+        try:
+            with open_db(db_path=db_path):
+                assert _vis.has_global_permission() is True
+        finally:
+            _vis._global_visibility = old_vis
+            _vis._global_permission = old_perm
+
+
 class TestOpenDatabase:
     """Tests for the open_database() context manager."""
 

@@ -66,15 +66,25 @@ _global_permission: Optional[str] = None
 def load_globals(conn: sqlite3.Connection) -> None:
     """Read global visibility and permission policies and cache them.
 
-    Called once per MCP request (from ``get_db()``).  Two PK lookups.
+    Called once per request — from the MCP layer's ``get_db()`` and
+    the CLI layer's ``open_db()``.  Two PK lookups.
+
+    Tolerates missing policy tables (e.g. test databases with partial
+    schemas) by leaving the cache as ``None`` (baseline fallback).
     """
     global _global_visibility, _global_permission
 
-    row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
-    _global_visibility = row["setting"] if row else None
+    try:
+        row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        _global_visibility = row["setting"] if row else None
+    except sqlite3.OperationalError:
+        _global_visibility = None
 
-    row = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
-    _global_permission = row["setting"] if row else None
+    try:
+        row = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        _global_permission = row["setting"] if row else None
+    except sqlite3.OperationalError:
+        _global_permission = None
 
 
 def has_global_permission() -> bool:
