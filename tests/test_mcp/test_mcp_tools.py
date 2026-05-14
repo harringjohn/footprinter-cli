@@ -487,7 +487,10 @@ class TestFootprinterStatus:
 class TestContexterSearch:
     """Tests for footprinter_search (footprinter.mcp.tools.search)."""
 
-    _SCOPE_TO_TABLE = {"source:files": "files", "source:emails": "emails", "source:chats": "chats"}
+    _SCOPE_TO_TABLE = {
+        "source:files": "files", "source:emails": "emails",
+        "source:chats": "chats", "source:browser": "visits",
+    }
 
     def _set_visible(self, conn, *source_scopes):
         """Set visibility policies and stamp records as visible."""
@@ -842,6 +845,10 @@ class TestContexterSearch:
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'hidden')")
         mcp_db.commit()
 
+        from footprinter.access import recalculate_access
+
+        recalculate_access(mcp_db, "source:browser")
+
         with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__ = lambda s: mcp_db
             mock_get_db.return_value.__exit__ = lambda s, *args: None
@@ -850,7 +857,7 @@ class TestContexterSearch:
 
             result = footprinter_search("Example", sources=["browser"])
 
-        assert "browser" not in result
+        assert len(result.get("browser", [])) == 0
 
     def test_search_browser_opaque(self, mcp_db):
         cursor = mcp_db.cursor()
@@ -860,6 +867,10 @@ class TestContexterSearch:
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'opaque')")
         mcp_db.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(mcp_db, "source:browser")
 
         with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__ = lambda s: mcp_db
@@ -1470,7 +1481,10 @@ class TestContexterSearch:
 class TestContexterSearchFTS5:
     """Tests for FTS5 full-text search in footprinter_search."""
 
-    _SCOPE_TO_TABLE = {"source:files": "files", "source:emails": "emails", "source:chats": "chats"}
+    _SCOPE_TO_TABLE = {
+        "source:files": "files", "source:emails": "emails",
+        "source:chats": "chats", "source:browser": "visits",
+    }
 
     def _set_visible(self, conn, *source_scopes):
         """Set visibility policies and stamp records as visible."""
