@@ -41,7 +41,7 @@ def home_path() -> str:
 
 
 def remote_accounts() -> List[str]:
-    """Return list of remote (Drive) account names from config."""
+    """Return list of remote account names from config."""
     config = get_config()
     seeds = config.get("source_seeds", [])
     return [s["account"] for s in seeds if s.get("source_type") == "remote" and s.get("account")]

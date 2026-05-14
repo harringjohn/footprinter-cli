@@ -24,7 +24,7 @@ def read_file(
     *,
     format: Literal["text", "raw"] = "text",
 ) -> dict:
-    """Read file content from disk or Drive.
+    """Read file content from disk or a remote connector.
 
     Requires ``metadata`` from a prior ``gate_access()`` call (status ``ok``).
     Returns dict with ``status`` (``ok`` or error), ``content``, ``metadata``.

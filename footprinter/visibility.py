@@ -1,5 +1,5 @@
 """
-Visibility resolution for Claude metadata access.
+Visibility resolution for MCP client metadata access.
 
 Two-tier model:
   - Policies: Explicit rules (file:*, folder:*, source:*, project:*, client:*)
