@@ -603,7 +603,7 @@ class TestFatalErrorStopsPipeline:
             results = orchestrator.run_pipes(["browser", "chat"])
 
         # Pipeline should have continued past the runtime error (POST_PIPES also run)
-        assert len(results) >= 2
+        assert len(results) == 4
         assert results[0]["status"] == "error"
         assert results[1]["status"] == "completed"
 

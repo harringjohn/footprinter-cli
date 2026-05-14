@@ -85,13 +85,13 @@ class DataPipelineOrchestrator:
         return self.ingest_service.run_pipe(pipe, mode=mode, trigger="cli", runner=self.runner)
 
     def run_pipeline(self, pipeline_name: str, on_pipe_start=None, on_pipe_end=None, on_progress=None) -> List[Dict]:
-        """Execute all pipes in a named pipeline. Bypasses the user-facing post-pipe guard."""
+        """Execute all pipes in a named pipeline (POST_PIPES included via registry)."""
         if pipeline_name not in self.runner.pipelines:
             raise ValueError(f"Unknown pipeline: {pipeline_name}. Available: {', '.join(self.runner.pipelines.keys())}")
         return self._dispatch_pipes(self.runner.pipelines[pipeline_name], on_pipe_start, on_pipe_end, on_progress)
 
     def run_pipes(self, pipes: List[str], on_pipe_start=None, on_pipe_end=None, on_progress=None, scan_roots=None) -> List[Dict]:  # noqa: E501
-        """User-supplied pipe list. Rejects POST_PIPES. scan_roots (FPR-1624) scopes filesystem pipes."""
+        """User-supplied pipe list; rejects explicit POST_PIPES, auto-appends them before dispatch."""
         post = [p for p in pipes if p in POST_PIPES]
         if post:
             raise ValueError(f"{post[0]} is a post-processing stage, not a user-selectable pipe. Use 'fp ingest' or 'fp ingest --pipe <source>' to trigger it implicitly.")  # noqa: E501
