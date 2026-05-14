@@ -12,6 +12,10 @@ Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields,
 'visible' -> full.  'inherit' -> resolves to the global policy at query
 time (loaded by ``load_globals``).  Missing (None) -> treated as 'opaque'
 (fail-closed).
+
+Two-visibility-system: access_service reads the mcp_view and mcp_read
+values that the visibility pipeline computed at ingest time. It does not
+recompute visibility — it only gates access against pre-resolved columns.
 """
 
 import logging

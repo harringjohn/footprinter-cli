@@ -20,7 +20,7 @@ class FullContentExtractor(ContentExtractor):
     def __init__(
         self,
         chunk_size: int = 1000,
-        chunk_overlap: float = 0.15,
+        chunk_overlap: int = 150,
         max_file_size_bytes: int = 50 * 1024 * 1024,
         max_vectorize_size_bytes: int = 100 * 1024 * 1024,
         file_types: Optional[List[str]] = None,
@@ -31,8 +31,7 @@ class FullContentExtractor(ContentExtractor):
 
         Args:
             chunk_size: Size of each chunk in characters
-            chunk_overlap: Fractional overlap between chunks (0.0 to 1.0).
-                        Note: chunking.py uses absolute chars; this uses a fraction.
+            chunk_overlap: Character overlap between consecutive chunks.
             max_file_size_bytes: Maximum file size to read (0 = no limit)
             max_vectorize_size_bytes: Always-on cap specific to vectorization.
                 Applied even when ``max_file_size_bytes == 0``. 0 disables.
@@ -42,6 +41,9 @@ class FullContentExtractor(ContentExtractor):
         """
         super().__init__(max_preview_length=1000)  # Keep small preview for DB
         self.chunk_size = chunk_size
+        if isinstance(chunk_overlap, float) and chunk_overlap < 1.0:
+            logger.warning("chunk_overlap as float is deprecated; use int (character count)")
+            chunk_overlap = int(chunk_overlap * chunk_size)
         self.chunk_overlap = chunk_overlap
         self.max_file_size_bytes = max_file_size_bytes
         self.max_vectorize_size_bytes = max_vectorize_size_bytes
@@ -55,7 +57,8 @@ class FullContentExtractor(ContentExtractor):
         Reads ``config["indexing"]["max_file_size_mb"]`` (default 0 = no
         limit) and ``config["vectorization"]`` (chunk_size, chunk_overlap,
         file_types, exclude_patterns).  Missing vectorization keys fall back
-        to constructor defaults.
+        to constructor defaults.  Legacy float ``chunk_overlap`` values
+        (e.g. ``0.15``) are auto-converted to int by the constructor.
         """
         max_mb = config.get("indexing", {}).get("max_file_size_mb", 0)
         vec_config = config.get("vectorization", {})
@@ -82,48 +85,23 @@ class FullContentExtractor(ContentExtractor):
         Returns:
             List of chunk dictionaries with 'content', 'chunk_index', 'total_chunks'
         """
-        # Extract full content
+        from footprinter.semantic.chunking import chunk_content
+
         full_content = self._extract_full_content(file_path)
 
         if not full_content or len(full_content) == 0:
             return []
 
-        # If content is small enough, return single chunk
-        if len(full_content) <= self.chunk_size:
-            return [{"content": full_content, "chunk_index": 0, "total_chunks": 1}]
+        tuples = chunk_content(
+            full_content, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap
+        )
+        chunks = [
+            {"content": text, "chunk_index": idx, "total_chunks": total}
+            for text, idx, total in tuples
+        ]
 
-        # Split into chunks with overlap
-        chunks = []
-        overlap_size = int(self.chunk_size * self.chunk_overlap)
-
-        start = 0
-        chunk_index = 0
-
-        while start < len(full_content):
-            end = min(start + self.chunk_size, len(full_content))
-            chunk_text = full_content[start:end]
-
-            chunks.append(
-                {
-                    "content": chunk_text,
-                    "chunk_index": chunk_index,
-                    "total_chunks": 0,  # Will update after loop
-                }
-            )
-
-            # Move start forward, with overlap
-            if end >= len(full_content):
-                break
-            start = end - overlap_size
-            chunk_index += 1
-
-        # Update total_chunks count
-        total = len(chunks)
-        for chunk in chunks:
-            chunk["total_chunks"] = total
-
-        if total > 1:
-            logger.info(f"Split {file_path.name} into {total} chunks")
+        if len(chunks) > 1:
+            logger.info(f"Split {file_path.name} into {len(chunks)} chunks")
 
         return chunks
 

@@ -193,48 +193,11 @@ def update_chat_relationships(
     when the column exists (app-scope DBs only).
     Returns True on success, None if chat not found.
     """
-    cursor = conn.execute("SELECT id FROM chats WHERE id = ?", (chat_id,))
-    if cursor.fetchone() is None:
-        return None
+    from footprinter.db.sql_utils import update_entity_relationships
 
-    if project_id is not None and project_id != 0:
-        proj = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
-        if not proj:
-            raise ValueError(f"No project with id {project_id}")
-    if client_id is not None and client_id != 0:
-        cli = conn.execute("SELECT id FROM clients WHERE id = ?", (client_id,)).fetchone()
-        if not cli:
-            raise ValueError(f"No client with id {client_id}")
-
-    sets: list[str] = []
-    params: list = []
-    if project_id is not None:
-        if project_id == 0:
-            sets.append("project_id = NULL")
-        else:
-            sets.append("project_id = ?")
-            params.append(project_id)
-    if client_id is not None:
-        if client_id == 0:
-            sets.append("client_id = NULL")
-        else:
-            sets.append("client_id = ?")
-            params.append(client_id)
-    if not sets:
-        return True
-
-    sets.append("assignment_source = 'user'")
-    params.append(chat_id)
-    try:
-        conn.execute(f"UPDATE chats SET {', '.join(sets)} WHERE id = ?", params)
-    except sqlite3.OperationalError as e:
-        if "no such column" not in str(e):
-            raise
-        # assignment_source not present (tool-only DB)
-        sets.pop()
-        conn.execute(f"UPDATE chats SET {', '.join(sets)} WHERE id = ?", params)
-    conn.commit()
-    return True
+    return update_entity_relationships(
+        conn, "chats", chat_id, project_id=project_id, client_id=client_id
+    )
 
 
 # ---------------------------------------------------------------------------

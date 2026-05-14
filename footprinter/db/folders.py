@@ -417,46 +417,13 @@ def update_folder_relationships(
     when the column exists (app-scope DBs only), so auto-detection
     won't overwrite manual assignments.
     Returns True on success, or None if the folder does not exist.
-    Raises ValueError if *project_id* is given (and not 0) but doesn't exist.
+    Raises ValueError if *project_id* or *client_id* is given (and not 0) but doesn't exist.
     """
-    row = conn.execute("SELECT id FROM folders WHERE id = ?", (folder_id,)).fetchone()
-    if not row:
-        return None
+    from footprinter.db.sql_utils import update_entity_relationships
 
-    if project_id is not None and project_id != 0:
-        proj = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
-        if not proj:
-            raise ValueError(f"No project with id {project_id}")
-
-    sets: list[str] = []
-    params: list = []
-    if project_id is not None:
-        if project_id == 0:
-            sets.append("project_id = NULL")
-        else:
-            sets.append("project_id = ?")
-            params.append(project_id)
-    if client_id is not None:
-        if client_id == 0:
-            sets.append("client_id = NULL")
-        else:
-            sets.append("client_id = ?")
-            params.append(client_id)
-    if not sets:
-        return True
-
-    sets.append("assignment_source = 'user'")
-    params.append(folder_id)
-    try:
-        conn.execute(f"UPDATE folders SET {', '.join(sets)} WHERE id = ?", params)
-    except sqlite3.OperationalError as e:
-        if "no such column" not in str(e):
-            raise
-        # assignment_source not present (tool-only DB)
-        sets.pop()
-        conn.execute(f"UPDATE folders SET {', '.join(sets)} WHERE id = ?", params)
-    conn.commit()
-    return True
+    return update_entity_relationships(
+        conn, "folders", folder_id, project_id=project_id, client_id=client_id
+    )
 
 
 def cascade_client_id(
