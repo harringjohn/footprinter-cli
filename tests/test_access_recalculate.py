@@ -1155,3 +1155,52 @@ class TestRecalculateVisitScopeGap:
         assert "visit" not in stats
         rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
         assert all(r["mcp_view"] == "inherit" for r in rows)
+
+
+class TestWalkAncestorPolicies:
+    """Tests for the shared _walk_ancestor_policies helper."""
+
+    def test_finds_nearest_ancestor(self, conn):
+        """Walks up the chain and returns the grandparent's policy."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+
+        cur = conn.cursor()
+        result = _walk_ancestor_policies(
+            cur, 33, 32,
+            lambda scope: _get_policy(cur, scope),
+        )
+        assert result == ("hidden", "folder:30")
+
+    def test_stops_at_nearest(self, conn):
+        """When both parent and grandparent have policies, nearest wins."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'opaque')")
+        conn.commit()
+
+        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+
+        cur = conn.cursor()
+        result = _walk_ancestor_policies(
+            cur, 33, 32,
+            lambda scope: _get_policy(cur, scope),
+        )
+        assert result == ("opaque", "folder:32")
+
+    def test_no_ancestor_policy_returns_none(self, conn):
+        """When no ancestor has a policy, returns None."""
+        _seed_folder_hierarchy(conn)
+        conn.commit()
+
+        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+
+        cur = conn.cursor()
+        result = _walk_ancestor_policies(
+            cur, 33, 32,
+            lambda scope: _get_policy(cur, scope),
+        )
+        assert result is None

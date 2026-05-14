@@ -31,7 +31,7 @@ If an item is hidden or opaque, it cannot be read regardless of permission polic
 
 import os
 import sqlite3
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 from footprinter.db.policies import is_folder_path_scope
 from footprinter.db.sql_utils import chunked_query as _chunked_query
@@ -651,18 +651,12 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
             policies.append((_resolve(all_policies[item_scope]), item_scope))
         else:
             # 1b. Ancestor folder ID policies (nearest ancestor wins)
-            parent_id = row["parent_folder_id"]
-            visited = {folder_id}
-            while parent_id and parent_id not in visited:
-                visited.add(parent_id)
-                ancestor_scope = f"folder:{parent_id}"
-                if ancestor_scope in all_policies:
-                    policies.append((_resolve(all_policies[ancestor_scope]), ancestor_scope))
-                    break
-                parent_row = conn.execute(
-                    "SELECT parent_folder_id FROM folders WHERE id = ?", (parent_id,)
-                ).fetchone()
-                parent_id = parent_row["parent_folder_id"] if parent_row else None
+            result = _walk_ancestor_policies(
+                conn, folder_id, row["parent_folder_id"],
+                lambda scope: _resolve(all_policies.get(scope)),
+            )
+            if result:
+                policies.append(result)
 
         # 2. Folder prefix match
         path = row["path"] or ""
@@ -728,6 +722,28 @@ def _get_policy(cursor, scope: str) -> Optional[VisibilityState]:
     row = cursor.fetchone()
     if row:
         return _resolve(row["setting"])
+    return None
+
+
+def _walk_ancestor_policies(
+    cursor,
+    folder_id: int,
+    parent_folder_id: Optional[int],
+    lookup_policy: Callable[[str], Optional[VisibilityState]],
+) -> Optional[Tuple[VisibilityState, str]]:
+    """Walk up parent_folder_id chain, return (state, scope) of nearest ancestor with a policy."""
+    parent_id = parent_folder_id
+    visited = {folder_id}
+    while parent_id and parent_id not in visited:
+        visited.add(parent_id)
+        ancestor_scope = f"folder:{parent_id}"
+        policy = lookup_policy(ancestor_scope)
+        if policy is not None:
+            return (policy, ancestor_scope)
+        parent_row = cursor.execute(
+            "SELECT parent_folder_id FROM folders WHERE id = ?", (parent_id,)
+        ).fetchone()
+        parent_id = parent_row["parent_folder_id"] if parent_row else None
     return None
 
 
@@ -1047,18 +1063,12 @@ def _resolve_folder_visibility_with_source(cursor, folder_id: int) -> Tuple[Visi
         policies.append((item_policy, f"folder:{folder_id}"))
     else:
         # 1b. Ancestor folder ID policies (nearest ancestor wins)
-        parent_id = row["parent_folder_id"]
-        visited = {folder_id}
-        while parent_id and parent_id not in visited:
-            visited.add(parent_id)
-            ancestor_policy = _get_policy(cursor, f"folder:{parent_id}")
-            if ancestor_policy is not None:
-                policies.append((ancestor_policy, f"folder:{parent_id}"))
-                break
-            parent_row = cursor.execute(
-                "SELECT parent_folder_id FROM folders WHERE id = ?", (parent_id,)
-            ).fetchone()
-            parent_id = parent_row["parent_folder_id"] if parent_row else None
+        result = _walk_ancestor_policies(
+            cursor, folder_id, row["parent_folder_id"],
+            lambda scope: _get_policy(cursor, scope),
+        )
+        if result:
+            policies.append(result)
 
     # 2. Folder prefix match (most specific first)
     path = row["path"] or ""
