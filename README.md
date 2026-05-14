@@ -7,67 +7,52 @@
 
 Your work lives across filesystems, browsers, inboxes, chat histories, and other tools. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings you define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
 
-## Prerequisites
-
-- **Python 3.11 or newer.** Stock macOS ships with Python 3.9, which won't work — install a newer Python from [python.org](https://www.python.org/downloads/) (recommended) or via `brew install python@3.11`.
-- **macOS 13+** or **Linux**.
-- **Full Disk Access on macOS** for browser history indexing. Grant it to your terminal app under *System Settings → Privacy & Security → Full Disk Access*. `fp setup` will guide you through this when needed.
-
 ## Install
 
-The fastest path on a clean machine is the install script — it ensures Python 3.11+ is present and installs `footprinter-cli`:
+Requires **Python 3.11+** and **macOS 13+** or **Linux**. The install script checks your Python version and handles the rest:
 
 ```bash
-# Base install (CLI + MCP + HTTP API)
 curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install.sh | bash
-
-# Full install (adds semantic search + document parsing)
-curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install-full.sh | bash
 ```
 
-If you prefer to manage the install yourself, use **pipx** (recommended) — it isolates Footprinter and sidesteps the macOS install caveats noted below:
+Or install with **pipx** directly:
 
 ```bash
-brew install pipx
-pipx ensurepath           # then restart your terminal
 pipx install footprinter-cli
-pipx install 'footprinter-cli[full]'   # with semantic + parse
 ```
 
-> **macOS caveats for manual installs:**
-> - **zsh** treats `[...]` as a glob, so keep the single quotes around any bracketed extras specifier (e.g. `'footprinter-cli[full]'`). Without quotes you'll see `zsh: no matches found`.
-> - **System and Homebrew Python** ship with PEP 668 enabled, which blocks bare `pip install` outside a venv. Use pipx (above) instead.
-> - **python.org-distributed Python** doesn't enforce PEP 668, so a bare `pip install footprinter-cli` outside pipx or a venv may succeed but place `fp` in `/Library/Frameworks/Python.framework/Versions/<x.y>/bin`, which isn't on `PATH` by default. Use pipx (above) or the install script.
-
-Inside an existing venv, `pip` works as expected:
-
-```bash
-./venv/bin/pip install footprinter-cli
-./venv/bin/pip install 'footprinter-cli[full]'
-```
-
-The base install includes the indexing pipeline, CLI, MCP server, HTTP API, and token encryption. Optional extras add more:
+Either method gives you the `fp` command with the indexing pipeline, CLI, MCP server, and HTTP API. Optional extras add more:
 
 | Extra | What it adds |
 |-------|-------------|
 | `[semantic]` | Semantic search via ChromaDB + ONNX embeddings |
 | `[parse]` | PDF, Word, Excel, PowerPoint content extraction |
-| `[full]` | All optional extras (semantic + parse) |
+| `[full]` | Both of the above |
 
-> **Privacy note:** The `[semantic]` extra installs ChromaDB. Footprinter initializes
-> the ChromaDB client with `anonymized_telemetry=False`, so no telemetry is sent
-> regardless of which version pip resolves. ChromaDB also removed product telemetry
-> entirely in version 1.5.4. See
-> [Chroma OSS overview](https://docs.trychroma.com/docs/overview/oss) for details.
+To install with extras: use the [full install script](https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install-full.sh), or `pipx install 'footprinter-cli[full]'`.
+
+<details>
+<summary>Troubleshooting & alternative install methods</summary>
+
+**Python version:** Stock macOS ships Python 3.9. Install 3.11+ from [python.org](https://www.python.org/downloads/) or `brew install python@3.11`.
+
+**macOS caveats:**
+- zsh treats `[...]` as a glob — quote extras specifiers: `'footprinter-cli[full]'`
+- System/Homebrew Python blocks bare `pip install` (PEP 668) — use pipx or a venv instead
+
+**Inside an existing venv:** `pip install footprinter-cli` works as expected.
+
+**Full Disk Access:** Required for browser history indexing on macOS. `fp setup` will prompt you when needed.
+
+**ChromaDB telemetry:** Footprinter sets `anonymized_telemetry=False`. ChromaDB also removed product telemetry in v1.5.4. See [Chroma OSS overview](https://docs.trychroma.com/docs/overview/oss).
+
+</details>
 
 ### Uninstall
 
-`fp uninstall` cleans up the MCP entry and user data first, then run the appropriate package uninstall:
-
 ```bash
-fp uninstall                                    # remove MCP entry + user data
-pipx uninstall footprinter-cli                  # if you installed via pipx
-./venv/bin/pip uninstall footprinter-cli        # if you installed inside a venv
+fp uninstall                        # remove MCP entry + user data
+pipx uninstall footprinter-cli      # remove the package
 ```
 
 ## Quick Start
@@ -104,13 +89,11 @@ Once configured, Claude can search your files, browse projects, and find related
 | **Local files** | Path, type, size, timestamps, content hash |
 | **Browser history** | Safari and Chrome — URLs, titles, visit times |
 | **Chat exports** | Claude and ChatGPT conversation exports |
-| **Email** | Subject, sender, recipients, body, timestamps — ingested via [connector plugins](#connectors) |
+| **Email** | Subject, sender, recipients, body, timestamps |
 | **Documents** | PDF, Word, Excel, PowerPoint content (with `[parse]` extra) |
 | **Semantic embeddings** | Conceptual similarity across all sources (with `[semantic]` extra) |
 
 What lands in the database — and when — is controlled by the **content storage tier** you opt into. By default, Footprinter only indexes metadata; it does not read your file content until you explicitly enable it. See [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) for the full breakdown.
-
-Additional sources are available through [connector plugins](#connectors).
 
 ## CLI Commands
 
@@ -135,29 +118,11 @@ All commands use the `fp` entry point.
 
 Run `fp <command> --help` for full usage.
 
-## Connectors
-
-Connector plugins add external data sources like email, cloud storage, and third-party services. They install alongside Footprinter and register automatically:
-
-```bash
-pip install footprinter-<name>
-```
-
-First-party and community connectors are in development — check the repository for updates.
-
-Use `fp connect list` to see available connectors and their status.
-
 ## Architecture
 
 Single-process CLI with optional MCP server. SQLite database. No containers, no cloud, no accounts.
 
 Sources are scanned into SQLite with bidirectional links connecting local files to remote backups via content hash matching. Embeddings are generated at ingest time for semantic search. The MCP server exposes indexed data with two-layer access control (visibility + permissions) — you decide what agents can see.
-
-## Requirements
-
-- Python 3.11+
-- macOS 13+ or Linux
-- Full Disk Access on macOS (for browser history)
 
 ## Documentation
 
@@ -170,8 +135,6 @@ Sources are scanned into SQLite with bidirectional links connecting local files 
 ## Contributing
 
 Bug fixes, documentation, and tests welcome. For new features or architectural changes, [open an issue](https://github.com/harringjohn/footprinter-cli/issues) first to discuss the approach.
-
-Connector plugins use an internal API that isn't stable yet — we're not accepting connector contributions at this time.
 
 ### Development setup
 
