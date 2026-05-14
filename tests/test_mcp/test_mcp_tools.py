@@ -1526,7 +1526,7 @@ class TestContexterSearchFTS5:
             if isinstance(value, str):
                 assert "quarterly revenue" not in value, f"content_preview leaked via field '{key}'"
 
-    def test_artifact_search_matches_content_preview(self, mcp_db):
+    def test_artifact_search_matches_content_preview_visible(self, mcp_db):
         """Artifact with matching content_preview found via FTS5."""
         cursor = mcp_db.cursor()
         cursor.execute(

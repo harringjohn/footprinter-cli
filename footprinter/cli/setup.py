@@ -536,7 +536,10 @@ def check_optional_features(
 
     # Document Parsing (pypdf + python-docx + openpyxl + python-pptx)
     parse_installed = all(_is_importable(m) for m in ("pypdf", "docx", "openpyxl", "pptx"))
-    features.append(("Document Parsing", parse_installed, parse_installed or None, "pip install footprinter-cli[parse]"))
+    features.append((
+        "Document Parsing", parse_installed, parse_installed or None,
+        "pip install footprinter-cli[parse]",
+    ))
 
     # Connector-declared features (dynamic)
     from footprinter.connectors import discover_connectors

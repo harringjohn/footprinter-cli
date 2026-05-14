@@ -1166,7 +1166,7 @@ class TestWalkAncestorPolicies:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
         conn.commit()
 
-        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+        from footprinter.visibility import _get_policy, _walk_ancestor_policies
 
         cur = conn.cursor()
         result = _walk_ancestor_policies(
@@ -1182,7 +1182,7 @@ class TestWalkAncestorPolicies:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'opaque')")
         conn.commit()
 
-        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+        from footprinter.visibility import _get_policy, _walk_ancestor_policies
 
         cur = conn.cursor()
         result = _walk_ancestor_policies(
@@ -1196,7 +1196,7 @@ class TestWalkAncestorPolicies:
         _seed_folder_hierarchy(conn)
         conn.commit()
 
-        from footprinter.visibility import _walk_ancestor_policies, _get_policy
+        from footprinter.visibility import _get_policy, _walk_ancestor_policies
 
         cur = conn.cursor()
         result = _walk_ancestor_policies(

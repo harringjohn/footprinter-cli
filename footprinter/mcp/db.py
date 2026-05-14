@@ -1,10 +1,9 @@
 """Database connection for Footprinter MCP server."""
 
 import functools
+import sqlite3
 from contextlib import contextmanager
 from typing import Generator
-
-import sqlite3
 
 from footprinter.db_base import open_checked_connection
 from footprinter.mcp.errors import mcp_error

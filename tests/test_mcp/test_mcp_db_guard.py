@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from footprinter.mcp.db import get_db, handle_db_errors
-from footprinter.utils.exceptions import DatabaseNotInitializedError
 from footprinter.mcp.errors import ERROR_HINTS, ERROR_MESSAGES
 from footprinter.mcp.tools.navigation import (
     footprinter_client,
@@ -25,6 +24,7 @@ from footprinter.mcp.tools.read import footprinter_read
 from footprinter.mcp.tools.search import footprinter_search
 from footprinter.mcp.tools.semantic import footprinter_semantic
 from footprinter.mcp.tools.status import footprinter_status
+from footprinter.utils.exceptions import DatabaseNotInitializedError
 
 
 @pytest.fixture

@@ -2,8 +2,8 @@
 
 from unittest.mock import patch
 
-from footprinter.utils.exceptions import DatabaseNotInitializedError
 from footprinter.services.roles import Role
+from footprinter.utils.exceptions import DatabaseNotInitializedError
 
 
 # ---------------------------------------------------------------------------
