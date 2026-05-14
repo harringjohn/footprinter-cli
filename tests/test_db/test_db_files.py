@@ -344,6 +344,30 @@ class TestInsertFileUnchanged:
         assert second == ("updated", file_id)
         db.close()
 
+    def test_zero_byte_file_returns_unchanged(self, temp_db):
+        """0-byte files must hit the fast path — file_size=0 is valid, not falsy-None."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        first = files_db.insert_file(db.conn, self._payload(sha="abc", size=0))
+        assert first[0] == "inserted"
+        file_id = first[1]
+
+        cursor = db.conn.cursor()
+        cursor.execute("UPDATE files SET size_bytes = 0 WHERE id = ?", (file_id,))
+        db.conn.commit()
+
+        cursor.execute("SELECT updated_at FROM files WHERE id = ?", (file_id,))
+        updated_at_before = cursor.fetchone()["updated_at"]
+
+        second = files_db.insert_file(db.conn, self._payload(sha="abc", size=0))
+        assert second == ("unchanged", file_id)
+
+        cursor.execute("SELECT updated_at FROM files WHERE id = ?", (file_id,))
+        updated_at_after = cursor.fetchone()["updated_at"]
+        assert updated_at_after == updated_at_before, "unchanged path must not issue an UPDATE"
+        db.close()
+
 
 class TestFileStatus:
     """Test automatic status assignment in insert_file()."""
@@ -743,6 +767,105 @@ class TestModuleLevelFileWrites:
         path_map, project_map = build_folder_maps(db.conn)
         assert isinstance(path_map, dict)
         assert isinstance(project_map, dict)
+        db.close()
+
+
+class TestGetKnownLocalPaths:
+    """Test files_db.get_known_local_paths() for move detection (FPR-1691)."""
+
+    def test_returns_paths_of_listed_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        paths = ["/tmp/a.txt", "/tmp/b.txt", "/tmp/c.txt"]
+        for p in paths:
+            files_db.insert_file(
+                db.conn,
+                {
+                    "file_path": p,
+                    "file_name": p.split("/")[-1],
+                    "file_type": "txt",
+                    "file_size": 10,
+                },
+            )
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert result == set(paths)
+        db.close()
+
+    def test_excludes_removed_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        for p in ["/tmp/keep.txt", "/tmp/gone.txt"]:
+            files_db.insert_file(
+                db.conn,
+                {
+                    "file_path": p,
+                    "file_name": p.split("/")[-1],
+                    "file_type": "txt",
+                    "file_size": 10,
+                },
+            )
+        db.conn.execute("UPDATE files SET status = 'removed' WHERE path = '/tmp/gone.txt'")
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/tmp/keep.txt" in result
+        assert "/tmp/gone.txt" not in result
+        db.close()
+
+    def test_includes_unlisted_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/.env",
+                "file_name": ".env",
+                "file_type": "env",
+                "file_size": 10,
+            },
+        )
+        db.conn.commit()
+
+        # .env gets status='unlisted' automatically — verify it's still in known paths
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/tmp/.env" in result
+        db.close()
+
+    def test_excludes_non_local_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT OR IGNORE INTO sources (name, source_type, account, label, enabled)"
+            " VALUES ('test_drive', 'remote', 'test_account', 'Test Drive', 1)"
+        )
+        files_db.insert_drive_file(
+            db.conn,
+            {
+                "source": "test_drive",
+                "external_id": "drive_001",
+                "account": "test_account",
+                "name": "report.pdf",
+                "path": "/Work/report.pdf",
+            },
+        )
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/Work/report.pdf" not in result
+        db.close()
+
+    def test_empty_db_returns_empty_set(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        result = files_db.get_known_local_paths(db.conn)
+        assert result == set()
         db.close()
 
 

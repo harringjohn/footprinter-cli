@@ -15,8 +15,11 @@ def _minimal_config():
     return {"directories": [], "exclusions": {}, "indexing": {}}
 
 
-def _make_scanner(since: datetime | None = None) -> FileScanner:
-    return FileScanner(_minimal_config(), since_datetime=since)
+def _make_scanner(
+    since: datetime | None = None,
+    known_paths: set[str] | None = None,
+) -> FileScanner:
+    return FileScanner(_minimal_config(), since_datetime=since, known_paths=known_paths)
 
 
 # In Python 3.11, is_symlink() and resolve() both call Path.stat(),
@@ -133,3 +136,95 @@ class TestScanDirectoryOuter:
         with patch("os.walk", side_effect=RuntimeError("internal error")):
             with pytest.raises(RuntimeError, match="internal error"):
                 list(scanner.scan_directory(str(tmp_path)))
+
+
+# --- moved file detection (FPR-1691) ---
+
+
+class TestMovedFileDetection:
+    """FPR-1691: incremental ingest must detect files moved to new paths."""
+
+    def _set_mtime(self, path: Path, dt: datetime):
+        """Set file mtime to a specific datetime."""
+        import os
+        ts = dt.timestamp()
+        os.utime(path, (ts, ts))
+
+    def test_moved_file_yielded_when_not_in_known_paths(self, tmp_path):
+        """File with old mtime at unknown path → yielded (moved file)."""
+        f = tmp_path / "moved.txt"
+        f.write_text("content")
+        self._set_mtime(f, datetime(2024, 1, 1))
+
+        scanner = _make_scanner(
+            since=datetime(2025, 1, 1),
+            known_paths=set(),
+        )
+
+        results = list(scanner.scan_directory(str(tmp_path)))
+        paths = [r["file_path"] for r in results]
+        assert str(f.absolute()) in paths
+
+    def test_unchanged_file_skipped_when_in_known_paths(self, tmp_path):
+        """File with old mtime at known path → skipped (truly unchanged)."""
+        f = tmp_path / "known.txt"
+        f.write_text("content")
+        self._set_mtime(f, datetime(2024, 1, 1))
+
+        scanner = _make_scanner(
+            since=datetime(2025, 1, 1),
+            known_paths={str(f.absolute())},
+        )
+
+        results = list(scanner.scan_directory(str(tmp_path)))
+        paths = [r["file_path"] for r in results]
+        assert str(f.absolute()) not in paths
+
+    def test_known_paths_none_preserves_old_behavior(self, tmp_path):
+        """known_paths=None (full scan default) → old mtime files still skipped."""
+        f = tmp_path / "old.txt"
+        f.write_text("content")
+        self._set_mtime(f, datetime(2024, 1, 1))
+
+        scanner = _make_scanner(
+            since=datetime(2025, 1, 1),
+            known_paths=None,
+        )
+
+        results = list(scanner.scan_directory(str(tmp_path)))
+        paths = [r["file_path"] for r in results]
+        assert str(f.absolute()) not in paths
+
+    def test_modified_file_yielded_regardless_of_known_paths(self, tmp_path):
+        """File with new mtime → yielded regardless of known_paths."""
+        f = tmp_path / "new.txt"
+        f.write_text("content")
+        # mtime is now (after since), so mtime filter doesn't apply
+
+        scanner = _make_scanner(
+            since=datetime(2020, 1, 1),
+            known_paths=set(),
+        )
+
+        results = list(scanner.scan_directory(str(tmp_path)))
+        paths = [r["file_path"] for r in results]
+        assert str(f.absolute()) in paths
+
+    def test_moved_count_in_log(self, tmp_path, caplog):
+        """Scan summary should include moved file count."""
+        f = tmp_path / "moved_log.txt"
+        f.write_text("content")
+        self._set_mtime(f, datetime(2024, 1, 1))
+
+        scanner = _make_scanner(
+            since=datetime(2025, 1, 1),
+            known_paths=set(),
+        )
+
+        with caplog.at_level(logging.INFO, logger="footprinter.ingest.file_scanner"):
+            list(scanner.scan_directory(str(tmp_path)))
+
+        info_msgs = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert any("moved" in m.lower() for m in info_msgs), (
+            f"Expected 'moved' in scan summary log; got: {info_msgs}"
+        )

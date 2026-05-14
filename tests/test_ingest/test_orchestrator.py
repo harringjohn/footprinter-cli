@@ -300,6 +300,48 @@ class TestOrchestratorStageExecution:
         assert "access_resolution" in dispatched
         assert any(r["stage"] == "access_resolution" for r in results)
 
+    def test_run_pipes_appends_post_pipes(self, temp_dir):
+        """run_pipes() auto-appends POST_PIPES after user-specified pipes (FPR-1690)."""
+        from footprinter.ingest.orchestrator import DataPipelineOrchestrator
+        from footprinter.ingest.registry import POST_PIPES
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text("directories: ['~/Work']")
+
+        orchestrator = DataPipelineOrchestrator(config_path=str(config_path))
+
+        dispatched: list = []
+
+        def fake_dispatch(pipes, *args, **kwargs):
+            dispatched.extend(pipes)
+            return [{"stage": p, "status": "completed"} for p in pipes]
+
+        with patch.object(orchestrator, "_dispatch_pipes", side_effect=fake_dispatch):
+            orchestrator.run_pipes(["local_files"])
+
+        assert dispatched == ["local_files"] + list(POST_PIPES)
+
+    def test_run_pipes_appends_post_pipes_multiple_sources(self, temp_dir):
+        """run_pipes() with multiple sources appends POST_PIPES after all of them (FPR-1690)."""
+        from footprinter.ingest.orchestrator import DataPipelineOrchestrator
+        from footprinter.ingest.registry import POST_PIPES
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text("directories: ['~/Work']")
+
+        orchestrator = DataPipelineOrchestrator(config_path=str(config_path))
+
+        dispatched: list = []
+
+        def fake_dispatch(pipes, *args, **kwargs):
+            dispatched.extend(pipes)
+            return [{"stage": p, "status": "completed"} for p in pipes]
+
+        with patch.object(orchestrator, "_dispatch_pipes", side_effect=fake_dispatch):
+            orchestrator.run_pipes(["local_files", "browser"])
+
+        assert dispatched == ["local_files", "browser"] + list(POST_PIPES)
+
     def test_run_refresh_dispatches_source_pipes_with_post_processing(self, temp_dir):
         """run_refresh() executes data-source pipes AND POST_PIPES, bypassing the user-facing post-pipe guard."""
         from footprinter.ingest.orchestrator import DataPipelineOrchestrator
@@ -560,8 +602,8 @@ class TestFatalErrorStopsPipeline:
         with patch.object(orchestrator.runner, "run_pipe", side_effect=mock_run_stage):
             results = orchestrator.run_pipes(["browser", "chat"])
 
-        # Pipeline should have continued past the runtime error
-        assert len(results) == 2
+        # Pipeline should have continued past the runtime error (POST_PIPES also run)
+        assert len(results) == 4
         assert results[0]["status"] == "error"
         assert results[1]["status"] == "completed"
 
