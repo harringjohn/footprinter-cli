@@ -90,14 +90,10 @@ class PipeRunner:
                     scan_roots=scan_roots,
                 )
                 pipe_result = adapter.run(db, ctx)
-                elapsed = (datetime.now() - start_time).total_seconds()
-                pipe_result.elapsed_seconds = round(elapsed, 1)
                 result = pipe_result.to_dict()
             elif self.processing.is_processing_pipe(pipe):
                 db = self._get_db()
                 pipe_result = self.processing.run_phase(pipe, db)
-                elapsed = (datetime.now() - start_time).total_seconds()
-                pipe_result.elapsed_seconds = round(elapsed, 1)
                 result = pipe_result.to_dict()
             else:
                 # Check if this pipe belongs to an uninstalled connector
@@ -116,9 +112,6 @@ class PipeRunner:
                         "status": "error",
                         "error": f"Unknown pipe: {pipe}",
                     }
-
-            result["stage"] = pipe
-            result["status"] = result.get("status", "completed")
 
         except ImportError as e:
             logger.warning(f"Pipe {pipe} skipped — missing dependency: {e}")

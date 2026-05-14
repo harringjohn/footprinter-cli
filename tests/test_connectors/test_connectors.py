@@ -1156,6 +1156,7 @@ class TestContentServiceRemoteDispatch:
             config_sections=(),
             setup_hook="os.getcwd",
             remove_packages=(),
+            seed_prefix="remote",
             read_file="fake_module.read_bytes",
         )
 
@@ -1174,3 +1175,199 @@ class TestContentServiceRemoteDispatch:
 
         mock_read.assert_called_once_with("ext123", "work", "text/plain")
         assert result == b"file content"
+
+    def test_routes_to_correct_connector_by_source(self):
+        from unittest.mock import MagicMock, patch
+
+        spec_a = ConnectorSpec(
+            name="alpha_connector",
+            extra="alpha",
+            description="Alpha",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha",
+            read_file="alpha_mod.read_bytes",
+        )
+        spec_b = ConnectorSpec(
+            name="beta_connector",
+            extra="beta",
+            description="Beta",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="beta",
+            read_file="beta_mod.read_bytes",
+        )
+
+        mock_read_a = MagicMock(return_value=b"alpha data")
+        mock_read_b = MagicMock(return_value=b"beta data")
+
+        def fake_resolve(path):
+            if path == "alpha_mod.read_bytes":
+                return mock_read_a
+            if path == "beta_mod.read_bytes":
+                return mock_read_b
+            return None
+
+        connectors = {"alpha": spec_a, "beta": spec_b}
+
+        with (
+            patch("footprinter.connectors.discover_connectors", return_value=connectors),
+            patch("footprinter.connectors.resolve_hook", side_effect=fake_resolve),
+            patch("footprinter.connectors.is_installed", return_value=True),
+        ):
+            from footprinter.services.content_service import _read_remote_file_bytes
+
+            result = _read_remote_file_bytes("beta_work", "ext1", "work", "text/plain")
+
+        mock_read_b.assert_called_once_with("ext1", "work", "text/plain")
+        mock_read_a.assert_not_called()
+        assert result == b"beta data"
+
+    def test_returns_none_when_no_connector_matches_source(self):
+        from unittest.mock import MagicMock, patch
+
+        spec = ConnectorSpec(
+            name="alpha_connector",
+            extra="alpha",
+            description="Alpha",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha",
+            read_file="alpha_mod.read_bytes",
+        )
+
+        mock_read = MagicMock(return_value=b"alpha data")
+
+        with (
+            patch("footprinter.connectors.discover_connectors", return_value={"alpha": spec}),
+            patch("footprinter.connectors.resolve_hook", return_value=mock_read),
+            patch("footprinter.connectors.is_installed", return_value=True),
+        ):
+            from footprinter.services.content_service import _read_remote_file_bytes
+
+            result = _read_remote_file_bytes("unknown_work", "ext1", "work", "text/plain")
+
+        assert result is None
+        mock_read.assert_not_called()
+
+    def test_returns_none_when_matched_connector_not_installed(self):
+        from unittest.mock import MagicMock, patch
+
+        spec = ConnectorSpec(
+            name="alpha_connector",
+            extra="alpha",
+            description="Alpha",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha",
+            read_file="alpha_mod.read_bytes",
+        )
+
+        mock_read = MagicMock()
+
+        with (
+            patch("footprinter.connectors.discover_connectors", return_value={"alpha": spec}),
+            patch("footprinter.connectors.resolve_hook", return_value=mock_read),
+            patch("footprinter.connectors.is_installed", return_value=False),
+        ):
+            from footprinter.services.content_service import _read_remote_file_bytes
+
+            result = _read_remote_file_bytes("alpha_work", "ext1", "work", "text/plain")
+
+        assert result is None
+        mock_read.assert_not_called()
+
+    def test_prefix_collision_routes_to_longer_prefix(self):
+        from unittest.mock import MagicMock, patch
+
+        spec_short = ConnectorSpec(
+            name="alpha_connector",
+            extra="alpha",
+            description="Alpha",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha",
+            read_file="alpha_mod.read_bytes",
+        )
+        spec_long = ConnectorSpec(
+            name="alpha2_connector",
+            extra="alpha2",
+            description="Alpha2",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha2",
+            read_file="alpha2_mod.read_bytes",
+        )
+
+        mock_read_short = MagicMock(return_value=b"alpha data")
+        mock_read_long = MagicMock(return_value=b"alpha2 data")
+
+        def fake_resolve(path):
+            if path == "alpha_mod.read_bytes":
+                return mock_read_short
+            if path == "alpha2_mod.read_bytes":
+                return mock_read_long
+            return None
+
+        connectors = {"alpha": spec_short, "alpha2": spec_long}
+
+        with (
+            patch("footprinter.connectors.discover_connectors", return_value=connectors),
+            patch("footprinter.connectors.resolve_hook", side_effect=fake_resolve),
+            patch("footprinter.connectors.is_installed", return_value=True),
+        ):
+            from footprinter.services.content_service import _read_remote_file_bytes
+
+            result = _read_remote_file_bytes("alpha2_work", "ext1", "work", "text/plain")
+
+        mock_read_long.assert_called_once_with("ext1", "work", "text/plain")
+        mock_read_short.assert_not_called()
+        assert result == b"alpha2 data"
+
+    def test_returns_none_when_matched_connector_has_no_read_file(self):
+        from unittest.mock import MagicMock, patch
+
+        spec = ConnectorSpec(
+            name="alpha_connector",
+            extra="alpha",
+            description="Alpha",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+            seed_prefix="alpha",
+            read_file="",
+        )
+
+        mock_resolve = MagicMock()
+
+        with (
+            patch("footprinter.connectors.discover_connectors", return_value={"alpha": spec}),
+            patch("footprinter.connectors.resolve_hook", mock_resolve),
+            patch("footprinter.connectors.is_installed", return_value=True),
+        ):
+            from footprinter.services.content_service import _read_remote_file_bytes
+
+            result = _read_remote_file_bytes("alpha_work", "ext1", "work", "text/plain")
+
+        assert result is None
+        mock_resolve.assert_not_called()
