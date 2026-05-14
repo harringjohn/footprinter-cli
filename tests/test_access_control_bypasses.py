@@ -75,14 +75,14 @@ class TestProjectEntity:
     def test_hidden_project_not_found(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_project
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_project("Hidden Project")
         assert result.get("error") is not None, "Hidden project should return error"
 
     def test_opaque_project_minimal_fields(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_project
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_project("Opaque Project")
         assert "error" not in result
         # Should only contain opaque fields
@@ -92,7 +92,7 @@ class TestProjectEntity:
     def test_visible_project_full_fields(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_project
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_project("Visible Project")
         assert "error" not in result
         assert "project_name" in result or "root_path" in result
@@ -109,14 +109,14 @@ class TestClientEntity:
     def test_hidden_client_not_found(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_client
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_client("Hidden Client")
         assert result.get("error") is not None, "Hidden client should return error"
 
     def test_opaque_client_minimal_fields(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_client
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_client("Opaque Client")
         assert "error" not in result
         for key in result:
@@ -125,7 +125,7 @@ class TestClientEntity:
     def test_visible_client_full_fields(self, bypass_db):
         from footprinter.mcp.tools.navigation import footprinter_client
 
-        with patch("footprinter.mcp.db.get_db_path", return_value=bypass_db):
+        with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_client("Visible Client")
         assert "error" not in result
         assert "name" in result
