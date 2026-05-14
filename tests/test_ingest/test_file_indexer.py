@@ -796,3 +796,51 @@ class TestInsertBatchPerFileLogging:
         assert not any("~/etc/something.conf" in m for m in messages), (
             f"path outside $HOME should not gain a ~/ prefix; got {messages}"
         )
+
+
+class TestMovedFileWiring:
+    """FPR-1691: FileIndexer loads known paths and passes them to FileScanner."""
+
+    def test_incremental_passes_known_paths_to_scanner(self):
+        """FileIndexer(last_run=datetime) loads known paths and passes them to FileScanner."""
+        from datetime import datetime
+
+        from footprinter.ingest.file_indexer import FileIndexer
+
+        cutoff = datetime(2026, 4, 1, 12, 0, 0)
+        fake_paths = {"/tmp/a.txt", "/tmp/b.txt"}
+
+        with (
+            patch("footprinter.ingest.file_indexer.get_config") as mock_gc,
+            patch("footprinter.ingest.file_indexer.Database"),
+            patch("footprinter.ingest.file_indexer.FileScanner") as MockScanner,
+            patch("footprinter.ingest.file_indexer.ContentExtractor"),
+            patch("footprinter.ingest.file_indexer.files_db.get_known_local_paths", return_value=fake_paths),
+        ):
+            mock_gc.return_value = {"scan_directories": []}
+
+            FileIndexer(last_run=cutoff)
+
+            MockScanner.assert_called_once()
+            _, kwargs = MockScanner.call_args
+            assert kwargs["known_paths"] == fake_paths
+
+    def test_full_scan_passes_none_known_paths(self):
+        """FileIndexer(last_run=None) passes known_paths=None — no DB query needed."""
+        from footprinter.ingest.file_indexer import FileIndexer
+
+        with (
+            patch("footprinter.ingest.file_indexer.get_config") as mock_gc,
+            patch("footprinter.ingest.file_indexer.Database"),
+            patch("footprinter.ingest.file_indexer.FileScanner") as MockScanner,
+            patch("footprinter.ingest.file_indexer.ContentExtractor"),
+            patch("footprinter.ingest.file_indexer.files_db.get_known_local_paths") as mock_known,
+        ):
+            mock_gc.return_value = {"scan_directories": []}
+
+            FileIndexer(last_run=None)
+
+            mock_known.assert_not_called()
+            MockScanner.assert_called_once()
+            _, kwargs = MockScanner.call_args
+            assert kwargs.get("known_paths") is None

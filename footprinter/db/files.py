@@ -751,3 +751,11 @@ def mark_removed_files(conn: sqlite3.Connection, indexed_paths: set) -> List[int
         conn.commit()
 
     return removed_ids
+
+
+def get_known_local_paths(conn: sqlite3.Connection) -> set[str]:
+    """Return paths of all non-removed local files for move detection."""
+    cursor = conn.execute(
+        "SELECT path FROM files WHERE source = 'local' AND status != 'removed'"
+    )
+    return {row["path"] for row in cursor.fetchall()}
