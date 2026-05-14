@@ -1,6 +1,6 @@
 """Browser adapter.
 
-Wraps BrowserManager to conform to PipeAdapter protocol.
+Wraps BrowserIndexer to conform to PipeAdapter protocol.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from typing import Any, Dict, List
 from footprinter.db import browser as browser_db
 from footprinter.ingest.adapters.ingest import ingest_entries
 from footprinter.ingest.adapters.protocol import ErrorType, PipeContext, PipeResult
-from footprinter.ingest.browser_indexer import BrowserManager
+from footprinter.ingest.browser_indexer import BrowserIndexer
 
 logger = logging.getLogger(__name__)
 
 
 class BrowserAdapter:
-    """Adapter wrapping BrowserManager for the browser stage."""
+    """Adapter wrapping BrowserIndexer for the browser stage."""
 
     name = "browser"
     pipe_name = "browser"
@@ -28,7 +28,7 @@ class BrowserAdapter:
         """Index browser history into visits table."""
         try:
             last_run = None if ctx.full_mode else ctx.last_run
-            manager = BrowserManager(ctx.source_config, since=last_run)
+            manager = BrowserIndexer(ctx.source_config, since=last_run)
             result = ingest_entries(
                 "browser",
                 manager.parse_all(),

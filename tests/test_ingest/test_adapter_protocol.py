@@ -260,7 +260,7 @@ class TestBrowserAdapterProtocol:
         assert adapter.required_extras == []
 
     @patch("footprinter.ingest.adapters.browser.browser_db.insert_visit")
-    @patch("footprinter.ingest.adapters.browser.BrowserManager")
+    @patch("footprinter.ingest.adapters.browser.BrowserIndexer")
     def test_browser_adapter_run_returns_stage_result(self, MockManager, mock_insert):
         from footprinter.ingest.adapters import PipeContext, PipeResult, PipeStatus
         from footprinter.ingest.adapters.browser import BrowserAdapter
@@ -281,7 +281,7 @@ class TestBrowserAdapterProtocol:
         assert mock_insert.call_count == 2
 
     @patch("footprinter.ingest.adapters.browser.browser_db.insert_visit")
-    @patch("footprinter.ingest.adapters.browser.BrowserManager")
+    @patch("footprinter.ingest.adapters.browser.BrowserIndexer")
     def test_browser_adapter_run_with_errors(self, MockManager, mock_insert):
         from footprinter.ingest.adapters import PipeContext, PipeStatus
         from footprinter.ingest.adapters.browser import BrowserAdapter
@@ -385,9 +385,9 @@ class TestChatAdapterProtocol:
 
 
 class TestBrowserAdapterLastRun:
-    """BrowserAdapter extracts last_run from PipeContext and passes to BrowserManager."""
+    """BrowserAdapter extracts last_run from PipeContext and passes to BrowserIndexer."""
 
-    @patch("footprinter.ingest.adapters.browser.BrowserManager")
+    @patch("footprinter.ingest.adapters.browser.BrowserIndexer")
     def test_adapter_passes_last_run_to_manager(self, MockManager):
         from datetime import datetime
 
@@ -406,7 +406,7 @@ class TestBrowserAdapterLastRun:
 
         MockManager.assert_called_once_with(ctx.source_config, since=cutoff)
 
-    @patch("footprinter.ingest.adapters.browser.BrowserManager")
+    @patch("footprinter.ingest.adapters.browser.BrowserIndexer")
     def test_adapter_full_mode_ignores_last_run(self, MockManager):
         from datetime import datetime
 
@@ -425,7 +425,7 @@ class TestBrowserAdapterLastRun:
 
         MockManager.assert_called_once_with(ctx.source_config, since=None)
 
-    @patch("footprinter.ingest.adapters.browser.BrowserManager")
+    @patch("footprinter.ingest.adapters.browser.BrowserIndexer")
     def test_adapter_no_last_run_passes_none(self, MockManager):
         from footprinter.ingest.adapters.browser import BrowserAdapter
         from footprinter.ingest.adapters.protocol import PipeContext
