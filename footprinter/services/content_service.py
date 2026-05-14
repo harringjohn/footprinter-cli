@@ -157,16 +157,26 @@ def _read_remote_file_bytes(
     from footprinter.connectors import discover_connectors, is_installed, resolve_hook
 
     for name, spec in discover_connectors().items():
-        if not is_installed(spec) or not spec.read_file:
+        if not spec.seed_prefix or not source.startswith(spec.seed_prefix + "_"):
             continue
+        # Single-match: each source maps to exactly one connector via seed_prefix.
+        if not is_installed(spec) or not spec.read_file:
+            logger.error(
+                "Connector %s matches source=%s but is not installed or has no read_file hook",
+                name,
+                source,
+            )
+            return None
         try:
             fn = resolve_hook(spec.read_file)
             if fn:
                 return fn(external_id, account, mime_type)
+            logger.error("read_file hook for connector %s resolved to None", name)
         except Exception:
-            logger.warning("read_file hook failed for connector %s", name, exc_info=True)
+            logger.error("read_file hook failed for connector %s", name, exc_info=True)
+        return None
 
-    logger.error("No connector provides read_file for source=%s", source)
+    logger.error("No connector matches source=%s", source)
     return None
 
 
