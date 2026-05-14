@@ -749,8 +749,8 @@ def _ingest_refresh(args) -> None:
     mode_str = "full" if orchestrator.full_mode else "incremental"
 
     try:
-        # Route through orchestrator.run_refresh so access_resolution (a POST_PIPE)
-        # runs inline — run_pipes rejects POST_PIPES by design.
+        # Route through orchestrator.run_refresh so it uses the registry's
+        # source-scoped pipe list rather than requiring the caller to enumerate pipes.
         _run_with_logging(
             orchestrator,
             refresh_source=source,
