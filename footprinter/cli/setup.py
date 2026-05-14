@@ -1837,7 +1837,7 @@ def seed_access_policies() -> dict:
             )
         else:
             console.print("\n[bold]MCP access policies[/bold]: already configured")
-        console.print("  [dim]Manage with: fp mcp view show | fp mcp read show[/dim]")
+        console.print("  [dim]Manage with: fp mcp check[/dim]")
 
         # Explain what the defaults mean
         console.print("\n  [dim]Visible[/dim] = Claude can see file names, sizes, and paths")
