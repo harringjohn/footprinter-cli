@@ -219,36 +219,7 @@ def register(subparsers) -> None:
     subs = parser.add_subparsers(dest="setup_action", metavar="COMMAND", title="commands (one required)")
 
     # mcp
-    mcp_p = subs.add_parser(
-        "mcp",
-        help="Configure MCP integration",
-        description=(
-            "Configure the MCP server snippet for AI clients.\n\nChecks, previews, or writes the JSON config."
-        ),
-        epilog=(
-            "examples:\n"
-            "  fp setup mcp --check       Check if already configured\n"
-            "  fp setup mcp --dry-run     Preview config write without changing anything\n"
-            "  fp setup mcp --claude      Write to Claude Desktop config (creates backup)"
-        ),
-        formatter_class=FORMATTER,
-    )
-    mcp_p.add_argument(
-        "--check",
-        action="store_true",
-        dest="mcp_check",
-        help="Check if footprinter is configured in any MCP client",
-    )
-    mcp_p.add_argument(
-        "--claude",
-        action="store_true",
-        help="Write/merge snippet into Claude Desktop config (creates backup)",
-    )
-    mcp_p.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview config write without changing anything",
-    )
+    _add_mcp_parser(subs, formatter_class=FORMATTER)
 
     # folders (add/remove only — list is now fp folder list)
     folders_p = subs.add_parser(
@@ -290,6 +261,43 @@ def _handle_setup(args) -> None:
     except (PromptCancelled, KeyboardInterrupt):
         console.print("\n[dim]Setup cancelled.[/dim]")
         sys.exit(130)
+
+
+def _add_mcp_parser(subparsers, *, formatter_class=None):
+    """Add the MCP subparser with --check, --claude, --dry-run flags."""
+    kwargs = {"help": "Configure MCP integration"}
+    if formatter_class:
+        kwargs.update(
+            description=(
+                "Configure the MCP server snippet for AI clients.\n\n"
+                "Checks, previews, or writes the JSON config."
+            ),
+            epilog=(
+                "examples:\n"
+                "  fp setup mcp --check       Check if already configured\n"
+                "  fp setup mcp --dry-run     Preview config write without changing anything\n"
+                "  fp setup mcp --claude      Write to Claude Desktop config (creates backup)"
+            ),
+            formatter_class=formatter_class,
+        )
+    parser = subparsers.add_parser("mcp", **kwargs)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        dest="mcp_check",
+        help="Check if footprinter is configured in any MCP client",
+    )
+    parser.add_argument(
+        "--claude",
+        action="store_true",
+        help="Write/merge snippet into Claude Desktop config (creates backup)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview config write without changing anything",
+    )
+    return parser
 
 
 def _dispatch_mcp(args) -> None:
@@ -390,26 +398,7 @@ def main():
         )
 
     subparsers = parser.add_subparsers(dest="subcommand")
-    mcp_parser = subparsers.add_parser(
-        "mcp",
-        help="Configure MCP integration",
-    )
-    mcp_parser.add_argument(
-        "--check",
-        action="store_true",
-        dest="mcp_check",
-        help="Check if footprinter is configured in any MCP client",
-    )
-    mcp_parser.add_argument(
-        "--claude",
-        action="store_true",
-        help="Write/merge snippet into Claude Desktop config (creates backup)",
-    )
-    mcp_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview config write without changing anything",
-    )
+    _add_mcp_parser(subparsers)
 
     folders_parser = subparsers.add_parser(
         "folders",
