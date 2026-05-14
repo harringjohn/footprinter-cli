@@ -88,6 +88,7 @@ def list_folders(
                              OR af.relative_path LIKE folder_cte.relative_path || '/%')
                   )
                   OR (file.folder_id IS NULL
+                      AND file.source = folder_cte.source
                       AND file.path LIKE folder_cte.path || '/%')
               )
         )"""
@@ -102,6 +103,7 @@ def list_folders(
                              OR af.relative_path LIKE folder_cte.relative_path || '/%')
                   )
                   OR (file.folder_id IS NULL
+                      AND file.source = folder_cte.source
                       AND file.path LIKE folder_cte.path || '/%')
               )
         )"""
