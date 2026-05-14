@@ -162,20 +162,16 @@ class TestUserFacingStrings:
     def test_mcp_subparser_help_generic(self):
         """MCP subparser help text says 'MCP' generically, not only 'Claude Desktop'."""
         import re
-        from pathlib import Path
 
         setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "setup.py"
         content = setup_path.read_text()
 
-        # Extract the help= value from the mcp add_parser call in register()
-        # The pattern spans multiple lines, so use re.DOTALL
-        mcp_block = re.search(r'add_parser\(\s*"mcp".*?\)', content, re.DOTALL)
-        assert mcp_block, "Could not find mcp add_parser call"
-        block_text = mcp_block.group()
+        helper_match = re.search(r"^def _add_mcp_parser\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
+        assert helper_match, "Could not find _add_mcp_parser() function"
+        helper_body = helper_match.group()
 
-        # The help= kwarg in this block should not mention "Claude Desktop"
-        help_match = re.search(r'help="([^"]*)"', block_text)
-        assert help_match, "Could not find help= in mcp add_parser"
+        help_match = re.search(r'"help":\s*"([^"]*)"', helper_body)
+        assert help_match, "Could not find help value in _add_mcp_parser()"
         assert "Claude Desktop" not in help_match.group(1), (
             f"MCP subparser help still references 'Claude Desktop': {help_match.group(1)}"
         )
@@ -239,50 +235,25 @@ class TestUserFacingStrings:
         ]
         assert lines_with_old_ref == [], f"Found non-prog fp-setup-claude references: {lines_with_old_ref}"
 
-    def test_check_help_in_register_no_claude_desktop(self):
-        """--check help string for MCP subparser in register() should not reference 'Claude Desktop'."""
+    def test_check_help_in_shared_parser_no_claude_desktop(self):
+        """--check help string in _add_mcp_parser() should not reference 'Claude Desktop'."""
         import re
 
         setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "setup.py"
         content = setup_path.read_text()
 
-        # Extract register() function body
-        register_match = re.search(r"^def register\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
-        assert register_match, "Could not find register() function"
-        register_body = register_match.group()
+        helper_match = re.search(r"^def _add_mcp_parser\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
+        assert helper_match, "Could not find _add_mcp_parser() function"
+        helper_body = helper_match.group()
 
-        # Find --check help for the MCP subparser (identified by dest="mcp_check")
         check_help = re.search(
             r'add_argument\(\s*"--check".*?dest="mcp_check".*?help="([^"]*)"',
-            register_body,
+            helper_body,
             re.DOTALL,
         )
-        assert check_help, "Could not find MCP --check help in register()"
+        assert check_help, "Could not find MCP --check help in _add_mcp_parser()"
         assert "Claude Desktop" not in check_help.group(1), (
-            f"MCP --check help in register() still references 'Claude Desktop': {check_help.group(1)}"
-        )
-
-    def test_check_help_in_main_no_claude_desktop(self):
-        """--check help string for MCP subparser in main() should not reference 'Claude Desktop'."""
-        import re
-
-        setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "setup.py"
-        content = setup_path.read_text()
-
-        # Extract main() function body
-        main_match = re.search(r"^def main\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
-        assert main_match, "Could not find main() function"
-        main_body = main_match.group()
-
-        # Find --check help for the MCP subparser (identified by dest="mcp_check")
-        check_help = re.search(
-            r'add_argument\(\s*"--check".*?dest="mcp_check".*?help="([^"]*)"',
-            main_body,
-            re.DOTALL,
-        )
-        assert check_help, "Could not find MCP --check help in main()"
-        assert "Claude Desktop" not in check_help.group(1), (
-            f"MCP --check help in main() still references 'Claude Desktop': {check_help.group(1)}"
+            f"MCP --check help in _add_mcp_parser() still references 'Claude Desktop': {check_help.group(1)}"
         )
 
     def test_mcp_setup_docstring_no_claude_desktop(self):
@@ -591,3 +562,59 @@ class TestMcpDependencyGatingAvailability:
             mock_mcp.generate_snippet.assert_called_once()
             mock_mcp.print_snippet.assert_called_once_with(snippet)
             mock_mcp.write_config.assert_called_once()
+
+
+class TestSharedMcpParser:
+    """_add_mcp_parser() is the single source of truth for MCP subparser flags."""
+
+    def test_add_mcp_parser_creates_expected_flags(self):
+        """_add_mcp_parser() produces a parser with --check, --claude, --dry-run."""
+        import argparse
+
+        from footprinter.cli.setup import _add_mcp_parser
+
+        parent = argparse.ArgumentParser()
+        subs = parent.add_subparsers(dest="sub")
+        _add_mcp_parser(subs)
+
+        args = parent.parse_args(["mcp", "--check"])
+        assert args.mcp_check is True
+
+        args = parent.parse_args(["mcp", "--claude"])
+        assert args.claude is True
+
+        args = parent.parse_args(["mcp", "--dry-run"])
+        assert args.dry_run is True
+
+    def test_add_mcp_parser_defaults_all_false(self):
+        """Bare 'mcp' (no flags) defaults all three flags to False."""
+        import argparse
+
+        from footprinter.cli.setup import _add_mcp_parser
+
+        parent = argparse.ArgumentParser()
+        subs = parent.add_subparsers(dest="sub")
+        _add_mcp_parser(subs)
+
+        args = parent.parse_args(["mcp"])
+        assert args.mcp_check is False
+        assert args.claude is False
+        assert args.dry_run is False
+
+    def test_register_and_main_use_shared_parser(self):
+        """Both register() and main() call _add_mcp_parser — source has no inline MCP add_argument calls."""
+        import re
+
+        setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "setup.py"
+        content = setup_path.read_text()
+
+        for func_name in ("register", "main"):
+            func_match = re.search(rf"^def {func_name}\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
+            assert func_match, f"Could not find {func_name}() function"
+            body = func_match.group()
+
+            assert "_add_mcp_parser(" in body, f"{func_name}() should call _add_mcp_parser()"
+            mcp_args = re.findall(r'add_argument\(.*?mcp_check', body, re.DOTALL)
+            assert mcp_args == [], (
+                f"{func_name}() should not define MCP flags inline — found: {mcp_args}"
+            )
