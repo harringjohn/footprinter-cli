@@ -34,11 +34,11 @@ class TestReadFile:
                 return_value=mock_registry,
             ),
             patch(
-                "footprinter.mcp.extraction.get_extractor_for_file",
+                "footprinter.utils.extraction.get_extractor_for_file",
                 return_value="markdown",
             ),
             patch(
-                "footprinter.mcp.extraction.extract_text",
+                "footprinter.utils.extraction.extract_text",
                 return_value=("# Hello", None),
             ),
         ):
@@ -71,11 +71,11 @@ class TestReadFile:
                 return_value=mock_registry,
             ),
             patch(
-                "footprinter.mcp.extraction.get_extractor_for_file",
+                "footprinter.utils.extraction.get_extractor_for_file",
                 return_value="pdf",
             ),
             patch(
-                "footprinter.mcp.extraction.extract_text",
+                "footprinter.utils.extraction.extract_text",
                 return_value=("Extracted PDF text", None),
             ),
         ):
@@ -179,7 +179,7 @@ class TestReadFile:
                 return_value=mock_registry,
             ),
             patch(
-                "footprinter.mcp.extraction.get_extractor_for_file",
+                "footprinter.utils.extraction.get_extractor_for_file",
                 return_value="binary",
             ),
         ):

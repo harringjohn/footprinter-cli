@@ -4,7 +4,7 @@ Tests for MCP text extraction module.
 
 import pytest
 
-from footprinter.mcp.extraction import (
+from footprinter.utils.extraction import (
     extract_text,
     get_extractor_for_file,
 )
