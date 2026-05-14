@@ -51,8 +51,14 @@ class FileIndexer:
 
         self._vector_store = None  # lazy
 
+        known_paths = None
+        if last_run is not None:
+            known_paths = files_db.get_known_local_paths(self.db.conn)
+            logger.info("Loaded %d known paths for move detection", len(known_paths))
+
         self.file_scanner = FileScanner(
-            self.config, since_datetime=last_run, scan_roots=scan_roots
+            self.config, since_datetime=last_run, scan_roots=scan_roots,
+            known_paths=known_paths,
         )
         self.content_extractor = ContentExtractor()
 

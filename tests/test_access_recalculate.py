@@ -59,6 +59,16 @@ def _seed_entities(conn):
         "VALUES (31, '/Users/me/Personal', 'Personal', 'Personal', NULL)"
     )
 
+    # Visits
+    cur.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser) "
+        "VALUES (40, 'https://example.com', 'Example', '2024-01-15T10:00:00', 'chrome')"
+    )
+    cur.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser) "
+        "VALUES (41, 'https://docs.python.org', 'Python Docs', '2024-01-16T10:00:00', 'firefox')"
+    )
+
     conn.commit()
 
 
@@ -79,7 +89,7 @@ class TestRecalculateGlobal:
         stats = recalculate_access(conn, "global")
 
         # All rows should have mcp_view='inherit' (resolved at query time)
-        for table in ["files", "emails", "chats", "folders", "projects", "clients"]:
+        for table in ["files", "emails", "chats", "folders", "projects", "clients", "visits"]:
             rows = conn.execute(f"SELECT mcp_view FROM {table}").fetchall()
             for row in rows:
                 assert row["mcp_view"] == "inherit", f"{table} row not stamped inherit"
@@ -221,6 +231,141 @@ class TestRecalculateFolderLikeEscaping:
 
         # Should NOT match via % wildcard
         row = conn.execute("SELECT mcp_view FROM files WHERE id = 101").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+
+def _seed_folder_hierarchy(conn):
+    """Extend _seed_entities with parent-child folder chain + files."""
+    _seed_entities(conn)
+    cur = conn.cursor()
+    cur.execute("UPDATE files SET folder_id = 30 WHERE id = 1")
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (32, '/Users/me/Work/widget/sub', 'Work/widget/sub', 'sub', 3, 30)"
+    )
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (33, '/Users/me/Work/widget/sub/deep', 'Work/widget/sub/deep', 'deep', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (60, 'local', 'x.py', '/Users/me/Work/widget/sub/x.py', 'work', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (61, 'local', 'y.py', '/Users/me/Work/widget/sub/deep/y.py', 'work', 3, 33)"
+    )
+    conn.commit()
+
+
+class TestRecalculateFolderIdScope:
+    def test_folder_id_scope_enumerates_descendant_folders(self, conn):
+        """folder:{id} scope returns the folder and all descendants + their files."""
+        _seed_folder_hierarchy(conn)
+
+        from footprinter.access import _get_ids_for_scope
+
+        ids = _get_ids_for_scope(conn, "folder:30")
+
+        assert set(ids.get("folder", [])) == {30, 32, 33}
+        assert set(ids.get("file", [])) == {1, 60, 61}
+
+    def test_folder_id_scope_stamps_descendant_folders(self, conn):
+        """folder:{id} policy stamps the parent and all descendant folders."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        for fid in (30, 32, 33):
+            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_folder_id_scope_stamps_files_in_descendants(self, conn):
+        """Files inside descendant folders are stamped by parent folder policy."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        for fid in (1, 60, 61):
+            row = conn.execute("SELECT mcp_view FROM files WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"file {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_nearest_ancestor_policy_wins(self, conn):
+        """Child folder's own policy takes precedence over parent's."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'visible')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
+        assert row["mcp_view"] == "hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 32").fetchone()
+        assert row["mcp_view"] == "visible"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 33").fetchone()
+        assert row["mcp_view"] == "visible"
+
+    def test_path_prefix_scope_still_works_with_hierarchy(self, conn):
+        """Regression: folder:/path/ matching still works with hierarchy data."""
+        _seed_folder_hierarchy(conn)
+        conn.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/Users/me/Work/', 'hidden')"
+        )
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:/Users/me/Work/")
+
+        for fid in (30, 32, 33):
+            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_single_folder_visibility_resolves_ancestor_policy(self, conn):
+        """Single-item resolver walks ancestors for folder:{id} policies."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.visibility import resolve_visibility_with_source
+
+        state, source = resolve_visibility_with_source(conn, "folder", 33)
+        assert state == "hidden"
+        assert source == "folder:30"
+
+    def test_folder_without_parent_id_falls_through_gracefully(self, conn):
+        """NULL parent_folder_id terminates ancestor walk without crash."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:31")
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
         assert row["mcp_view"] == "inherit"
 
 
@@ -575,8 +720,10 @@ class TestStatsDict:
         assert "folder" in stats
         assert "project" in stats
         assert "client" in stats
+        assert "visit" in stats
         assert stats["file"] == 2
         assert stats["email"] == 2
+        assert stats["visit"] == 2
 
 
 class TestCountAffectedEntities:
@@ -594,7 +741,8 @@ class TestCountAffectedEntities:
         assert counts["folder"] == 2
         assert counts["project"] == 1
         assert counts["client"] == 1
-        assert sum(counts.values()) == 9
+        assert counts["visit"] == 2
+        assert sum(counts.values()) == 11
 
     def test_count_single_entity_returns_one(self, conn):
         """count_affected_entities('file:1') returns {'file': 1}."""
@@ -672,7 +820,7 @@ class TestRecalculateBatched:
         # Each callback should report exactly 1 entity (batch_size=1)
         assert all(c == 1 for c in batch_counts)
         # Total processed should equal total entities
-        assert sum(batch_counts) == 9  # 2 files + 2 emails + 1 chat + 2 folders + 1 project + 1 client
+        assert sum(batch_counts) == 11  # 2 files + 2 emails + 1 chat + 2 folders + 1 project + 1 client + 2 visits
 
     def test_commits_per_batch(self, conn):
         """on_batch is called multiple times, proving per-batch processing."""
@@ -682,13 +830,13 @@ class TestRecalculateBatched:
 
         from footprinter.access import recalculate_access_batched
 
-        # With batch_size=1 and 9 entities, on_batch should be called 9 times
+        # With batch_size=1 and 11 entities, on_batch should be called 11 times
         # (once per entity = once per batch commit).
         batch_calls = []
         recalculate_access_batched(conn, "global", batch_size=1, on_batch=lambda n: batch_calls.append(n))
 
-        # 9 entities across 6 types, batch_size=1 → 9 batch commits
-        assert len(batch_calls) == 9
+        # 11 entities across 7 types, batch_size=1 → 11 batch commits
+        assert len(batch_calls) == 11
 
     def test_returns_same_stats_shape(self, conn):
         """Stats dict from batched has same keys and counts as unbatched."""
@@ -706,6 +854,7 @@ class TestRecalculateBatched:
         assert stats["folder"] == 2
         assert stats["project"] == 1
         assert stats["client"] == 1
+        assert stats["visit"] == 2
 
 
 class TestRoundTripMatchesBatchResolve:
@@ -925,3 +1074,84 @@ class TestSqliteVariableLimit:
         assert len(results) == count
         for i in range(1, count + 1):
             assert i in results
+
+
+class TestRecalculateSourceBrowser:
+    def test_only_stamps_visits(self, conn):
+        """source:browser scope stamps only visits, not other entity types."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        stats = recalculate_access(conn, "source:browser")
+
+        # Visits should be stamped with the source-level policy
+        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
+        assert all(r["mcp_view"] == "hidden" for r in rows)
+
+        # Files should be unchanged
+        rows = conn.execute("SELECT mcp_view FROM files").fetchall()
+        assert all(r["mcp_view"] == "inherit" for r in rows)
+
+        # Emails should be unchanged
+        rows = conn.execute("SELECT mcp_view FROM emails").fetchall()
+        assert all(r["mcp_view"] == "inherit" for r in rows)
+
+        assert stats == {"visit": 2}
+
+    def test_source_browser_count(self, conn):
+        """count_affected_entities('source:browser') returns visit count only."""
+        _seed_entities(conn)
+
+        from footprinter.access import count_affected_entities
+
+        counts = count_affected_entities(conn, "source:browser")
+        assert counts == {"visit": 2}
+
+
+class TestRecalculateVisitScopeGap:
+    """Visits are source-scope only — project/client/account scopes must NOT include them."""
+
+    def test_project_scope_excludes_visits(self, conn):
+        """project:3 does not include visits even though visits exist."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:3', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        stats = recalculate_access(conn, "project:3")
+
+        assert "visit" not in stats
+        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
+        assert all(r["mcp_view"] == "inherit" for r in rows)
+
+    def test_client_scope_excludes_visits(self, conn):
+        """client:5 does not include visits."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        stats = recalculate_access(conn, "client:5")
+
+        assert "visit" not in stats
+        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
+        assert all(r["mcp_view"] == "inherit" for r in rows)
+
+    def test_account_scope_excludes_visits(self, conn):
+        """account:work does not include visits (visits have no account column)."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('account:work', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        stats = recalculate_access(conn, "account:work")
+
+        assert "visit" not in stats
+        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
+        assert all(r["mcp_view"] == "inherit" for r in rows)

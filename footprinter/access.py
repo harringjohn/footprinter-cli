@@ -12,6 +12,7 @@ import sqlite3
 from collections.abc import Callable
 from typing import Any
 
+from footprinter.db.policies import is_folder_path_scope
 from footprinter.permissions import batch_resolve_permissions
 from footprinter.visibility import batch_resolve_visibility
 
@@ -113,10 +114,21 @@ ENTITY_META: dict[str, dict[str, Any]] = {
         "has_account": False,
         "path_column": None,
     },
+    "visit": {
+        "table": "visits",
+        "has_visibility": True,
+        "has_permissions": True,
+        "has_status": False,
+        "has_project_id": False,
+        "has_client_id": False,
+        "has_account": False,
+        "path_column": None,
+    },
 }
 
 # Reverse map: source scope suffix → entity type (e.g. "files" → "file")
 _SOURCE_TO_ENTITY = {meta["table"]: etype for etype, meta in ENTITY_META.items()}
+_SOURCE_TO_ENTITY["browser"] = "visit"
 
 
 # ---------------------------------------------------------------------------
@@ -170,28 +182,58 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
         return result
 
     if prefix == "folder":
-        # folder:{path} → files/folders with matching path prefix
-        path = os.path.expanduser(value)
-        # Escape LIKE metacharacters so literal %, _ in paths match correctly
-        escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        result = {}
-        for etype in ENTITY_META:
-            meta = ENTITY_META[etype]
-            path_col = meta["path_column"]
-            if path_col is None:
-                continue
-            table = meta["table"]
-            where = f"{path_col} LIKE ? ESCAPE '\\'"
-            if meta["has_status"]:
-                where += " AND status = 'listed'"
-            rows = conn.execute(
-                f"SELECT id FROM {table} WHERE {where}",
-                (escaped + "%",),
+        if is_folder_path_scope(scope):
+            # folder:{path} → files/folders with matching path prefix
+            path = os.path.expanduser(value)
+            # Escape LIKE metacharacters so literal %, _ in paths match correctly
+            escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            result = {}
+            for etype in ENTITY_META:
+                meta = ENTITY_META[etype]
+                path_col = meta["path_column"]
+                if path_col is None:
+                    continue
+                table = meta["table"]
+                where = f"{path_col} LIKE ? ESCAPE '\\'"
+                if meta["has_status"]:
+                    where += " AND status = 'listed'"
+                rows = conn.execute(
+                    f"SELECT id FROM {table} WHERE {where}",
+                    (escaped + "%",),
+                ).fetchall()
+                ids = [r["id"] for r in rows]
+                if ids:
+                    result[etype] = ids
+            return result
+        else:
+            # folder:{id} → folder + all descendants via parent_folder_id
+            folder_id = int(value)
+            descendants_cte = """
+                WITH RECURSIVE descendants(id) AS (
+                    SELECT id FROM folders WHERE id = ?
+                    UNION ALL
+                    SELECT folder.id FROM folders folder
+                    JOIN descendants descendant ON folder.parent_folder_id = descendant.id
+                )
+            """
+            cursor = conn.cursor()
+            cursor.execute(
+                f"{descendants_cte} SELECT id FROM descendants",
+                (folder_id,),
+            )
+            desc_ids = [row["id"] for row in cursor.fetchall()]
+            if not desc_ids:
+                return {}
+            result: dict[str, list[int]] = {"folder": desc_ids}
+            ph = ",".join("?" * len(desc_ids))
+            file_rows = conn.execute(
+                f"SELECT id FROM files WHERE folder_id IN ({ph}) AND status = 'listed'",
+                tuple(desc_ids),
             ).fetchall()
-            ids = [r["id"] for r in rows]
-            if ids:
-                result[etype] = ids
-        return result
+            file_ids = [r["id"] for r in file_rows]
+            if file_ids:
+                result["file"] = file_ids
+            return result
 
     if prefix == "project":
         project_id = int(value)

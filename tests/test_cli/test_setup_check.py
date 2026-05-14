@@ -199,3 +199,75 @@ def test_no_install_hint_column(tmp_path, monkeypatch):
     output = buf.getvalue()
 
     assert "Install Hint" not in output, f"'Install Hint' column should be removed. Got:\n{output}"
+
+
+# ---------------------------------------------------------------------------
+# 8. Document Parsing — installed
+# ---------------------------------------------------------------------------
+def test_doc_parsing_installed():
+    """Document Parsing shows 'enabled' when all four parse deps are present."""
+    from footprinter.cli.setup import check_optional_features
+
+    parse_mods = {"pypdf", "docx", "openpyxl", "pptx"}
+
+    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in parse_mods | {"chromadb", "onnxruntime"}):
+        features = check_optional_features({})
+
+    doc = next(f for f in features if f[0] == "Document Parsing")
+    assert doc[1] is True, "installed should be True"
+    assert doc[2] is True, "enabled should be True (always active when installed)"
+    assert "footprinter-cli[parse]" in doc[3], "hint should mention extras group"
+
+
+# ---------------------------------------------------------------------------
+# 9. Document Parsing — not installed
+# ---------------------------------------------------------------------------
+def test_doc_parsing_not_installed():
+    """Document Parsing shows 'not installed' when parse deps are missing."""
+    from footprinter.cli.setup import check_optional_features
+
+    def importable(mod):
+        return mod in ("chromadb", "onnxruntime")
+
+    with patch("footprinter.cli.setup._is_importable", side_effect=importable):
+        features = check_optional_features({"semantic": {"file_vectorization": False}})
+
+    doc = next(f for f in features if f[0] == "Document Parsing")
+    assert doc[1] is False, "installed should be False"
+    assert "footprinter-cli[parse]" in doc[3], "hint should mention extras group"
+
+
+# ---------------------------------------------------------------------------
+# 10. Document Parsing — partial install still counts as not installed
+# ---------------------------------------------------------------------------
+def test_doc_parsing_partial_install():
+    """All four parse modules must be present; partial = not installed."""
+    from footprinter.cli.setup import check_optional_features
+
+    partial = {"pypdf", "docx"}
+
+    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in partial):
+        features = check_optional_features({})
+
+    doc = next(f for f in features if f[0] == "Document Parsing")
+    assert doc[1] is False, "installed should be False when only some deps present"
+
+
+# ---------------------------------------------------------------------------
+# 11. Adding Document Parsing doesn't change Semantic Search
+# ---------------------------------------------------------------------------
+def test_semantic_unchanged_with_parsing():
+    """Semantic Search row is independent of Document Parsing state."""
+    from footprinter.cli.setup import check_optional_features
+
+    config = {"semantic": {"file_vectorization": True}}
+
+    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime")):
+        features = check_optional_features(config)
+
+    semantic = next(f for f in features if f[0] == "Semantic Search")
+    assert semantic[1] is True, "Semantic installed should be True"
+    assert semantic[2] is True, "Semantic enabled should be True"
+
+    doc = next(f for f in features if f[0] == "Document Parsing")
+    assert doc[1] is False, "Parse deps not mocked as available"

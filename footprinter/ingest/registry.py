@@ -175,8 +175,8 @@ def get_user_pipes(connector_pipes: dict[str, type]) -> list[str]:
     """Compute the user-selectable subset of pipes for CLI error messages.
 
     Includes core + installed connector data-source pipes. POST_PIPES are
-    excluded — they run implicitly after every pipeline and aren't meant
-    to be invoked directly via ``fp ingest --pipe``.
+    excluded — they run implicitly after every pipeline and ``--pipe``
+    invocation, and aren't meant to be invoked directly.
     """
     result = list(CORE_PIPES)
     for s in connector_pipes:

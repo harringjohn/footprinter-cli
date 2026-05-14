@@ -770,6 +770,105 @@ class TestModuleLevelFileWrites:
         db.close()
 
 
+class TestGetKnownLocalPaths:
+    """Test files_db.get_known_local_paths() for move detection (FPR-1691)."""
+
+    def test_returns_paths_of_listed_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        paths = ["/tmp/a.txt", "/tmp/b.txt", "/tmp/c.txt"]
+        for p in paths:
+            files_db.insert_file(
+                db.conn,
+                {
+                    "file_path": p,
+                    "file_name": p.split("/")[-1],
+                    "file_type": "txt",
+                    "file_size": 10,
+                },
+            )
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert result == set(paths)
+        db.close()
+
+    def test_excludes_removed_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        for p in ["/tmp/keep.txt", "/tmp/gone.txt"]:
+            files_db.insert_file(
+                db.conn,
+                {
+                    "file_path": p,
+                    "file_name": p.split("/")[-1],
+                    "file_type": "txt",
+                    "file_size": 10,
+                },
+            )
+        db.conn.execute("UPDATE files SET status = 'removed' WHERE path = '/tmp/gone.txt'")
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/tmp/keep.txt" in result
+        assert "/tmp/gone.txt" not in result
+        db.close()
+
+    def test_includes_unlisted_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/.env",
+                "file_name": ".env",
+                "file_type": "env",
+                "file_size": 10,
+            },
+        )
+        db.conn.commit()
+
+        # .env gets status='unlisted' automatically — verify it's still in known paths
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/tmp/.env" in result
+        db.close()
+
+    def test_excludes_non_local_files(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT OR IGNORE INTO sources (name, source_type, account, label, enabled)"
+            " VALUES ('test_drive', 'remote', 'test_account', 'Test Drive', 1)"
+        )
+        files_db.insert_drive_file(
+            db.conn,
+            {
+                "source": "test_drive",
+                "external_id": "drive_001",
+                "account": "test_account",
+                "name": "report.pdf",
+                "path": "/Work/report.pdf",
+            },
+        )
+        db.conn.commit()
+
+        result = files_db.get_known_local_paths(db.conn)
+        assert "/Work/report.pdf" not in result
+        db.close()
+
+    def test_empty_db_returns_empty_set(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        result = files_db.get_known_local_paths(db.conn)
+        assert result == set()
+        db.close()
+
+
 class TestPrefixMaps:
     """Test in-memory prefix map building and resolution."""
 
