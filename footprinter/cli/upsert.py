@@ -285,6 +285,141 @@ def _process_csv_rows(
     return created, updated, errors, error_details
 
 
+def _resolve_folder_row(conn, row: dict, i: int) -> tuple[dict | None, dict | None]:
+    """Resolve a folder CSV row to (kwargs, error).
+
+    Returns (kwargs_dict, None) on success or (None, error_dict) on failure.
+    kwargs_dict has folder_id, project_id, client_id ready for assign().
+    """
+    from footprinter.db.folders import get_folder_by_path
+
+    folder_path = os.path.expanduser(row.get("folder_path", "").strip()).rstrip("/")
+    if not folder_path:
+        return None, {"row": i, "error": "Missing folder_path value"}
+
+    folder_row = get_folder_by_path(conn, folder_path)
+    if folder_row is None:
+        return None, {"row": i, "error": f"Folder not found: {folder_path!r}"}
+
+    project_id: int | None = None
+    client_id: int | None = None
+
+    raw_pid = row.get("project_id", "").strip()
+    raw_pname = row.get("project_name", "").strip()
+    raw_cid = row.get("client_id", "").strip()
+    raw_cname = row.get("client_name", "").strip()
+
+    if raw_pid:
+        try:
+            project_id = int(raw_pid)
+        except (ValueError, TypeError):
+            return None, {"row": i, "error": f"Invalid project_id: {raw_pid!r}"}
+    elif raw_pname:
+        from footprinter.db.projects import find_project_id_by_key
+
+        project_id = find_project_id_by_key(conn, project_name=raw_pname)
+        if project_id is None:
+            return None, {"row": i, "error": f"Project not found: {raw_pname!r}"}
+
+    if raw_cid:
+        try:
+            client_id = int(raw_cid)
+        except (ValueError, TypeError):
+            return None, {"row": i, "error": f"Invalid client_id: {raw_cid!r}"}
+    elif raw_cname:
+        from footprinter.db.clients import find_client_id_by_name
+
+        client_id = find_client_id_by_name(conn, raw_cname)
+        if client_id is None:
+            return None, {"row": i, "error": f"Client not found: {raw_cname!r}"}
+
+    if project_id is None and client_id is None:
+        return None, {"row": i, "error": "No project or client specified"}
+
+    return {
+        "folder_id": folder_row["id"],
+        "project_id": project_id,
+        "client_id": client_id,
+        "folder_row": folder_row,
+    }, None
+
+
+def _process_folder_csv_rows(
+    conn,
+    rows: list[dict],
+    service,
+) -> tuple[int, int, int, list[dict]]:
+    """Process folder CSV rows through folder_service.assign().
+
+    Returns (assigned, skipped, errors, error_details).
+    """
+    from footprinter.services.roles import Role
+
+    assigned = 0
+    skipped = 0
+    errors = 0
+    error_details: list[dict] = []
+
+    for i, row in enumerate(rows, 1):
+        kwargs, err = _resolve_folder_row(conn, row, i)
+        if err or kwargs is None:
+            errors += 1
+            error_details.append(err or {"row": i, "error": "Unknown"})
+            continue
+
+        try:
+            result = service.assign(
+                conn,
+                kwargs["folder_id"],
+                role=Role.ADMIN,
+                project_id=kwargs["project_id"],
+                client_id=kwargs["client_id"],
+            )
+            if result is None:
+                errors += 1
+                error_details.append({"row": i, "error": "Folder not found during assign"})
+            else:
+                assigned += 1
+        except (ValueError, PermissionError) as e:
+            errors += 1
+            error_details.append({"row": i, "error": str(e)})
+
+    return assigned, skipped, errors, error_details
+
+
+def _dry_run_folder_csv_rows(
+    conn,
+    rows: list[dict],
+) -> tuple[int, int, int, list[dict]]:
+    """Validate folder CSV rows without writing.
+
+    Returns (would_assign, already_matched, errors, error_details).
+    """
+    would_assign = 0
+    already_matched = 0
+    errors = 0
+    error_details: list[dict] = []
+
+    for i, row in enumerate(rows, 1):
+        kwargs, err = _resolve_folder_row(conn, row, i)
+        if err or kwargs is None:
+            errors += 1
+            error_details.append(err or {"row": i, "error": "Unknown"})
+            continue
+
+        folder_row = kwargs["folder_row"]
+        current_pid = folder_row.get("project_id")
+        matches = True
+        if kwargs["project_id"] is not None and current_pid != kwargs["project_id"]:
+            matches = False
+        if matches:
+            already_matched += 1
+        else:
+            would_assign += 1
+
+    return would_assign, already_matched, errors, error_details
+
+
 def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
     """Check whether a record matching *kwargs* already exists."""
     if entity_type == "client":
@@ -641,6 +776,120 @@ def _handle_bulk_assign(args) -> None:
         console.print(f"[green]{assigned} {entity_type}(s) assigned.[/green]")
 
 
+def _handle_folder_csv(args) -> None:
+    """Handle CSV-based folder-to-project/client assignment."""
+    from footprinter.services.ingest_service import IngestService
+
+    service = _get_service("folder_service")
+    csv_path = Path(args.file)
+    has_dry_run = getattr(args, "dry_run", False)
+    has_commit = getattr(args, "commit", False)
+    if has_dry_run and has_commit:
+        console.print("[red]Cannot use --dry-run and --commit together.[/red]")
+        sys.exit(1)
+    dry_run = not has_commit
+
+    rows = _validate_and_read_csv(csv_path, ["folder_path"])
+
+    if not rows:
+        if getattr(args, "json", False):
+            output_json({"total": 0, "assigned": 0, "errors": 0})
+        else:
+            console.print("[dim]No rows in CSV — nothing to do.[/dim]")
+        return
+
+    if dry_run:
+        with open_db() as conn:
+            would_assign, already_matched, errors, error_details = _dry_run_folder_csv_rows(
+                conn, rows,
+            )
+
+        summary: dict = {
+            "total": would_assign + already_matched + errors,
+            "would_assign": would_assign,
+            "already_matched": already_matched,
+            "errors": errors,
+        }
+        if error_details:
+            summary["error_details"] = error_details
+
+        if getattr(args, "json", False):
+            output_json(summary)
+        else:
+            table = Table(title="Dry run — folder assignments")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Count", justify="right")
+            table.add_row("Would assign", str(would_assign))
+            table.add_row("Already matched", str(already_matched))
+            table.add_row("Errors", str(errors))
+            table.add_row("Total", str(would_assign + already_matched + errors))
+            console.print(table)
+            console.print("[dim]Pass --commit to apply these changes.[/dim]")
+        return
+
+    with open_db() as conn:
+        ingest_svc = IngestService(conn)
+        ingest_id = ingest_svc.begin("upsert_folder_assign", mode="bulk", trigger="cli:upsert")
+
+        try:
+            assigned, skipped, errors, error_details = _process_folder_csv_rows(
+                conn, rows, service,
+            )
+
+            ingest_svc.complete(
+                ingest_id,
+                result={
+                    "items_processed": assigned + skipped + errors,
+                    "items_new": assigned,
+                    "items_updated": 0,
+                    "errors": errors,
+                },
+                metadata={"error_details": error_details} if error_details else None,
+            )
+
+        except Exception as e:
+            ingest_svc.fail(ingest_id, error=str(e))
+            console.print(f"[red]Folder CSV import failed: {e}[/red]")
+            sys.exit(1)
+
+    summary = {
+        "total": assigned + skipped + errors,
+        "assigned": assigned,
+        "errors": errors,
+    }
+    if error_details:
+        summary["error_details"] = error_details
+
+    if getattr(args, "json", False):
+        output_json(summary)
+    else:
+        table = Table(title="Upsert folder assignments")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right")
+        table.add_row("Assigned", str(assigned))
+        table.add_row("Errors", str(errors))
+        table.add_row("Total", str(assigned + skipped + errors))
+        console.print(table)
+
+
+def _handle_folders_dispatch(args) -> None:
+    """Route folders subcommand to CSV or legacy --folder path."""
+    csv_file = getattr(args, "file", None)
+    folder_flag = getattr(args, "folder", None)
+
+    if csv_file and folder_flag:
+        console.print("[red]Cannot use both a CSV file and --folder.[/red]")
+        sys.exit(1)
+
+    if csv_file:
+        _handle_folder_csv(args)
+    elif folder_flag:
+        _handle_bulk_assign(args)
+    else:
+        console.print("[red]Provide a CSV file or use --folder.[/red]")
+        sys.exit(1)
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -776,17 +1025,61 @@ def register(subparsers) -> None:
         add_json_flag(p)
         p.set_defaults(func=_handle_assign)
 
-    # Data entity plural nouns — bulk path assignment
-    for noun in ["files", "folders"]:
-        entity_type = ENTITY_MAP[noun][1]
-        p = noun_subs.add_parser(
-            noun,
-            help=f"Bulk assign {noun} under a folder",
-            description=f"Assign all {noun} under a folder to a project and/or client.",
-            formatter_class=FORMATTER,
-        )
-        p.add_argument("--folder", required=True, help="Folder path to assign under")
-        p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
-        p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
-        add_json_flag(p)
-        p.set_defaults(func=_handle_bulk_assign)
+    # Data entity plural nouns — bulk path assignment (files only)
+    p = noun_subs.add_parser(
+        "files",
+        help="Bulk assign files under a folder",
+        description="Assign all files under a folder to a project and/or client.",
+        formatter_class=FORMATTER,
+    )
+    p.add_argument("--folder", required=True, help="Folder path to assign under")
+    p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
+    p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
+    add_json_flag(p)
+    p.set_defaults(func=_handle_bulk_assign)
+
+    # Folders — CSV import OR legacy --folder path
+    p = noun_subs.add_parser(
+        "folders",
+        help="Assign folders via CSV or under a folder path",
+        description=(
+            "Assign folders to projects/clients. Two modes:\n"
+            "  CSV:    fp upsert folders assignments.csv [--commit]\n"
+            "  Path:   fp upsert folders --folder /path --project-id N\n"
+        ),
+        epilog=(
+            "CSV columns:\n"
+            "  required: folder_path\n"
+            "  optional: project_name, project_id, client_name, client_id\n"
+            "\n"
+            "  Provide project by name OR id (id takes precedence).\n"
+            "  Same for client.\n"
+            "\n"
+            "example CSV:\n"
+            "  folder_path,project_name\n"
+            "  /Work/acme/docs,Acme Docs\n"
+            "  /Work/internal/api,Internal API\n"
+            "\n"
+            "modes:\n"
+            "  Default is dry-run (validate only). Pass --commit to write."
+        ),
+        formatter_class=FORMATTER,
+    )
+    p.add_argument("file", nargs="?", default=None, help="Path to CSV file for bulk folder assignment")
+    p.add_argument("--folder", default=None, help="Folder path to assign under (legacy mode)")
+    p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
+    p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Validate and preview changes without writing (default behavior, CSV mode)",
+    )
+    p.add_argument(
+        "--commit",
+        action="store_true",
+        default=False,
+        help="Apply validated changes to the database (CSV mode)",
+    )
+    add_json_flag(p)
+    p.set_defaults(func=_handle_folders_dispatch)

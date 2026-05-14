@@ -6,8 +6,11 @@ Validates:
   3. Single-mode dispatch (client/project) routes through service.upsert()
   4. Assign-mode dispatch (file --project-id N) routes through service.assign()
   5. Errors: missing required args, invalid noun
+  6. CSV folder import: bulk folder-to-project/client assignment
 """
 
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from conftest import run_fp
@@ -156,3 +159,172 @@ class TestUpsertErrors:
 
         assert code == 1
         mock_svc.assign.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 6. CSV folder import
+# ---------------------------------------------------------------------------
+
+
+def _write_csv(lines: list[str]) -> str:
+    """Write lines to a temp CSV and return the path."""
+    f = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    f.write("\n".join(lines))
+    f.close()
+    return f.name
+
+
+class TestUpsertFoldersCsv:
+    """fp upsert folders <csv> imports folder-to-project/client assignments."""
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_routes_to_assign(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_id",
+            "/tmp/docs,5",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value={"id": 10, "project_id": None},
+            ),
+            patch(
+                "footprinter.services.folder_service.assign",
+                return_value={"id": 10, "project_id": 5},
+            ) as mock_assign,
+        ):
+            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+
+        assert code == 0
+        mock_assign.assert_called_once()
+        kwargs = mock_assign.call_args.kwargs
+        assert kwargs["project_id"] == 5
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_dry_run_default(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_id",
+            "/tmp/docs,5",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value={"id": 10, "project_id": None},
+            ),
+            patch(
+                "footprinter.services.folder_service.assign",
+            ) as mock_assign,
+        ):
+            _, _, code = run_fp("upsert", "folders", csv_path)
+
+        assert code == 0
+        mock_assign.assert_not_called()
+        Path(csv_path).unlink(missing_ok=True)
+
+    def test_csv_missing_folder_path_column(self):
+        csv_path = _write_csv([
+            "path,project_id",
+            "/tmp/docs,5",
+        ])
+        _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+        assert code != 0
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_unresolvable_folder_path(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_id",
+            "/nonexistent,5",
+            "/also/missing,3",
+        ])
+        with patch(
+            "footprinter.db.folders.get_folder_by_path",
+            return_value=None,
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--commit", "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["errors"] == 2
+        assert result["assigned"] == 0
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_unresolvable_project_name(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_name",
+            "/tmp/docs,NoSuchProject",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value={"id": 10, "project_id": None},
+            ),
+            patch(
+                "footprinter.db.projects.find_project_id_by_key",
+                return_value=None,
+            ),
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--commit", "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["errors"] == 1
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_row_without_target(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path",
+            "/tmp/docs",
+        ])
+        with patch(
+            "footprinter.db.folders.get_folder_by_path",
+            return_value={"id": 10, "project_id": None},
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--commit", "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["errors"] == 1
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert._handle_bulk_assign")
+    @patch("footprinter.cli.upsert.open_db")
+    def test_folder_flag_still_works(self, mock_open_db, mock_bulk_assign):
+        _patched_open_db(mock_open_db)
+        mock_bulk_assign.return_value = None
+
+        _, _, code = run_fp(
+            "upsert", "folders", "--folder", "/tmp/x", "--project-id", "1",
+        )
+
+        assert code == 0
+        mock_bulk_assign.assert_called_once()
+
+    def test_csv_and_folder_flag_mutual_exclusion(self):
+        csv_path = _write_csv([
+            "folder_path,project_id",
+            "/tmp/docs,5",
+        ])
+        _, _, code = run_fp(
+            "upsert", "folders", csv_path, "--folder", "/tmp/x",
+            "--project-id", "1",
+        )
+        assert code != 0
+        Path(csv_path).unlink(missing_ok=True)
