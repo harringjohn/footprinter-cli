@@ -3397,6 +3397,6 @@ class TestNoAgentIdentity:
         hits = [
             (i + 1, line.strip())
             for i, line in enumerate(text.splitlines())
-            if re.search(r"\bClaude\s+(can|only|will|does)\b", line)
+            if re.search(r"\bClaude\b(?!\s+(Desktop|Code|or\b|\.zip))", line)
         ]
         assert hits == [], f"Claude used as agent identity: {hits}"
