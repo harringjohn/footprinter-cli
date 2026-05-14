@@ -22,9 +22,9 @@ from rich.console import Console
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Patch targets — functions are imported into status_cmd at module level,
-# so we patch them where they're looked up (status_cmd), not where defined.
-_MOD = "footprinter.cli.status_cmd"
+# Patch targets — functions are defined in status.py, and _handle() references
+# them directly, so we patch them where they live.
+_MOD = "footprinter.cli.status"
 
 _MINIMAL_COUNTS = {
     "files": {"local": {"count": 10, "size_mb": 1.0}},

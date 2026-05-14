@@ -18,7 +18,7 @@ from conftest import run_fp
 from rich.console import Console
 
 _STATUS_MOD = "footprinter.cli.status"
-_CMD_MOD = "footprinter.cli.status_cmd"
+_CMD_MOD = "footprinter.cli.status"
 
 _ENTITY_ORDER = (
     "clients",

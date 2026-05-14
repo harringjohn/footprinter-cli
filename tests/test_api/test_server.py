@@ -30,7 +30,8 @@ class TestAppFactory:
         """DatabaseNotInitializedError is caught and returns 503."""
         from fastapi import Depends
 
-        from footprinter.api.db import DatabaseNotInitializedError, get_conn
+        from footprinter.api.db import get_conn
+        from footprinter.utils.exceptions import DatabaseNotInitializedError
 
         app = api_client.app
 

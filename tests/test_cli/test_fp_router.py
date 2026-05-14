@@ -81,15 +81,15 @@ class TestStubSubcommands:
             "ingest": "ingest",
             "mcp": "mcp_cmd",
             "api": "api_cmd",
-            "status": "status_cmd",
-            "search": "search_cmd",
+            "status": "status",
+            "search": "search",
             "setup": "setup",
             "connect": "connect",
             "view": "view",
             "upsert": "upsert",
             "data": "data",
             "delete": "delete",
-            "vectorize": "vectorize_cmd",
+            "vectorize": "vectorize",
         }
         module_name = module_map.get(subcmd, subcmd)
         mod = __import__(f"footprinter.cli.{module_name}", fromlist=["register"])

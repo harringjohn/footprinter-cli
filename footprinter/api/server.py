@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from footprinter.api.db import DatabaseNotInitializedError
+from footprinter.utils.exceptions import DatabaseNotInitializedError
 
 
 def create_app() -> "FastAPI":

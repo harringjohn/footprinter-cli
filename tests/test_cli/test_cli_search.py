@@ -210,7 +210,7 @@ class TestSearchModeFlag:
 
     def test_mode_flag_registered(self):
         """search_cmd registers --mode with keyword/semantic/hybrid choices."""
-        from footprinter.cli.search_cmd import register
+        from footprinter.cli.search import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -222,7 +222,7 @@ class TestSearchModeFlag:
 
     def test_mode_choices(self):
         """Only keyword, semantic, hybrid are valid."""
-        from footprinter.cli.search_cmd import register
+        from footprinter.cli.search import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -233,7 +233,7 @@ class TestSearchModeFlag:
 
     def test_mode_default_is_none(self):
         """Default mode is None (auto-detect)."""
-        from footprinter.cli.search_cmd import register
+        from footprinter.cli.search import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -736,7 +736,7 @@ class TestJsonFlag:
 
     def test_json_flag_registered(self):
         """search_cmd registers --json; parsing with it sets args.json=True."""
-        from footprinter.cli.search_cmd import register
+        from footprinter.cli.search import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -747,7 +747,7 @@ class TestJsonFlag:
 
     def test_json_default_is_false(self):
         """Without --json, args.json defaults to False."""
-        from footprinter.cli.search_cmd import register
+        from footprinter.cli.search import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()

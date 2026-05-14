@@ -19,8 +19,8 @@ class TestGetDb:
         from footprinter.api.db import get_db
 
         with (
-            patch("footprinter.api.db.get_db_path", return_value=_db_path(tool_db)),
-            patch("footprinter.api.db.load_globals"),
+            patch("footprinter.db_base.get_db_path", return_value=_db_path(tool_db)),
+            patch("footprinter.db_base.load_globals"),
         ):
             with get_db() as conn:
                 assert isinstance(conn, sqlite3.Connection)
@@ -31,8 +31,8 @@ class TestGetDb:
         from footprinter.api.db import get_db
 
         with (
-            patch("footprinter.api.db.get_db_path", return_value=_db_path(tool_db)),
-            patch("footprinter.api.db.load_globals") as mock_load,
+            patch("footprinter.db_base.get_db_path", return_value=_db_path(tool_db)),
+            patch("footprinter.db_base.load_globals") as mock_load,
         ):
             with get_db() as conn:
                 mock_load.assert_called_once_with(conn)
@@ -42,8 +42,8 @@ class TestGetDb:
         from footprinter.api.db import get_db
 
         with (
-            patch("footprinter.api.db.get_db_path", return_value=_db_path(tool_db)),
-            patch("footprinter.api.db.load_globals"),
+            patch("footprinter.db_base.get_db_path", return_value=_db_path(tool_db)),
+            patch("footprinter.db_base.load_globals"),
         ):
             with get_db() as conn:
                 row = conn.execute("PRAGMA query_only").fetchone()
@@ -55,12 +55,13 @@ class TestDatabaseNotInitialized:
 
     def test_raises_when_no_tables(self, tmp_path):
         """get_db raises DatabaseNotInitializedError on empty database."""
-        from footprinter.api.db import DatabaseNotInitializedError, get_db
+        from footprinter.api.db import get_db
+        from footprinter.utils.exceptions import DatabaseNotInitializedError
 
         empty_db = tmp_path / "empty.db"
         sqlite3.connect(str(empty_db)).close()
 
-        with patch("footprinter.api.db.get_db_path", return_value=str(empty_db)):
+        with patch("footprinter.db_base.get_db_path", return_value=str(empty_db)):
             with pytest.raises(DatabaseNotInitializedError):
                 with get_db():
                     pass
