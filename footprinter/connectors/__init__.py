@@ -5,6 +5,7 @@ which finds installed connector plugins via importlib.metadata entry points.
 Helper functions check install status, config, and credentials.
 """
 
+import functools
 import importlib
 import importlib.metadata
 import importlib.util
@@ -52,6 +53,7 @@ class ConnectorSpec:
     zero_result_checks: tuple[tuple[str, str], ...] = ()  # (pipe_name, count_key) for status warnings
 
 
+@functools.lru_cache(maxsize=1)
 def discover_connectors() -> dict[str, ConnectorSpec]:
     """Discover connector plugins via entry points.
 

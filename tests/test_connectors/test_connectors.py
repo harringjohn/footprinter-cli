@@ -290,6 +290,12 @@ class TestResolveCheckAuth:
 
 
 class TestDiscoverConnectors:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from footprinter.connectors import discover_connectors
+
+        discover_connectors.cache_clear()
+
     def test_discover_connectors_empty(self):
         """With no entry points registered, returns empty dict."""
         from unittest.mock import patch
@@ -369,6 +375,33 @@ class TestDiscoverConnectors:
             result = discover_connectors()
 
         assert result == {}
+
+    def test_discover_connectors_caches_result(self):
+        """Second call returns cached result without re-scanning entry points."""
+        from unittest.mock import MagicMock, patch
+
+        from footprinter.connectors import ConnectorSpec, discover_connectors
+
+        spec = ConnectorSpec(
+            name="cached",
+            extra="cached",
+            description="Cached connector",
+            pipes=(),
+            probe_module="os",
+            config_sections=(),
+            setup_hook="os.getcwd",
+            remove_packages=(),
+        )
+        ep = MagicMock()
+        ep.name = "cached"
+        ep.load.return_value = spec
+
+        with patch("importlib.metadata.entry_points", return_value=[ep]) as mock_eps:
+            first = discover_connectors()
+            second = discover_connectors()
+
+        mock_eps.assert_called_once()
+        assert first is second
 
 
 class TestGetConnectorPipesParam:
