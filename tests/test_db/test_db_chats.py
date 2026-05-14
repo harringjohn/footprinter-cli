@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from footprinter.db.chats import insert_chat
+from footprinter.db.chats import insert_chat, insert_message
 
 
 @pytest.fixture
@@ -104,5 +104,76 @@ def test_insert_chat_accepts_explicit_status(conn):
 
     row = conn.execute(
         "SELECT status FROM chats WHERE external_id = 'ext-1'"
+    ).fetchone()
+    assert row["status"] == "unlisted"
+
+
+# ---------------------------------------------------------------------------
+# insert_message — mirrors insert_chat coverage (FPR-1489)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def msg_conn():
+    """In-memory SQLite with DEFAULT-less status/indexed_at columns.
+
+    Omitting DEFAULTs proves the writer explicitly populates these columns —
+    if the INSERT relies on schema DEFAULTs, the columns land as NULL.
+    """
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        """
+        CREATE TABLE chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            external_id TEXT UNIQUE
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            message_id TEXT,
+            role TEXT NOT NULL,
+            content TEXT,
+            created_at DATETIME,
+            metadata TEXT,
+            indexed_at DATETIME,
+            updated_at DATETIME,
+            status TEXT,
+            FOREIGN KEY (chat_id) REFERENCES chats(id)
+        )
+        """
+    )
+    db.execute("INSERT INTO chats (id, external_id) VALUES (1, 'chat-1')")
+    db.commit()
+    return db
+
+
+def _minimal_message(**overrides):
+    payload = {"chat_id": 1, "role": "user", "content": "hello"}
+    payload.update(overrides)
+    return payload
+
+
+def test_insert_message_populates_status_and_indexed_at(msg_conn):
+    """New rows must get status='listed' and a non-null indexed_at."""
+    insert_message(msg_conn, _minimal_message())
+
+    row = msg_conn.execute(
+        "SELECT status, indexed_at FROM messages WHERE id = 1"
+    ).fetchone()
+    assert row["status"] == "listed"
+    assert row["indexed_at"] is not None
+
+
+def test_insert_message_accepts_explicit_status(msg_conn):
+    """An explicit status in the payload must be honored on insert."""
+    insert_message(msg_conn, _minimal_message(status="unlisted"))
+
+    row = msg_conn.execute(
+        "SELECT status FROM messages WHERE id = 1"
     ).fetchone()
     assert row["status"] == "unlisted"
