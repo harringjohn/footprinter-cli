@@ -652,7 +652,7 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
         else:
             # 1b. Ancestor folder ID policies (nearest ancestor wins)
             result = _walk_ancestor_policies(
-                conn, folder_id, row["parent_folder_id"],
+                cursor, folder_id, row["parent_folder_id"],
                 lambda scope: _resolve(all_policies.get(scope)),
             )
             if result:
@@ -726,7 +726,7 @@ def _get_policy(cursor, scope: str) -> Optional[VisibilityState]:
 
 
 def _walk_ancestor_policies(
-    cursor,
+    cursor: sqlite3.Cursor,
     folder_id: int,
     parent_folder_id: Optional[int],
     lookup_policy: Callable[[str], Optional[VisibilityState]],
