@@ -20,7 +20,7 @@ class FullContentExtractor(ContentExtractor):
     def __init__(
         self,
         chunk_size: int = 1000,
-        chunk_overlap: int = 150,
+        chunk_overlap: float = 0.15,
         max_file_size_bytes: int = 50 * 1024 * 1024,
         max_vectorize_size_bytes: int = 100 * 1024 * 1024,
         file_types: Optional[List[str]] = None,
@@ -31,7 +31,7 @@ class FullContentExtractor(ContentExtractor):
 
         Args:
             chunk_size: Size of each chunk in characters
-            chunk_overlap: Character overlap between consecutive chunks.
+            chunk_overlap: Fractional overlap (0.0–1.0) between consecutive chunks.
             max_file_size_bytes: Maximum file size to read (0 = no limit)
             max_vectorize_size_bytes: Always-on cap specific to vectorization.
                 Applied even when ``max_file_size_bytes == 0``. 0 disables.
@@ -41,9 +41,16 @@ class FullContentExtractor(ContentExtractor):
         """
         super().__init__(max_preview_length=1000)  # Keep small preview for DB
         self.chunk_size = chunk_size
-        if isinstance(chunk_overlap, float) and chunk_overlap < 1.0:
-            logger.warning("chunk_overlap as float is deprecated; use int (character count)")
-            chunk_overlap = int(chunk_overlap * chunk_size)
+        if isinstance(chunk_overlap, (int, float)) and chunk_overlap >= 1.0:
+            import warnings
+
+            warnings.warn(
+                "Passing chunk_overlap as absolute characters is deprecated; "
+                "use a fractional value in [0.0, 1.0) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            chunk_overlap = chunk_overlap / chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_file_size_bytes = max_file_size_bytes
         self.max_vectorize_size_bytes = max_vectorize_size_bytes
@@ -57,8 +64,8 @@ class FullContentExtractor(ContentExtractor):
         Reads ``config["indexing"]["max_file_size_mb"]`` (default 0 = no
         limit) and ``config["vectorization"]`` (chunk_size, chunk_overlap,
         file_types, exclude_patterns).  Missing vectorization keys fall back
-        to constructor defaults.  Legacy float ``chunk_overlap`` values
-        (e.g. ``0.15``) are auto-converted to int by the constructor.
+        to constructor defaults.  Legacy integer ``chunk_overlap`` values
+        (e.g. ``150``) are auto-converted to fractional by the constructor.
         """
         max_mb = config.get("indexing", {}).get("max_file_size_mb", 0)
         vec_config = config.get("vectorization", {})

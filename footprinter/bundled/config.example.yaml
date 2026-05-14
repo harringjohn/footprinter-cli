@@ -116,10 +116,10 @@ vectorization:
   # ~1000 chars ≈ 250 tokens. Larger chunks get silently truncated by the model,
   # meaning content past the window is invisible to semantic search.
   chunk_size: 1000
-  # Character overlap between consecutive chunks.
-  # Both file and chat chunking now share the same implementation
-  # in footprinter/semantic/chunking.py.
-  chunk_overlap: 150
+  # Fractional overlap between consecutive chunks (0.0–1.0).
+  # 0.15 = 15% of chunk_size chars shared between adjacent chunks.
+  # Legacy integer values (>= 1) are accepted but deprecated.
+  chunk_overlap: 0.15
   # Patterns (fnmatch syntax) for file paths to skip during vectorization.
   # Matched against the full absolute path (e.g. ~/Work/file.json expands at runtime).
   # Files matching these patterns are still indexed (searchable via FTS)

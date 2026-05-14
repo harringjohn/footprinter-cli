@@ -1,15 +1,16 @@
 """Pure chunking function for splitting content into overlapping chunks."""
 
+import warnings
 from typing import List, Tuple
 
 DEFAULT_CHUNK_SIZE = 1000  # chars — tuned for MiniLM-L6-v2 (256-token window)
-DEFAULT_CHUNK_OVERLAP = 150  # chars (15% of default chunk size)
+DEFAULT_CHUNK_OVERLAP = 0.15  # fraction of chunk_size (15%)
 
 
 def chunk_content(
     content: str,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    chunk_overlap: float = DEFAULT_CHUNK_OVERLAP,
 ) -> List[Tuple[str, int, int]]:
     """
     Split content into overlapping chunks with word-boundary awareness.
@@ -17,11 +18,22 @@ def chunk_content(
     Args:
         content: Text to split.
         chunk_size: Maximum characters per chunk.
-        chunk_overlap: Character overlap between consecutive chunks.
+        chunk_overlap: Fractional overlap (0.0–1.0) between consecutive chunks.
 
     Returns:
         List of (chunk_text, chunk_index, total_chunks) tuples.
     """
+    if chunk_overlap >= 1.0:
+        warnings.warn(
+            "Passing chunk_overlap as absolute characters is deprecated; "
+            "use a fractional value in [0.0, 1.0) instead (e.g. 0.15 for 15%).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        effective_overlap = int(chunk_overlap)
+    else:
+        effective_overlap = int(chunk_overlap * chunk_size)
+
     if len(content) <= chunk_size:
         return [(content, 0, 1)]
 
@@ -45,7 +57,7 @@ def chunk_content(
             chunk_index += 1
 
         # Move start with overlap
-        start = end - chunk_overlap if end < len(content) else end
+        start = end - effective_overlap if end < len(content) else end
 
     # Set total_chunks
     total = len(chunks)
