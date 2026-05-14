@@ -82,14 +82,14 @@ def db_conn(tmp_path):
 
     # -- Chats -----------------------------------------------------------------
     conn.execute(
-        """INSERT INTO chats (id, external_id, account, title, summary, message_count,
+        """INSERT INTO chats (id, external_id, account, title, message_count,
                               created_at, mcp_view, mcp_read, status)
            VALUES
-               (1, 'conv-vis',    'claude', 'Visible Chat', 'A visible summary', 2,
+               (1, 'conv-vis',    'claude', 'Visible Chat', 2,
                 '2026-01-10', 'visible', 'allow', 'listed'),
-               (2, 'conv-hidden', 'claude', 'Hidden Chat',  'A hidden summary',  1,
+               (2, 'conv-hidden', 'claude', 'Hidden Chat',  1,
                 '2026-01-11', 'hidden',  'allow', 'listed'),
-               (3, 'conv-opaque', 'claude', 'Opaque Chat',  'An opaque summary', 1,
+               (3, 'conv-opaque', 'claude', 'Opaque Chat',  1,
                 '2026-01-12', 'opaque',  'deny',  'listed')"""
     )
 

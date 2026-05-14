@@ -28,7 +28,6 @@ def _make_rebuild_db(tmp_path):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             external_id TEXT UNIQUE,
             title TEXT,
-            summary TEXT,
             account TEXT DEFAULT 'test',
             created_at TEXT,
             message_count INTEGER DEFAULT 0,
@@ -283,7 +282,6 @@ class TestChatIndexerChatInfoRespectsFlag:
             conv_data = {
                 "source": "test",
                 "title": "Flagged Chat",
-                "summary": "A chat to exclude",
                 "created_at": "2026-01-01",
                 "message_count": 5,
             }

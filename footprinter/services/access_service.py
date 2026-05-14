@@ -230,7 +230,7 @@ def _filter_to_opaque(item_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
 
 # Content fields that listing tools must strip when mcp_read != 'allow'
 _CONTENT_FIELDS: Dict[str, List[str]] = {
-    "chat": ["snippet", "summary"],
+    "chat": ["snippet"],
     "email": ["snippet"],
     "file": ["snippet"],
 }

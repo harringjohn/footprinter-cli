@@ -852,8 +852,7 @@ class TestInsertEmail:
                 mcp_read = 'allow',
                 mcp_view = 'visible',
                 client_id = 1,
-                project_id = 2,
-                summary = 'AI summary'
+                project_id = 2
             WHERE message_id = 'msg-reindex-001' AND account = 'personal'
         """)
 
@@ -881,7 +880,6 @@ class TestInsertEmail:
         assert row["mcp_view"] == "visible"
         assert row["client_id"] == 1
         assert row["project_id"] == 2
-        assert row["summary"] == "AI summary"
         db.close()
 
     def test_email_reindex_returns_correct_id(self, temp_db):

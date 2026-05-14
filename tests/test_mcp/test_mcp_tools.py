@@ -1229,7 +1229,7 @@ class TestContexterSearch:
             (id, source, name, path, account, mime_type, size_bytes, modified_at),
         )
         cursor.execute(
-            "INSERT INTO files_fts (rowid, name, content_preview, summary) VALUES (?, ?, '', '')",
+            "INSERT INTO files_fts (rowid, name, content_preview) VALUES (?, ?, '')",
             (id, name),
         )
         conn.commit()
@@ -1450,13 +1450,13 @@ class TestContexterSearch:
         assert email["subject"] == "Confidential"  # metadata preserved
         assert "snippet" not in email  # content stripped
 
-    def test_chat_search_permission_denied_strips_summary(self, mcp_db):
-        """Visible chat with mcp_read='deny' appears without summary."""
+    def test_chat_search_permission_denied_strips_snippet(self, mcp_db):
+        """Visible chat with mcp_read='deny' appears without snippet."""
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO chats (id, external_id, account, title, summary, "
+            "INSERT INTO chats (id, external_id, account, title, "
             "created_at, message_count, mcp_view, mcp_read) "
-            "VALUES (1, 'conv-1', 'claude', 'Secret Chat', 'Sensitive summary content', "
+            "VALUES (1, 'conv-1', 'claude', 'Secret Chat', "
             "'2026-01-15', 5, 'visible', 'deny')"
         )
         mcp_db.commit()
@@ -1472,7 +1472,7 @@ class TestContexterSearch:
         assert len(result["chats"]) == 1
         chat = result["chats"][0]
         assert chat["title"] == "Secret Chat"  # metadata preserved
-        assert "summary" not in chat  # content stripped
+        assert "snippet" not in chat  # content stripped
 
 
 # ---------------------------------------------------------------------------
@@ -1526,11 +1526,11 @@ class TestContexterSearchFTS5:
             if isinstance(value, str):
                 assert "quarterly revenue" not in value, f"content_preview leaked via field '{key}'"
 
-    def test_artifact_search_matches_summary(self, mcp_db):
-        """Artifact with matching summary found via FTS5."""
+    def test_artifact_search_matches_content_preview(self, mcp_db):
+        """Artifact with matching content_preview found via FTS5."""
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO files (id, source, name, path, status, modified_at, summary) "
+            "INSERT INTO files (id, source, name, path, status, modified_at, content_preview) "
             "VALUES (1, 'local', 'notes.txt', '/test/notes.txt', 'listed', '2024-01-01', "
             "'authentication architecture design decisions')"
         )
@@ -3118,8 +3118,8 @@ class TestFootprinterSemantic:
             "'text', 512, '2026-02-15', 'listed', 'Revenue data for Q3', 'visible', 'allow')"
         )
         cursor.execute(
-            "INSERT INTO files_fts (rowid, name, content_preview, summary) "
-            "VALUES (1, 'revenue.txt', 'Revenue data for Q3', '')"
+            "INSERT INTO files_fts (rowid, name, content_preview) "
+            "VALUES (1, 'revenue.txt', 'Revenue data for Q3')"
         )
         mcp_db.commit()
 
@@ -3435,8 +3435,8 @@ class TestFootprinterSemantic:
             "'text', 512, '2026-02-15', 'listed', 'Opaque content here', 'opaque', 'allow')"
         )
         cursor.execute(
-            "INSERT INTO files_fts (rowid, name, content_preview, summary) "
-            "VALUES (1, 'opaque.txt', 'Opaque content here', '')"
+            "INSERT INTO files_fts (rowid, name, content_preview) "
+            "VALUES (1, 'opaque.txt', 'Opaque content here')"
         )
         mcp_db.commit()
 
@@ -3764,8 +3764,8 @@ class TestFootprinterSemantic:
             "'text', 512, '2026-02-15', 'listed', 'Confidential data here', 'visible', 'deny')"
         )
         cursor.execute(
-            "INSERT INTO files_fts (rowid, name, content_preview, summary) "
-            "VALUES (1, 'secret.txt', 'Confidential data here', '')"
+            "INSERT INTO files_fts (rowid, name, content_preview) "
+            "VALUES (1, 'secret.txt', 'Confidential data here')"
         )
         mcp_db.commit()
 
@@ -4095,8 +4095,8 @@ class TestContexterRead:
         cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
         cursor.execute(
             "INSERT INTO chats "
-            "(id, external_id, account, title, summary, created_at, message_count, client_id, project_id, mcp_view) "
-            "VALUES (1, 'conv-uuid-1', 'claude', 'Acme Chat', 'Summary', '2024-01-15', 1, 1, 1, 'visible')"
+            "(id, external_id, account, title, created_at, message_count, client_id, project_id, mcp_view) "
+            "VALUES (1, 'conv-uuid-1', 'claude', 'Acme Chat', '2024-01-15', 1, 1, 1, 'visible')"
         )
         cursor.execute(
             "INSERT INTO messages (chat_id, role, content, created_at) "
@@ -4150,8 +4150,8 @@ class TestContexterRead:
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO chats "
-            "(id, external_id, account, title, summary, created_at, message_count, mcp_view) "
-            "VALUES (1, 'conv-uuid-1', 'claude', 'Test Chat', 'A summary', '2024-01-15', 2, 'visible')"
+            "(id, external_id, account, title, created_at, message_count, mcp_view) "
+            "VALUES (1, 'conv-uuid-1', 'claude', 'Test Chat', '2024-01-15', 2, 'visible')"
         )
         cursor.execute(
             "INSERT INTO messages (chat_id, role, content, created_at) "
@@ -4203,11 +4203,11 @@ class TestContexterRead:
         )
         # Chat with sensitive fields
         cursor.execute(
-            "INSERT INTO chats (id, external_id, account, title, summary,"
+            "INSERT INTO chats (id, external_id, account, title,"
             " created_at, message_count, client_id, project_id,"
             " mcp_view, mcp_read) "
             "VALUES (1, 'conv-uuid-1', 'claude', 'Secret Chat',"
-            " 'Sensitive summary', '2024-01-15', 5, 1, 1,"
+            " '2024-01-15', 5, 1, 1,"
             " 'visible', 'deny')"
         )
         mcp_db.commit()
@@ -4251,7 +4251,7 @@ class TestContexterRead:
             meta = result["metadata"]
             assert meta["id"] == 1
             assert meta["account"] == "claude"
-            for field in ("title", "summary", "external_id"):
+            for field in ("title", "external_id"):
                 assert field not in meta, f"chat: sensitive field '{field}' leaked"
             for field in ("client_id", "project_id"):
                 assert field in meta, f"chat: opaque FK field '{field}' should be present"

@@ -147,11 +147,11 @@ class TestSearchNoML:
             conn.execute("CREATE VIRTUAL TABLE files_fts USING fts5(name, path, content=files, content_rowid=id)")
             conn.execute(
                 "CREATE TABLE chats (id INTEGER PRIMARY KEY,"
-                " external_id TEXT, title TEXT, summary TEXT,"
+                " external_id TEXT, title TEXT,"
                 " account TEXT, created_at TEXT, modified_at TEXT,"
                 " message_count INTEGER)"
             )
-            conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, summary, content=chats, content_rowid=id)")
+            conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, content=chats, content_rowid=id)")
             conn.commit()
             conn.close()
 

@@ -99,8 +99,7 @@ class TestSearchVisibility:
         # Chat 1 is visible with allow — should keep summary
         visible_chats = [c for c in result["chats"] if c.get("title") == "Visible Chat"]
         if visible_chats:
-            # Visible + allow chat keeps summary
-            assert "summary" in visible_chats[0] or visible_chats[0].get("summary") is None
+            assert "title" in visible_chats[0]
 
     def test_hidden_excluded_from_all_sources(self, service_db):
         """Hidden items excluded across files, emails, and chats."""

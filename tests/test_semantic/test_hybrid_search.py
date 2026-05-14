@@ -62,28 +62,8 @@ class TestExtractSnippet:
 
 
 class TestChatSnippet:
-    def test_summary_truncated_to_300_chars(self):
-        row = {"summary": "A" * 500, "chat_title": "Test Chat"}
-        result = chat_snippet(row)
-        assert result == "A" * 300 + "..."
-
-    def test_summary_short_returned_without_ellipsis(self):
-        row = {"summary": "Short summary", "chat_title": "Test Chat"}
-        result = chat_snippet(row)
-        assert result == "Short summary"
-
-    def test_summary_exactly_300_chars(self):
-        row = {"summary": "A" * 300, "chat_title": "Test Chat"}
-        result = chat_snippet(row)
-        assert result == "A" * 300
-
-    def test_no_summary_returns_title_match(self):
-        row = {"summary": "", "chat_title": "My Chat"}
-        result = chat_snippet(row)
-        assert result == "Title match: My Chat"
-
-    def test_none_summary_returns_title_match(self):
-        row = {"summary": None, "chat_title": "My Chat"}
+    def test_returns_title_match(self):
+        row = {"chat_title": "My Chat"}
         result = chat_snippet(row)
         assert result == "Title match: My Chat"
 
@@ -165,7 +145,7 @@ class TestReciprocalRankFusion:
             "chat_title": "Test",
             "account": "claude",
             "created_at": "2024-01-01",
-            "summary": "",
+            "snippet": "",
             "message_count": 5,
         }
         # Should NOT raise KeyError
@@ -181,7 +161,7 @@ class TestReciprocalRankFusion:
             "source": "chatgpt",
             "account": "claude",
             "created_at": "2024-01-01",
-            "summary": "",
+            "snippet": "",
             "message_count": 5,
         }
         combined = reciprocal_rank_fusion([], [kw])
@@ -203,7 +183,6 @@ def fts5_db(tmp_path):
         CREATE TABLE chats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT,
-            summary TEXT,
             account TEXT,
             created_at TEXT,
             message_count INTEGER DEFAULT 0,
@@ -215,44 +194,44 @@ def fts5_db(tmp_path):
     conn.execute(
         """
         CREATE VIRTUAL TABLE chats_fts USING fts5(
-            title, summary, content=chats, content_rowid=id
+            title, content=chats, content_rowid=id
         )
     """
     )
 
     # Insert test data — visible chats
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view)
-        VALUES ('Python debugging', 'Discussion about Python errors', 'claude', '2024-01-01', 10, 'visible')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        VALUES ('Python debugging', 'claude', '2024-01-01', 10, 'visible')"""
     )
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view)
-        VALUES ('JavaScript intro', 'Learning JS basics', 'chatgpt', '2024-01-02', 5, 'visible')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        VALUES ('JavaScript intro', 'chatgpt', '2024-01-02', 5, 'visible')"""
     )
     # Hidden chat — returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view)
-        VALUES ('Python patterns', 'Advanced Python design patterns', 'claude', '2024-01-03', 8, 'hidden')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        VALUES ('Python patterns', 'claude', '2024-01-03', 8, 'hidden')"""
     )
     # Unresolved chat (inherit) — returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view)
-        VALUES ('Python tips', 'Quick Python tips and tricks', 'claude', '2024-01-04', 3, 'inherit')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        VALUES ('Python tips', 'claude', '2024-01-04', 3, 'inherit')"""
     )
     # Opaque chat — should be returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view)
-        VALUES ('Python opaque', 'Opaque Python chat', 'claude', '2024-01-05', 4, 'opaque')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        VALUES ('Python opaque', 'claude', '2024-01-05', 4, 'opaque')"""
     )
     # Removed chat — should be excluded from keyword_search results
     conn.execute(
-        """INSERT INTO chats (title, summary, account, created_at, message_count, mcp_view, status)
-        VALUES ('Python removed', 'Removed Python chat', 'claude', '2024-01-06', 2, 'visible', 'removed')"""
+        """INSERT INTO chats (title, account, created_at, message_count, mcp_view, status)
+        VALUES ('Python removed', 'claude', '2024-01-06', 2, 'visible', 'removed')"""
     )
     # Populate FTS
     conn.execute(
-        """INSERT INTO chats_fts(rowid, title, summary)
-        SELECT id, title, summary FROM chats"""
+        """INSERT INTO chats_fts(rowid, title)
+        SELECT id, title FROM chats"""
     )
     conn.commit()
     conn.close()

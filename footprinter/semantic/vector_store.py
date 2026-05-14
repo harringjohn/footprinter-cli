@@ -350,19 +350,16 @@ class VectorStore:
         self,
         chat_id: int,
         title: str,
-        summary: Optional[str],
         source: str,
         created_at: str,
         message_count: int,
     ) -> bool:
         """
-        Index chat title+summary as a searchable document.
+        Index chat title as a searchable document.
 
         Uses upsert so it can be re-indexed safely.
         """
         text_parts = [f"Chat: {title or '(untitled)'}"]
-        if summary:
-            text_parts.append(f"Summary: {summary}")
         text_parts.append(f"Source: {source}")
 
         searchable_text = "\n\n".join(text_parts)
@@ -376,7 +373,6 @@ class VectorStore:
             "created_at": created_at or "",
             "message_count": message_count or 0,
             "chunk_type": "chat_info",
-            "has_summary": bool(summary),
         }
 
         self._chats.upsert(

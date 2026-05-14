@@ -440,7 +440,7 @@ def pagination_conn():
 
     conn.execute(
         """CREATE TABLE chats (
-            id INTEGER PRIMARY KEY, external_id TEXT, title TEXT, summary TEXT,
+            id INTEGER PRIMARY KEY, external_id TEXT, title TEXT,
             account TEXT, created_at TEXT, updated_at TEXT, message_count INTEGER,
             mcp_view TEXT DEFAULT 'inherit'
         )"""

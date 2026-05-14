@@ -93,7 +93,7 @@ Super entities are marked with `[S]`, content entities with `[C]`.
 │  │  visits [C]     │  │ emails [C]  │  │      chats [C]         │   │
 │  │                  │  │              │  │                        │   │
 │  │  url, title      │  │  message_id  │  │  external_id           │   │
-│  │  visit_time      │  │  subject     │  │  title, summary        │   │
+│  │  visit_time      │  │  subject     │  │  title                  │   │
 │  │  browser         │  │  from_addr   │  │  source (claude/gpt)   │   │
 │  └──────────────────┘  │  account     │  │                        │   │
 │                        └──────────────┘  │        ▲               │   │
@@ -225,13 +225,6 @@ Data-source entities (files, folders, emails, chats, visits, messages) also carr
 ### App-scope columns in standard schema
 
 Three columns are defined in standard `CREATE TABLE` statements but only populated by app-scope code. Tool-only installs leave them NULL:
-
-| Column | Tables | Purpose |
-|--------|--------|---------|
-| `summary` | files, emails, chats | AI-generated content summary |
-| `summarized_at` | files | When AI summary was generated |
-
-These remain in standard schema because `files_fts` and `chats_fts` reference `summary` via FTS5 triggers.
 
 ---
 
@@ -382,8 +375,6 @@ The primary table for all indexed files. Stores both local files and remote file
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `summary` | TEXT | AI-generated content summary |
-| `summarized_at` | DATETIME | When AI summary was generated |
 
 **Display:**
 
@@ -667,7 +658,6 @@ Email messages populated by email connector plugins (e.g. `footprinter-google` f
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `summary` | TEXT | AI-generated email summary |
 
 **Client/project association:**
 
@@ -710,7 +700,6 @@ Claude and ChatGPT conversation exports.
 | `external_id` | TEXT | Unique ID (from export platform, UNIQUE NOT NULL) |
 | `account` | TEXT | `'claude'` or `'chatgpt'` (NOT NULL) |
 | `title` | TEXT | Conversation title |
-| `summary` | TEXT | AI-generated summary |
 | `created_at` | DATETIME | When started (origin) |
 | `modified_at` | DATETIME | Last message time (origin) |
 | `message_count` | INTEGER | Number of messages (default: 0) |
@@ -1124,11 +1113,11 @@ Created by `init_db()`. These are external-content FTS5 tables backed by their r
 
 | Virtual Table | Base Table | Indexed Columns |
 |---------------|------------|-----------------|
-| `files_fts` | `files` | `name`, `content_preview`, `summary` |
+| `files_fts` | `files` | `name`, `content_preview` |
 | `emails_fts` | `emails` | `subject`, `from_name`, `from_address`, `body_preview` |
-| `chats_fts` | `chats` | `title`, `summary` |
+| `chats_fts` | `chats` | `title` |
 
-Content columns (`content_preview`, `body_preview`, `summary`) are NULLed in the FTS index when `mcp_view` is `'opaque'` or `'hidden'`, preventing sensitive content from appearing in search results.
+Content columns (`content_preview`, `body_preview`) are NULLed in the FTS index when `mcp_view` is `'opaque'` or `'hidden'`, preventing sensitive content from appearing in search results.
 
 ---
 

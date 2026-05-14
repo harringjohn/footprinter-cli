@@ -105,7 +105,6 @@ class ChatIndexer:
             store.index_chat_info(
                 chat_id=chat_id,
                 title=conv_data.get("title"),
-                summary=conv_data.get("summary"),
                 source=conv_data.get("source", "unknown"),
                 created_at=conv_data.get("created_at", ""),
                 message_count=conv_data.get("message_count", 0),
@@ -333,7 +332,6 @@ class ChatIndexer:
                         "external_id": conv_data["external_id"],
                         "account": conv_data["source"],  # Map source → account
                         "title": conv_data["title"],
-                        "summary": conv_data["summary"],
                         "created_at": conv_data["created_at"],
                         "updated_at": conv_data["updated_at"],
                         "message_count": conv_data["message_count"],

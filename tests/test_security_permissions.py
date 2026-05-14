@@ -364,8 +364,8 @@ class TestChatRead:
         cursor.execute(
             """
             INSERT INTO chats
-            (id, external_id, account, title, summary, created_at, message_count, mcp_view)
-            VALUES (1, 'conv-uuid-1', 'claude', 'Test Chat', 'A test conversation',
+            (id, external_id, account, title, created_at, message_count, mcp_view)
+            VALUES (1, 'conv-uuid-1', 'claude', 'Test Chat',
                     '2024-01-15', 2, 'visible')
         """
         )

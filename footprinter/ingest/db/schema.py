@@ -32,15 +32,6 @@ logger = logging.getLogger(__name__)
 # Source-specific metadata is stored in the `metadata` TEXT column
 # (JSON) on tables that need it: files, projects, chats, messages,
 # emails, clients.
-#
-# Columns populated by app or future scope
-# ─────────────────────────────────────────
-#   summary       TEXT     — AI-generated summary (files, emails, chats)
-#   summarized_at DATETIME — when summary was generated (files only)
-#
-# files_fts and chats_fts reference the summary column via FTS5
-# triggers, so summary stays in the standard schema.  emails also
-# has summary for consistency.  Tool-only installs leave them NULL.
 
 
 # Single source of truth for FTS5 virtual table definitions.
@@ -48,8 +39,8 @@ logger = logging.getLogger(__name__)
 _FTS_DEFINITIONS: dict[str, dict[str, Any]] = {
     "files_fts": {
         "base_table": "files",
-        "columns": ["name", "content_preview", "summary"],
-        "content_columns": ["content_preview", "summary"],
+        "columns": ["name", "content_preview"],
+        "content_columns": ["content_preview"],
     },
     "emails_fts": {
         "base_table": "emails",
@@ -58,14 +49,12 @@ _FTS_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "chats_fts": {
         "base_table": "chats",
-        "columns": ["title", "summary"],
-        "content_columns": ["summary"],
+        "columns": ["title"],
+        "content_columns": [],
     },
 }
 
 # Single source of truth for the ingests table DDL.
-# Referenced by both migration.py (early creation for last-run migration)
-# and init_db() (canonical DDL).
 _INGESTS_DDL = (
     "CREATE TABLE IF NOT EXISTS ingests ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -87,7 +76,6 @@ _INGESTS_DDL = (
 
 
 # All 8 entity tables that carry mcp_read / mcp_view columns.
-# Shared by init_db() (display_name triggers) and migration.py.
 ACCESS_CONTROL_TABLES = (
     "files",
     "folders",
@@ -112,18 +100,6 @@ class SchemaMixin:
 
         cursor = self.conn.cursor()
 
-        # Only run migration on existing databases (not fresh installs).
-        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        if cursor.fetchone() is not None:
-            from footprinter.ingest.db.migration import migrate_schema
-
-            migrate_schema(cursor)
-
-        # Enable FK enforcement AFTER migrations.  The browser_visits →
-        # visits rename triggers SQLite's schema rewriter which recompiles
-        # FK references.  The messages table's FK was originally REFERENCES
-        # chat_conversations(id); with foreign_keys ON the rewriter
-        # validates the stale compiled reference and fails.
         self.conn.execute("PRAGMA foreign_keys=ON")
 
         # ========================================
@@ -187,10 +163,6 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-
-                -- AI-generated summaries
-                summary TEXT,
-                summarized_at DATETIME,
 
                 -- Display
                 display_name TEXT
@@ -401,7 +373,6 @@ class SchemaMixin:
                 external_id TEXT UNIQUE NOT NULL,
                 account TEXT NOT NULL,
                 title TEXT,
-                summary TEXT,
 
                 -- Origin timestamps
                 created_at DATETIME,
@@ -527,9 +498,6 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-
-                -- AI-generated summaries
-                summary TEXT,
 
                 -- Timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

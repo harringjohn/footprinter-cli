@@ -256,8 +256,8 @@ class TestAccessServiceChat:
         assert "visible message" in result["content"]
         assert "visible reply" in result["content"]
 
-    def test_chat_summary_in_content_not_metadata(self, service_db):
-        """Summary should be in content (gated by mcp_read), not metadata."""
+    def test_chat_content_has_messages(self, service_db):
+        """Chat content should contain messages, not metadata."""
         result = access_service.gate_access(
             service_db,
             "chat",
@@ -265,16 +265,15 @@ class TestAccessServiceChat:
             role=Role.VIEWER,
         )
         assert result["status"] == "ok"
-        assert "summary" not in result["metadata"]
-        assert "Chat about visible topics" in result["content"]
+        assert "content" in result
 
-    def test_chat_denied_does_not_expose_summary(self, service_db):
-        """Denied chat must not leak summary in opaque metadata."""
+    def test_chat_denied_does_not_expose_content(self, service_db):
+        """Denied chat must not leak content in opaque metadata."""
         service_db.execute(
-            """INSERT INTO chats (id, external_id, account, title, summary,
+            """INSERT INTO chats (id, external_id, account, title,
                                   message_count, mcp_view, mcp_read)
                VALUES (10, 'conv-denied', 'claude', 'Denied Chat',
-                       'Secret summary', 0, 'visible', 'deny')"""
+                       0, 'visible', 'deny')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -289,10 +288,10 @@ class TestAccessServiceChat:
     def test_chat_no_summary_still_works(self, service_db):
         """Chat with NULL summary should return messages without crashing."""
         service_db.execute(
-            """INSERT INTO chats (id, external_id, account, title, summary,
+            """INSERT INTO chats (id, external_id, account, title,
                                   message_count, mcp_view, mcp_read)
                VALUES (11, 'conv-nosummary', 'claude', 'No Summary Chat',
-                       NULL, 1, 'visible', 'allow')"""
+                       1, 'visible', 'allow')"""
         )
         service_db.execute(
             """INSERT INTO messages (chat_id, role, content)
@@ -509,11 +508,10 @@ def test_strip_content_for_denied():
 
 def test_strip_content_for_denied_chat_fields():
     items = [
-        {"id": 1, "snippet": "text", "summary": "sum", "mcp_read": "deny"},
+        {"id": 1, "snippet": "text", "mcp_read": "deny"},
     ]
     result = strip_content_for_denied("chat", items)
     assert "snippet" not in result[0]
-    assert "summary" not in result[0]
 
 
 # ---------------------------------------------------------------------------

@@ -78,12 +78,12 @@ def service_db(tmp_path):
 
     # -- Chats: visible(1), hidden(2), opaque(3) ----------------------------
     conn.execute(
-        """INSERT INTO chats (id, external_id, account, title, summary, message_count,
+        """INSERT INTO chats (id, external_id, account, title, message_count,
                               mcp_view, mcp_read)
            VALUES
-               (1, 'conv-vis',    'claude', 'Visible Chat', 'Chat about visible topics', 2, 'visible', 'allow'),
-               (2, 'conv-hidden', 'claude', 'Hidden Chat',  NULL, 1, 'hidden',  'allow'),
-               (3, 'conv-opaque', 'claude', 'Opaque Chat',  NULL, 1, 'opaque',  'deny')"""
+               (1, 'conv-vis',    'claude', 'Visible Chat', 2, 'visible', 'allow'),
+               (2, 'conv-hidden', 'claude', 'Hidden Chat',  1, 'hidden',  'allow'),
+               (3, 'conv-opaque', 'claude', 'Opaque Chat',  1, 'opaque',  'deny')"""
     )
 
     # -- Messages for chats --------------------------------------------------

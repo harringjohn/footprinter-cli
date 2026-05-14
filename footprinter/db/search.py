@@ -382,7 +382,7 @@ def search_chats_keyword(
     rows = conn.execute(
         f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title,
-               chat.summary, chat.created_at, chat.modified_at,
+               chat.created_at, chat.modified_at,
                chat.message_count, chat.mcp_view, chat.mcp_read, chat.status,
                project.project_name, client.name AS client_name
         FROM chats chat
@@ -401,7 +401,6 @@ def search_chats_keyword(
             "external_id": r["external_id"],
             "account": r["account"],
             "title": r["title"],
-            "summary": r["summary"],
             "created_at": r["created_at"],
             "message_count": r["message_count"],
             "project_name": r["project_name"],
@@ -507,7 +506,7 @@ def chat_fts5_fallback(
     extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
 
     rows = conn.execute(
-        f"""SELECT chat.id, chat.title, chat.summary, chat.account,
+        f"""SELECT chat.id, chat.title, chat.account,
                   chat.created_at, chat.message_count, fts.rank as fts_rank
            FROM chats_fts fts
            JOIN chats chat ON chat.id = fts.rowid
@@ -528,7 +527,7 @@ def chat_fts5_fallback(
                 "message_id": None,
                 "source": r["account"],
                 "created_at": r["created_at"],
-                "snippet": r["summary"] or "",
+                "snippet": r["title"] or "",
                 "relevance_score": score,
             }
         )

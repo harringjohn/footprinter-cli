@@ -160,7 +160,6 @@ class TestInformationOracles:
                 external_id TEXT,
                 account TEXT,
                 title TEXT,
-                summary TEXT,
                 created_at DATETIME,
                 updated_at DATETIME,
                 message_count INTEGER,

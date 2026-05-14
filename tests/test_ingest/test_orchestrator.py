@@ -689,7 +689,7 @@ class TestRebuildVectorsFileEnabled:
         )
         conn.execute(
             "CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT, "
-            "summary TEXT, account TEXT, created_at TEXT, message_count INTEGER, "
+            "account TEXT, created_at TEXT, message_count INTEGER, "
             "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'listed')"
         )
         if extra_sql:
@@ -766,8 +766,8 @@ class TestRebuildVectorsFileEnabled:
             extra_sql=[
                 "INSERT INTO messages (id, chat_id, role, content, created_at) "
                 "VALUES (1, 1, 'user', 'hello world', '2024-01-01')",
-                "INSERT INTO chats (id, title, summary, account, created_at, message_count) "
-                "VALUES (1, 'Test', 'A test', 'claude', '2024-01-01', 1)",
+                "INSERT INTO chats (id, title, account, created_at, message_count) "
+                "VALUES (1, 'Test', 'claude', '2024-01-01', 1)",
             ]
         )
         mock_store = self._run_rebuild(conn)
