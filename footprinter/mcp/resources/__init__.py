@@ -1,1 +1,1 @@
-"""Footprinter MCP resources — ambient context Claude can read without a tool call."""
+"""MCP resources — ambient context an MCP client can read without a tool call."""

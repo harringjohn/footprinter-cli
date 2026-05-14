@@ -28,7 +28,7 @@ def footprinter_read(
     item_id: int,
     format: Literal["text", "raw"] = "text",
 ) -> dict:
-    """Read content for a file, email, or chat if Claude has permission.
+    """Read content for a file, email, or chat if the MCP client has permission.
 
     Args:
         item_type: 'file', 'email', or 'chat'

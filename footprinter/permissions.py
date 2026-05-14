@@ -1,5 +1,5 @@
 """
-Permission resolution for Claude read access.
+Permission resolution for MCP client read access.
 
 Two-tier model:
   - Policies: Explicit rules (file:*, folder:*, source:*, project:*, client:*)
@@ -33,7 +33,7 @@ BASELINE_PERMISSION = True
 
 def can_read(conn: sqlite3.Connection, item_type: str, item_id: int) -> bool:
     """
-    Resolve whether Claude can read this item.
+    Resolve whether the MCP client can read this item.
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
