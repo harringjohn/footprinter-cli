@@ -1504,3 +1504,77 @@ class TestPreflightVectorizeExclusion:
             conn, cursor, files_enabled=True, chats_enabled=False, console=None, mode="incremental"
         )
         assert counts["files"] == 2, f"Expected 2 files in incremental, got {counts['files']}"
+
+
+def _run_rebuild_with_real_path(
+    tmp_path,
+    mode="full",
+    phase=None,
+    quiet=True,
+    file_vec=True,
+    chat_vec=True,
+):
+    """Run _rebuild_vectors using a real tmp_path for chroma so stamp files are observable."""
+    _, mock_inst = _mock_store()
+    mock_cls = MagicMock()
+    mock_cls.get_instance.return_value = mock_inst
+    mock_cls.reset_instance = MagicMock()
+    mock_cls._REBUILD_STAMP = ".rebuild_stamp"
+
+    mock_conn, mock_cursor = _make_mock_conn()
+
+    chroma_path = tmp_path / "chroma"
+    chroma_path.mkdir(exist_ok=True)
+
+    with (
+        patch("footprinter.ingest.cli.sqlite3") as mock_sqlite,
+        patch("footprinter.ingest.cli.get_db_path", return_value="/tmp/test.db"),
+        patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
+        patch("footprinter.paths.get_chroma_path", return_value=chroma_path),
+        patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=file_vec),
+        patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=chat_vec),
+        patch("footprinter.semantic.vector_store.VectorStore", mock_cls),
+        patch("shutil.rmtree"),
+    ):
+        mock_sqlite.connect.return_value = mock_conn
+
+        from footprinter.ingest.cli import _rebuild_vectors
+
+        kwargs = dict(quiet=quiet, source="all", phase=phase, mode=mode)
+        _rebuild_vectors(**kwargs)
+
+    return chroma_path
+
+
+class TestRebuildStampWrite:
+    def test_full_rebuild_writes_stamp_file(self, tmp_path):
+        chroma_path = _run_rebuild_with_real_path(tmp_path, mode="full")
+        stamp = chroma_path / ".rebuild_stamp"
+        assert stamp.exists(), "Full rebuild should write .rebuild_stamp"
+        content = stamp.read_text().strip()
+        assert len(content) == 32, f"Expected 32-char hex UUID, got {len(content)} chars: {content!r}"
+        int(content, 16)  # must be valid hex
+
+    def test_full_rebuild_stamp_is_fresh_each_time(self, tmp_path):
+        (tmp_path / "run1").mkdir()
+        (tmp_path / "run2").mkdir()
+        chroma1 = _run_rebuild_with_real_path(tmp_path / "run1", mode="full")
+        chroma2 = _run_rebuild_with_real_path(tmp_path / "run2", mode="full")
+        stamp1 = (chroma1 / ".rebuild_stamp").read_text().strip()
+        stamp2 = (chroma2 / ".rebuild_stamp").read_text().strip()
+        assert stamp1 != stamp2, "Each full rebuild must produce a distinct stamp"
+
+    def test_incremental_rebuild_does_not_write_stamp(self, tmp_path):
+        chroma_path = _run_rebuild_with_real_path(tmp_path, mode="incremental")
+        stamp = chroma_path / ".rebuild_stamp"
+        assert not stamp.exists(), "Incremental rebuild must not write .rebuild_stamp"
+
+    def test_sync_rebuild_does_not_write_stamp(self, tmp_path):
+        chroma_path = _run_rebuild_with_real_path(tmp_path, mode="sync")
+        stamp = chroma_path / ".rebuild_stamp"
+        assert not stamp.exists(), "Sync rebuild must not write .rebuild_stamp"
+
+    def test_single_phase_rebuild_does_not_write_stamp(self, tmp_path):
+        chroma_path = _run_rebuild_with_real_path(tmp_path, mode="full", phase="files")
+        stamp = chroma_path / ".rebuild_stamp"
+        assert not stamp.exists(), "Single-phase rebuild must not write .rebuild_stamp"

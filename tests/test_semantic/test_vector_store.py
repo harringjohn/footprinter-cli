@@ -793,6 +793,163 @@ class TestEmbeddingDim:
         assert EMBEDDING_DIM == 384
 
 
+class TestRebuildStamp:
+    def test_rebuild_stamp_constant_exists(self):
+        from footprinter.semantic.vector_store import VectorStore
+
+        assert VectorStore._REBUILD_STAMP == ".rebuild_stamp"
+
+    def test_init_reads_stamp_when_present(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("abc123")
+        s = VectorStore(chroma_path=str(chroma_dir))
+        assert s._rebuild_id == "abc123"
+        VectorStore.reset_instance()
+
+    def test_init_sets_none_when_stamp_missing(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        s = VectorStore(chroma_path=str(tmp_path / "chroma"))
+        assert s._rebuild_id is None
+        VectorStore.reset_instance()
+
+    def test_init_strips_whitespace_from_stamp(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("  abc123\n")
+        s = VectorStore(chroma_path=str(chroma_dir))
+        assert s._rebuild_id == "abc123"
+        VectorStore.reset_instance()
+
+
+class TestRebuildStampStaleness:
+    def test_get_instance_resets_when_stamp_changes(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("v1")
+        first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert first._rebuild_id == "v1"
+
+        (chroma_dir / ".rebuild_stamp").write_text("v2")
+        second = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert second is not first
+        assert second._rebuild_id == "v2"
+        VectorStore.reset_instance()
+
+    def test_get_instance_keeps_instance_when_stamp_unchanged(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("same")
+        first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        second = VectorStore.get_instance()
+        assert second is first
+        VectorStore.reset_instance()
+
+    def test_get_instance_resets_when_stamp_appears(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert first._rebuild_id is None
+
+        (chroma_dir / ".rebuild_stamp").write_text("new_stamp")
+        second = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert second is not first
+        assert second._rebuild_id == "new_stamp"
+        VectorStore.reset_instance()
+
+    def test_get_instance_resets_when_stamp_disappears(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("will_be_removed")
+        first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert first._rebuild_id == "will_be_removed"
+
+        (chroma_dir / ".rebuild_stamp").unlink()
+        second = VectorStore.get_instance(chroma_path=str(chroma_dir))
+        assert second is not first
+        assert second._rebuild_id is None
+        VectorStore.reset_instance()
+
+    def test_stamp_staleness_logs_warning(self, mock_chroma, mock_model, tmp_path, caplog):
+        import logging
+
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("v1")
+        VectorStore.get_instance(chroma_path=str(chroma_dir))
+
+        (chroma_dir / ".rebuild_stamp").write_text("v2")
+        with caplog.at_level(logging.WARNING, logger="footprinter.semantic.vector_store"):
+            VectorStore.get_instance()
+
+        warning_msgs = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("stamp" in r.message.lower() for r in warning_msgs), (
+            f"Expected WARNING about stamp change, got: {[r.message for r in caplog.records]}"
+        )
+        VectorStore.reset_instance()
+
+    def test_stamp_check_before_directory_check(self, mock_chroma, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("old")
+        first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+
+        assert chroma_dir.exists()
+        (chroma_dir / ".rebuild_stamp").write_text("new")
+        second = VectorStore.get_instance()
+        assert second is not first
+        VectorStore.reset_instance()
+
+    def test_stamp_mismatch_creates_fresh_client(self, mock_model, tmp_path):
+        from footprinter.semantic.vector_store import VectorStore
+
+        def _make_client(*args, **kwargs):
+            c = MagicMock()
+            col = MagicMock()
+            col.count.return_value = 0
+            c.get_or_create_collection.return_value = col
+            return c
+
+        VectorStore.reset_instance()
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        (chroma_dir / ".rebuild_stamp").write_text("v1")
+
+        with patch("chromadb.PersistentClient", side_effect=_make_client):
+            first = VectorStore.get_instance(chroma_path=str(chroma_dir))
+            first_client = first.client
+
+            (chroma_dir / ".rebuild_stamp").write_text("v2")
+            second = VectorStore.get_instance(chroma_path=str(chroma_dir))
+            assert second.client is not first_client
+        VectorStore.reset_instance()
+
+
 @pytest.mark.skipif(not _HAS_REAL_CHROMADB, reason="requires [semantic] extra")
 class TestGetEmbeddingFunction:
     def test_returns_onnx_instance(self):

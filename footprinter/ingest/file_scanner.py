@@ -48,6 +48,7 @@ class FileScanner:
         config: Dict,
         since_datetime: Optional[datetime] = None,
         scan_roots: Optional[List[str]] = None,
+        known_paths: Optional[set] = None,
     ):
         """
         Initialize file scanner.
@@ -58,10 +59,13 @@ class FileScanner:
                            (for incremental indexing)
             scan_roots: When set, scan only these paths instead of
                 config["directories"] (FPR-1624 — used by `fp setup folders add`).
+            known_paths: Already-indexed local file paths. When provided,
+                files with old mtime at unknown paths are yielded as moved files.
         """
         self.config = config
         self.since_datetime = since_datetime
         self.scan_roots = scan_roots
+        self.known_paths = known_paths
         self.always_exclusions = self._compile_always_exclusions()
         self.sensitive_exclusions = self._compile_sensitive_exclusions()
         self.supported_extensions = set(config.get("indexing", {}).get("supported_extensions", []))
@@ -222,6 +226,7 @@ class FileScanner:
         file_count = 0
         excluded_count = 0
         skipped_unchanged = 0
+        moved_count = 0
         error_count = 0
         seen_real_paths: set[str] = set()
 
@@ -291,8 +296,12 @@ class FileScanner:
                                 else self.since_datetime
                             )
                             if mtime <= since:
-                                skipped_unchanged += 1
-                                continue
+                                if self.known_paths is not None and str(file_path.absolute()) not in self.known_paths:
+                                    moved_count += 1
+                                    logger.debug("Moved file detected: %s", file_path)
+                                else:
+                                    skipped_unchanged += 1
+                                    continue
                         except OSError:
                             logger.debug("Could not check mtime for %s, processing anyway", file_path)
 
@@ -311,6 +320,7 @@ class FileScanner:
         if self.since_datetime:
             logger.info(
                 f"Scan complete: {file_count} new/modified,"
+                f" {moved_count} moved,"
                 f" {skipped_unchanged} unchanged,"
                 f" {excluded_count} excluded,"
                 f" {error_count} errors"
