@@ -640,7 +640,7 @@ class TestCmdListEmptyState:
         _cmd_list(SimpleNamespace(json=False))
         out = capsys.readouterr().out
         assert "No connectors" in out
-        assert "https://github.com/swellcitygroup/footprinter" in out
+        assert "https://github.com/harringjohn/footprinter" in out
 
     def test_cmd_list_empty_json(self, monkeypatch, capsys):
         monkeypatch.setattr("footprinter.cli.connect.discover_connectors", lambda: {})
@@ -669,7 +669,7 @@ class TestConnectBaseEmptyState:
         out = capsys.readouterr().out
         assert "Connectors add support" in out
         assert "No connectors" in out
-        assert "https://github.com/swellcitygroup/footprinter" in out
+        assert "https://github.com/harringjohn/footprinter" in out
 
     def test_connect_base_with_connectors_shows_help(self, capsys):
         """With connectors present (autouse fixture), base handler shows help."""
