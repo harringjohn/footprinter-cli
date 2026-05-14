@@ -495,7 +495,9 @@ def insert_file(
     # THEN ?` backfill can run. If no project matches, NULL→NULL — fast-path is safe.
     if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
-        incoming_size = file_data.get("file_size") or file_data.get("size_bytes")
+        incoming_size = file_data.get("file_size")
+        if incoming_size is None:
+            incoming_size = file_data.get("size_bytes")
         if (
             incoming_sha is not None
             and existing["sha256_hash"] is not None
@@ -749,3 +751,11 @@ def mark_removed_files(conn: sqlite3.Connection, indexed_paths: set) -> List[int
         conn.commit()
 
     return removed_ids
+
+
+def get_known_local_paths(conn: sqlite3.Connection) -> set[str]:
+    """Return paths of all non-removed local files for move detection."""
+    cursor = conn.execute(
+        "SELECT path FROM files WHERE source = 'local' AND status != 'removed'"
+    )
+    return {row["path"] for row in cursor.fetchall()}
