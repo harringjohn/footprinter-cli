@@ -80,6 +80,10 @@ def connect_db(db_path: Union[str, Path]) -> Optional[sqlite3.Connection]:
 def open_db(db_path=None):
     """Open the Footprinter DB; yields conn, closes on exit.
 
+    Calls :func:`~footprinter.services.access_service.load_globals` to
+    populate the global visibility/permission cache, mirroring the MCP
+    layer's ``get_db()``.
+
     Exits with code 1 if the database file does not exist.
     """
     if db_path is None:
@@ -92,6 +96,7 @@ def open_db(db_path=None):
             "[red]Database not found.[/red] Run [bold]fp setup[/bold] then [bold]fp ingest[/bold] to initialize."
         )
         sys.exit(1)
+    _access.load_globals(conn)
     try:
         yield conn
     finally:
@@ -261,8 +266,10 @@ def enrich_verbose_access(
     """Annotate rows in-place with access, access_source, visibility.
 
     Uses ``resolve_inherit_visibility`` / ``resolve_inherit_permission``
-    so that ``inherit`` values resolve to the global policy (when loaded
-    via ``load_globals``) or fall back to the hardcoded baseline.
+    so that ``inherit`` values resolve to the global policy.  Since
+    ``open_db()`` calls ``load_globals`` before yielding, ``inherit``
+    values resolve to the actual global policy in normal CLI usage.
+    The baseline fallback remains as a defence-in-depth measure.
 
     Three cases based on the ``mcp_read`` key in each row dict:
 
