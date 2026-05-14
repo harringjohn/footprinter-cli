@@ -328,3 +328,69 @@ class TestUpsertFoldersCsv:
         )
         assert code != 0
         Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_dry_run_client_only_mismatch(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,client_id",
+            "/tmp/docs,7",
+        ])
+        with patch(
+            "footprinter.db.folders.get_folder_by_path",
+            return_value={"id": 10, "project_id": None, "client_id": None},
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["would_assign"] == 1
+        assert result["already_matched"] == 0
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_dry_run_client_already_matched(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,client_id",
+            "/tmp/docs,7",
+        ])
+        with patch(
+            "footprinter.db.folders.get_folder_by_path",
+            return_value={"id": 10, "project_id": None, "client_id": 7},
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["already_matched"] == 1
+        assert result["would_assign"] == 0
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_dry_run_mixed_project_match_client_mismatch(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_id,client_id",
+            "/tmp/docs,5,7",
+        ])
+        with patch(
+            "footprinter.db.folders.get_folder_by_path",
+            return_value={"id": 10, "project_id": 5, "client_id": None},
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["would_assign"] == 1
+        assert result["already_matched"] == 0
+        Path(csv_path).unlink(missing_ok=True)

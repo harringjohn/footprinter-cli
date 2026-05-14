@@ -409,8 +409,11 @@ def _dry_run_folder_csv_rows(
 
         folder_row = kwargs["folder_row"]
         current_pid = folder_row.get("project_id")
+        current_cid = folder_row.get("client_id")
         matches = True
         if kwargs["project_id"] is not None and current_pid != kwargs["project_id"]:
+            matches = False
+        if kwargs["client_id"] is not None and current_cid != kwargs["client_id"]:
             matches = False
         if matches:
             already_matched += 1
