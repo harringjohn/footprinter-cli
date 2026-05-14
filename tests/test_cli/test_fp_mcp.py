@@ -3,13 +3,14 @@
 Covers:
   - Parser tree: help exits 0 for all subcommands
   - Server start: bare ``fp mcp`` calls server.main()
-  - View policies: show, set, delete, reset, check (visibility layer)
-  - Read policies: show, set, delete, reset, check (permission layer)
-  - Combined check: path, folder, project, client, --json
+  - Unified check: no-args (show all), path, folder, project, client, --json
+  - Set: unified policy setter (--visibility / --permission)
+  - Reset: unified policy delete / reseed
   - Bulk: dry-run, validation, folder with --yes
 """
 
 import json
+import sqlite3
 from unittest.mock import patch
 
 import pytest
@@ -44,19 +45,9 @@ class TestMcpParserTree:
         "args",
         [
             ("mcp", "--help"),
-            ("mcp", "view", "--help"),
-            ("mcp", "view", "show", "--help"),
-            ("mcp", "view", "set", "--help"),
-            ("mcp", "view", "delete", "--help"),
-            ("mcp", "view", "check", "--help"),
-            ("mcp", "view", "reset", "--help"),
-            ("mcp", "read", "--help"),
-            ("mcp", "read", "show", "--help"),
-            ("mcp", "read", "set", "--help"),
-            ("mcp", "read", "delete", "--help"),
-            ("mcp", "read", "check", "--help"),
-            ("mcp", "read", "reset", "--help"),
             ("mcp", "check", "--help"),
+            ("mcp", "set", "--help"),
+            ("mcp", "reset", "--help"),
             ("mcp", "bulk", "--help"),
         ],
     )
@@ -81,304 +72,55 @@ class TestMcpServerStart:
 
 
 # ---------------------------------------------------------------------------
-# View (visibility) policies
+# Check: show all policies (no args)
 # ---------------------------------------------------------------------------
 
 
-class TestMcpViewPolicies:
-    """Test fp mcp view show/set/delete/reset/check."""
+class TestMcpCheckShowAll:
+    """fp mcp check (no args) shows all policies from both tables."""
 
-    def test_view_show_empty(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "view", "show")
-        assert code == 0
-        assert "No visibility policies" in stdout
-
-    def test_view_set_valid(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "view", "set", "global", "visible")
-        assert code == 0
-        assert "visibility_policies" in stdout
-        assert "visible" in stdout
-
-    def test_view_set_rejects_permission_value(self, policy_db):
-        """view set should reject 'allow' — that's a permission, not visibility."""
-        stdout, stderr, code = run_fp("mcp", "view", "set", "global", "allow")
-        assert code != 0
-        assert "Invalid visibility" in stdout + stderr
-
-    def test_view_set_then_show(self, policy_db):
-        run_fp("mcp", "view", "set", "global", "hidden")
-        stdout, stderr, code = run_fp("mcp", "view", "show")
-        assert code == 0
-        assert "hidden" in stdout
-
-    def test_view_delete(self, policy_db):
-        run_fp("mcp", "view", "set", "global", "visible")
-        stdout, stderr, code = run_fp("mcp", "view", "delete", "global")
-        assert code == 0
-        assert "Deleted" in stdout
-
-    def test_view_delete_nonexistent(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "view", "delete", "global")
-        assert code == 0
-        assert "No visibility policy" in stdout
-
-    def test_view_delete_only_touches_visibility(self, policy_db):
-        """view delete should NOT touch permission_policies."""
-        import sqlite3
-
-        # Set both tables
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "deny")
-
-        # Delete from view only
-        run_fp("mcp", "view", "delete", "global")
-
-        # Permission still exists
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
-        conn.close()
-        assert row is not None
-        assert row["setting"] == "deny"
-
-    def test_view_reset(self, policy_db):
-        """view reset clears all visibility policies and re-seeds defaults."""
-        run_fp("mcp", "view", "set", "folder:~/Work", "hidden")
-        stdout, stderr, code = run_fp("mcp", "view", "reset")
-        assert code == 0
-        assert "Cleared" in stdout
-        assert "Re-seeded" in stdout
-
-        # Only global=visible should remain
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM visibility_policies").fetchall()
-        conn.close()
-        assert len(rows) == 1
-        assert rows[0]["scope"] == "global"
-        assert rows[0]["setting"] == "visible"
-
-    def test_view_check_no_path(self, policy_db):
-        """view check with no path shows global resolution."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        stdout, stderr, code = run_fp("mcp", "view", "check")
+    def test_check_no_args_shows_policies(self, policy_db):
+        """No-args check shows a unified policy table."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        stdout, stderr, code = run_fp("mcp", "check")
         assert code == 0
         assert "visible" in stdout
-
-    def test_view_show_empty_json(self, policy_db):
-        """view show --json with no policies returns empty list."""
-        stdout, stderr, code = run_fp("mcp", "view", "show", "--json")
-        assert code == 0
-        data = json.loads(stdout)
-        assert data == []
-
-    def test_view_show_json_with_policies(self, policy_db):
-        """view show --json with policies returns list with expected keys."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        stdout, stderr, code = run_fp("mcp", "view", "show", "--json")
-        assert code == 0
-        data = json.loads(stdout)
-        assert len(data) >= 1
-        entry = data[0]
-        assert "scope" in entry
-        assert "setting" in entry
-        assert "updated_at" in entry
-        assert entry["scope"] == "global"
-        assert entry["setting"] == "visible"
-
-    def test_view_check_with_path(self, policy_db):
-        """view check with path shows simulated visibility resolution."""
-        run_fp("mcp", "view", "set", "global", "hidden")
-        stdout, stderr, code = run_fp("mcp", "view", "check", "/tmp/test.txt")
-        assert code == 0
-        assert "hidden" in stdout
-
-    def test_view_check_finds_folder(self, policy_db):
-        """view check finds a folder in the folders table instead of falling through."""
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "INSERT INTO folders (id, name, path, relative_path, source) "
-            "VALUES (1, 'test-folder', '/tmp/test-folder', '/tmp/test-folder', 'local')"
-        )
-        conn.commit()
-        conn.close()
-
-        run_fp("mcp", "view", "set", "global", "visible")
-        stdout, stderr, code = run_fp("mcp", "view", "check", "/tmp/test-folder")
-        assert code == 0
-        assert "Not found in files or folders" not in stdout
-        assert "visible" in stdout
-
-    def test_view_check_finds_folder_json(self, policy_db):
-        """view check --json reports found_in_db true when path is in folders table."""
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "INSERT INTO folders (id, name, path, relative_path, source) "
-            "VALUES (1, 'test-folder', '/tmp/test-folder', '/tmp/test-folder', 'local')"
-        )
-        conn.commit()
-        conn.close()
-
-        stdout, stderr, code = run_fp("mcp", "view", "check", "--json", "/tmp/test-folder")
-        assert code == 0
-        data = json.loads(stdout)
-        assert data["found_in_db"] is True
-
-
-# ---------------------------------------------------------------------------
-# Read (permission) policies
-# ---------------------------------------------------------------------------
-
-
-class TestMcpReadPolicies:
-    """Test fp mcp read show/set/delete/reset/check."""
-
-    def test_read_show_empty(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "read", "show")
-        assert code == 0
-        assert "No permission policies" in stdout
-
-    def test_read_set_valid(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "read", "set", "global", "deny")
-        assert code == 0
-        assert "permission_policies" in stdout
-        assert "deny" in stdout
-
-    def test_read_set_rejects_visibility_value(self, policy_db):
-        """read set should reject 'hidden' — that's visibility, not permission."""
-        stdout, stderr, code = run_fp("mcp", "read", "set", "global", "hidden")
-        assert code != 0
-        assert "Invalid permission" in stdout + stderr
-
-    def test_read_set_then_show(self, policy_db):
-        run_fp("mcp", "read", "set", "global", "allow")
-        stdout, stderr, code = run_fp("mcp", "read", "show")
-        assert code == 0
         assert "allow" in stdout
 
-    def test_read_delete(self, policy_db):
-        run_fp("mcp", "read", "set", "global", "deny")
-        stdout, stderr, code = run_fp("mcp", "read", "delete", "global")
+    def test_check_no_args_empty_db(self, policy_db):
+        """No-args check with empty policy tables shows 'no policies' message."""
+        stdout, stderr, code = run_fp("mcp", "check")
         assert code == 0
-        assert "Deleted" in stdout
+        assert "no policies" in stdout.lower()
 
-    def test_read_delete_only_touches_permissions(self, policy_db):
-        """read delete should NOT touch visibility_policies."""
-        import sqlite3
-
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "deny")
-
-        run_fp("mcp", "read", "delete", "global")
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
-        conn.close()
-        assert row is not None
-        assert row["setting"] == "visible"
-
-    def test_read_reset(self, policy_db):
-        run_fp("mcp", "read", "set", "folder:~/Work", "allow")
-        stdout, stderr, code = run_fp("mcp", "read", "reset")
-        assert code == 0
-        assert "Cleared" in stdout
-
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM permission_policies").fetchall()
-        conn.close()
-        assert len(rows) == 1
-        assert rows[0]["scope"] == "global"
-        assert rows[0]["setting"] == "allow"
-
-    def test_read_show_empty_json(self, policy_db):
-        """read show --json with no policies returns empty list."""
-        stdout, stderr, code = run_fp("mcp", "read", "show", "--json")
+    def test_check_no_args_json(self, policy_db):
+        """No-args check --json returns both policy lists."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        stdout, stderr, code = run_fp("mcp", "check", "--json")
         assert code == 0
         data = json.loads(stdout)
-        assert data == []
+        assert "visibility" in data
+        assert "permission" in data
+        assert any(r["setting"] == "visible" for r in data["visibility"])
+        assert any(r["setting"] == "deny" for r in data["permission"])
 
-    def test_read_show_json_with_policies(self, policy_db):
-        """read show --json with policies returns list with expected keys."""
-        run_fp("mcp", "read", "set", "global", "deny")
-        stdout, stderr, code = run_fp("mcp", "read", "show", "--json")
+    def test_check_no_args_shows_multiple_scopes(self, policy_db):
+        """No-args check shows entity-level overrides alongside global."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
+        stdout, stderr, code = run_fp("mcp", "check")
         assert code == 0
-        data = json.loads(stdout)
-        assert len(data) >= 1
-        entry = data[0]
-        assert "scope" in entry
-        assert "setting" in entry
-        assert "updated_at" in entry
-        assert entry["scope"] == "global"
-        assert entry["setting"] == "deny"
-
-    def test_read_check_no_path(self, policy_db):
-        run_fp("mcp", "read", "set", "global", "deny")
-        stdout, stderr, code = run_fp("mcp", "read", "check")
-        assert code == 0
-        assert "deny" in stdout
-
-    def test_read_check_finds_folder(self, policy_db):
-        """read check finds a folder in the folders table instead of falling through."""
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "INSERT INTO folders (id, name, path, relative_path, source) "
-            "VALUES (1, 'test-folder', '/tmp/test-folder', '/tmp/test-folder', 'local')"
-        )
-        conn.commit()
-        conn.close()
-
-        run_fp("mcp", "read", "set", "global", "allow")
-        stdout, stderr, code = run_fp("mcp", "read", "check", "/tmp/test-folder")
-        assert code == 0
-        assert "Not found in files or folders" not in stdout
-        assert "allow" in stdout
-
-    def test_read_check_finds_folder_json(self, policy_db):
-        """read check --json reports found_in_db true when path is in folders table."""
-        import sqlite3
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "INSERT INTO folders (id, name, path, relative_path, source) "
-            "VALUES (1, 'test-folder', '/tmp/test-folder', '/tmp/test-folder', 'local')"
-        )
-        conn.commit()
-        conn.close()
-
-        stdout, stderr, code = run_fp("mcp", "read", "check", "--json", "/tmp/test-folder")
-        assert code == 0
-        data = json.loads(stdout)
-        assert data["found_in_db"] is True
+        assert "global" in stdout
+        assert "folder:~/Work" in stdout
 
 
 # ---------------------------------------------------------------------------
-# Combined check
+# Check: combined resolution (with target)
 # ---------------------------------------------------------------------------
 
 
 class TestMcpCheck:
-    """Test fp mcp check (combined resolution)."""
-
-    def test_check_no_target_fails(self, policy_db):
-        stdout, stderr, code = run_fp("mcp", "check")
-        assert code != 0
-        assert "No target specified" in stdout + stderr
+    """Test fp mcp check (combined resolution with target)."""
 
     def test_check_path_no_db(self, tmp_path, monkeypatch):
         """check with path but no DB shows baseline defaults."""
@@ -389,8 +131,7 @@ class TestMcpCheck:
 
     def test_check_path_simulated(self, policy_db):
         """check with unindexed path shows simulated resolution."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/test.txt")
         assert code == 0
         assert "deny" in stdout
@@ -398,8 +139,7 @@ class TestMcpCheck:
 
     def test_check_json_output(self, policy_db):
         """check with --json produces valid JSON."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "--json", "/tmp/test.txt")
         assert code == 0
         data = json.loads(stdout)
@@ -416,12 +156,8 @@ class TestMcpCheck:
 
     def test_check_path_includes_client_scope(self, policy_db):
         """check --json shows client scope in chain when file's project has a client."""
-        import sqlite3
-
         conn = sqlite3.connect(str(policy_db))
         conn.row_factory = sqlite3.Row
-
-        # Insert client, project (with client_id), and file
         conn.execute(
             "INSERT INTO clients (id, name, slug, client_type, status) "
             "VALUES (99, 'Test Client', 'test-client', 'external', 'listed')"
@@ -433,7 +169,6 @@ class TestMcpCheck:
             "INSERT INTO files (id, name, path, source, status, project_id, size_bytes) "
             "VALUES (99, 'file.txt', '/tmp/client-test/file.txt', 'local', 'listed', 99, 100)"
         )
-        # Add a client-level permission policy
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('client:99', 'deny')")
         conn.commit()
         conn.close()
@@ -453,8 +188,6 @@ class TestMcpCheck:
 
     def test_check_path_finds_folder(self, policy_db):
         """Positional path finds a folder in the folders table."""
-        import sqlite3
-
         conn = sqlite3.connect(str(policy_db))
         conn.row_factory = sqlite3.Row
         conn.execute(
@@ -464,8 +197,7 @@ class TestMcpCheck:
         conn.commit()
         conn.close()
 
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/test-folder")
         assert code == 0
         assert "simulated" not in stdout.lower()
@@ -473,8 +205,6 @@ class TestMcpCheck:
 
     def test_check_path_finds_folder_json(self, policy_db):
         """Positional path that resolves to a folder returns folder-typed JSON."""
-        import sqlite3
-
         conn = sqlite3.connect(str(policy_db))
         conn.row_factory = sqlite3.Row
         conn.execute(
@@ -493,8 +223,7 @@ class TestMcpCheck:
 
     def test_check_path_not_found_messaging(self, policy_db):
         """Unindexed path shows clear not-found message with tips."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/definitely-not-indexed")
         assert code == 0
         assert "Not found in files or folders" in stdout
@@ -502,35 +231,179 @@ class TestMcpCheck:
 
     def test_check_path_not_found_json(self, policy_db):
         """Unindexed path in JSON mode shows found_in_db: false."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        run_fp("mcp", "read", "set", "global", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "--json", "/tmp/definitely-not-indexed")
         assert code == 0
         data = json.loads(stdout)
         assert data["found_in_db"] is False
 
-    def test_check_no_args_shows_usage(self, policy_db):
-        """No-args error shows usage examples."""
-        stdout, stderr, code = run_fp("mcp", "check")
+
+# ---------------------------------------------------------------------------
+# Set: unified policy setter
+# ---------------------------------------------------------------------------
+
+
+class TestMcpSet:
+    """Test fp mcp set <scope> --visibility <val> --permission <val>."""
+
+    def test_set_both_values(self, policy_db):
+        """Set both visibility and permission in one call."""
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        assert code == 0
+        assert "visible" in stdout
+        assert "allow" in stdout
+
+    def test_set_visibility_only(self, policy_db):
+        """Set just visibility."""
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--visibility", "hidden")
+        assert code == 0
+        assert "hidden" in stdout
+
+    def test_set_permission_only(self, policy_db):
+        """Set just permission."""
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--permission", "deny")
+        assert code == 0
+        assert "deny" in stdout
+
+    def test_set_no_value_fails(self, policy_db):
+        """Must specify at least one of --visibility or --permission."""
+        stdout, stderr, code = run_fp("mcp", "set", "global")
         assert code != 0
         combined = stdout + stderr
-        assert "Usage:" in combined or "fp mcp check" in combined
+        assert "at least one" in combined.lower() or "--visibility" in combined
 
-    def test_no_simulated_in_view_check(self, policy_db):
-        """'simulated' does not appear in view check output; messaging matches combined check."""
-        run_fp("mcp", "view", "set", "global", "visible")
-        stdout, stderr, code = run_fp("mcp", "view", "check", "/tmp/unindexed")
-        assert code == 0
-        assert "simulated" not in stdout.lower()
-        assert "Not found in files or folders" in stdout
+    def test_set_invalid_visibility_fails(self, policy_db):
+        """Invalid visibility value rejected."""
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--visibility", "allow")
+        assert code != 0
+        assert "Invalid visibility" in stdout + stderr
 
-    def test_no_simulated_in_read_check(self, policy_db):
-        """'simulated' does not appear in read check output; messaging matches combined check."""
-        run_fp("mcp", "read", "set", "global", "allow")
-        stdout, stderr, code = run_fp("mcp", "read", "check", "/tmp/unindexed")
+    def test_set_invalid_permission_fails(self, policy_db):
+        """Invalid permission value rejected."""
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--permission", "hidden")
+        assert code != 0
+        assert "Invalid permission" in stdout + stderr
+
+    def test_set_then_check(self, policy_db):
+        """Set both, then verify with check."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        stdout, stderr, code = run_fp("mcp", "check", "/tmp/test.txt")
         assert code == 0
-        assert "simulated" not in stdout.lower()
-        assert "Not found in files or folders" in stdout
+        assert "visible" in stdout
+        assert "deny" in stdout
+
+    def test_set_folder_scope(self, policy_db):
+        """Set with folder scope."""
+        stdout, stderr, code = run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
+        assert code == 0
+        assert "folder:~/Work" in stdout
+
+    def test_set_writes_to_both_tables(self, policy_db):
+        """Verify both policy tables are written."""
+        run_fp("mcp", "set", "global", "--visibility", "opaque", "--permission", "deny")
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        perm = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        conn.close()
+        assert vis["setting"] == "opaque"
+        assert perm["setting"] == "deny"
+
+    def test_set_overwrites_existing(self, policy_db):
+        """Setting a scope twice overwrites the previous value."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "hidden", "--permission", "deny")
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        perm = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        conn.close()
+        assert vis["setting"] == "hidden"
+        assert perm["setting"] == "deny"
+
+
+# ---------------------------------------------------------------------------
+# Reset: unified policy delete / reseed
+# ---------------------------------------------------------------------------
+
+
+class TestMcpReset:
+    """Test fp mcp reset <scope> and fp mcp reset --all."""
+
+    def test_reset_scope_deletes_from_both_tables(self, policy_db):
+        """Reset a scope removes it from both visibility and permission tables."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        stdout, stderr, code = run_fp("mcp", "reset", "global")
+        assert code == 0
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis = conn.execute("SELECT 1 FROM visibility_policies WHERE scope = 'global'").fetchone()
+        perm = conn.execute("SELECT 1 FROM permission_policies WHERE scope = 'global'").fetchone()
+        conn.close()
+        assert vis is None
+        assert perm is None
+
+    def test_reset_scope_nonexistent(self, policy_db):
+        """Reset a scope that has no policies prints informational message, exits 0."""
+        stdout, stderr, code = run_fp("mcp", "reset", "folder:~/Nonexistent")
+        assert code == 0
+        assert "no polic" in stdout.lower() or "not found" in stdout.lower()
+
+    def test_reset_all_with_scope_fails(self, policy_db):
+        """reset --all with a positional scope is rejected to prevent accidental nuke."""
+        stdout, stderr, code = run_fp("mcp", "reset", "--all", "folder:~/Work")
+        assert code != 0
+        assert "Cannot combine" in stdout + stderr
+
+    def test_reset_all_clears_and_reseeds(self, policy_db):
+        """reset --all clears all policies and re-seeds defaults."""
+        run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        stdout, stderr, code = run_fp("mcp", "reset", "--all")
+        assert code == 0
+        assert "Cleared" in stdout
+        assert "Re-seeded" in stdout or "re-seeded" in stdout.lower()
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis = conn.execute("SELECT * FROM visibility_policies").fetchall()
+        perm = conn.execute("SELECT * FROM permission_policies").fetchall()
+        conn.close()
+        assert len(vis) == 1 and vis[0]["scope"] == "global" and vis[0]["setting"] == "visible"
+        assert len(perm) == 1 and perm[0]["scope"] == "global" and perm[0]["setting"] == "allow"
+
+    def test_reset_no_args_shows_help(self):
+        """reset with no args shows usage."""
+        stdout, stderr, code = run_fp("mcp", "reset")
+        combined = stdout + stderr
+        assert code != 0 or "usage" in combined.lower() or "scope" in combined.lower()
+
+    def test_reset_only_touches_target_scope(self, policy_db):
+        """Reset one scope leaves other scopes intact."""
+        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden", "--permission", "deny")
+        run_fp("mcp", "reset", "folder:~/Work")
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis_global = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        perm_global = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        vis_folder = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
+        perm_folder = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'folder:~/Work'").fetchone()
+        conn.close()
+        assert vis_global["setting"] == "visible"
+        assert perm_global["setting"] == "allow"
+        assert vis_folder is None
+        assert perm_folder is None
+
+    def test_reset_partial_scope(self, policy_db):
+        """Reset a scope that only has a visibility policy (no permission) still works."""
+        run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
+        stdout, stderr, code = run_fp("mcp", "reset", "folder:~/Work")
+        assert code == 0
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        vis = conn.execute("SELECT 1 FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
+        conn.close()
+        assert vis is None
 
 
 # ---------------------------------------------------------------------------
@@ -576,8 +449,6 @@ class TestMcpBulk:
 
     def test_bulk_folder_with_yes(self, policy_db):
         """bulk with --yes applies without confirmation."""
-        import sqlite3
-
         stdout, stderr, code = run_fp(
             "mcp",
             "bulk",

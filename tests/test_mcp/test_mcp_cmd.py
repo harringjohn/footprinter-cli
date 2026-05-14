@@ -1,18 +1,18 @@
-"""Tests for mcp_cmd.py — stale description fixes."""
+"""Tests for mcp_cmd.py — help text correctness."""
 
 from conftest import run_fp
 
 
-class TestMcpReadResetDescription:
-    """The read reset parser description must reflect the actual default (global=allow)."""
+class TestMcpResetDescription:
+    """The reset parser description must describe inheritance fallback."""
 
-    def test_read_reset_help_says_global_allow(self):
-        stdout, stderr, code = run_fp("mcp", "read", "reset", "--help")
+    def test_reset_help_mentions_inheritance(self):
+        stdout, stderr, code = run_fp("mcp", "reset", "--help")
         combined = stdout + stderr
         assert code == 0
-        assert "global=allow" in combined, f"Expected 'global=allow' in reset help, got: {combined}"
+        assert "inherit" in combined.lower(), f"Expected 'inherit' in reset help, got: {combined}"
 
-    def test_read_reset_help_not_global_deny(self):
-        stdout, stderr, code = run_fp("mcp", "read", "reset", "--help")
+    def test_reset_help_mentions_reseed(self):
+        stdout, stderr, code = run_fp("mcp", "reset", "--help")
         combined = stdout + stderr
-        assert "global=deny" not in combined, f"Found stale 'global=deny' in reset help: {combined}"
+        assert "--all" in combined, f"Expected '--all' in reset help, got: {combined}"

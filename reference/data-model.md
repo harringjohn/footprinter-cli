@@ -59,7 +59,7 @@ When Footprinter exposes data to AI assistants via MCP (Model Context Protocol),
    - `allow` — content readable (e.g., `content_preview`, search snippets)
    - `deny` — metadata visible but content blocked
 
-Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp mcp view set` and `fp mcp read set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
+Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp mcp set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
 
 See `reference/mcp-access-control.md` for the full reference: the three-layer model, policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
 
