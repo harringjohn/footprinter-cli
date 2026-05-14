@@ -127,7 +127,7 @@ class TestChunkContent:
             chunk_content("word " * 600, chunk_overlap=-0.1)
 
     def test_negative_absolute_overlap_raises(self):
-        """Negative absolute overlap (legacy path) is also rejected."""
+        """Negative integer overlap is also rejected by the non-negative guard."""
         import pytest
 
         with pytest.raises(ValueError, match="must be non-negative"):
