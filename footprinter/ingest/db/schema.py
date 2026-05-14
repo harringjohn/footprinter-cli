@@ -64,8 +64,6 @@ _FTS_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 # Single source of truth for the ingests table DDL.
-# Referenced by both migration.py (early creation for last-run migration)
-# and init_db() (canonical DDL).
 _INGESTS_DDL = (
     "CREATE TABLE IF NOT EXISTS ingests ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -87,7 +85,6 @@ _INGESTS_DDL = (
 
 
 # All 8 entity tables that carry mcp_read / mcp_view columns.
-# Shared by init_db() (display_name triggers) and migration.py.
 ACCESS_CONTROL_TABLES = (
     "files",
     "folders",
@@ -112,18 +109,6 @@ class SchemaMixin:
 
         cursor = self.conn.cursor()
 
-        # Only run migration on existing databases (not fresh installs).
-        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        if cursor.fetchone() is not None:
-            from footprinter.ingest.db.migration import migrate_schema
-
-            migrate_schema(cursor)
-
-        # Enable FK enforcement AFTER migrations.  The browser_visits →
-        # visits rename triggers SQLite's schema rewriter which recompiles
-        # FK references.  The messages table's FK was originally REFERENCES
-        # chat_conversations(id); with foreign_keys ON the rewriter
-        # validates the stale compiled reference and fails.
         self.conn.execute("PRAGMA foreign_keys=ON")
 
         # ========================================
