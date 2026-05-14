@@ -119,6 +119,25 @@ class TestChunkContent:
         for text, _idx, _total in result:
             assert len(text) <= 110  # Allow margin for word boundary
 
+    def test_overlap_ge_chunk_size_raises(self):
+        """Overlap >= chunk_size would cause an infinite loop; reject it."""
+        import pytest
+
+        with pytest.raises(ValueError, match="must be less than chunk_size"):
+            chunk_content("word " * 600, chunk_size=1000, chunk_overlap=1000)
+
+    def test_overlap_1_0_uses_legacy_path(self):
+        """chunk_overlap=1.0 hits the legacy path (1 char), not 100% fractional."""
+        import warnings
+
+        content = "word " * 600
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = chunk_content(content, chunk_size=1000, chunk_overlap=1.0)
+            assert len(result) >= 3
+            deprecation_msgs = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_msgs) == 1
+
     def test_total_chunks_backfilled(self):
         content = "word " * 3000
         result = chunk_content(content)

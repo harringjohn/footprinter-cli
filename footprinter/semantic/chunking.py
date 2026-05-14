@@ -34,6 +34,12 @@ def chunk_content(
     else:
         effective_overlap = int(chunk_overlap * chunk_size)
 
+    if effective_overlap >= chunk_size:
+        raise ValueError(
+            f"chunk_overlap produces {effective_overlap} chars of overlap, "
+            f"which must be less than chunk_size ({chunk_size})"
+        )
+
     if len(content) <= chunk_size:
         return [(content, 0, 1)]
 
