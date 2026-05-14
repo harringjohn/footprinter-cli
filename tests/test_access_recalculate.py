@@ -234,6 +234,141 @@ class TestRecalculateFolderLikeEscaping:
         assert row["mcp_view"] == "inherit"
 
 
+def _seed_folder_hierarchy(conn):
+    """Extend _seed_entities with parent-child folder chain + files."""
+    _seed_entities(conn)
+    cur = conn.cursor()
+    cur.execute("UPDATE files SET folder_id = 30 WHERE id = 1")
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (32, '/Users/me/Work/widget/sub', 'Work/widget/sub', 'sub', 3, 30)"
+    )
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (33, '/Users/me/Work/widget/sub/deep', 'Work/widget/sub/deep', 'deep', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (60, 'local', 'x.py', '/Users/me/Work/widget/sub/x.py', 'work', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (61, 'local', 'y.py', '/Users/me/Work/widget/sub/deep/y.py', 'work', 3, 33)"
+    )
+    conn.commit()
+
+
+class TestRecalculateFolderIdScope:
+    def test_folder_id_scope_enumerates_descendant_folders(self, conn):
+        """folder:{id} scope returns the folder and all descendants + their files."""
+        _seed_folder_hierarchy(conn)
+
+        from footprinter.access import _get_ids_for_scope
+
+        ids = _get_ids_for_scope(conn, "folder:30")
+
+        assert set(ids.get("folder", [])) == {30, 32, 33}
+        assert set(ids.get("file", [])) == {1, 60, 61}
+
+    def test_folder_id_scope_stamps_descendant_folders(self, conn):
+        """folder:{id} policy stamps the parent and all descendant folders."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        for fid in (30, 32, 33):
+            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_folder_id_scope_stamps_files_in_descendants(self, conn):
+        """Files inside descendant folders are stamped by parent folder policy."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        for fid in (1, 60, 61):
+            row = conn.execute("SELECT mcp_view FROM files WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"file {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_nearest_ancestor_policy_wins(self, conn):
+        """Child folder's own policy takes precedence over parent's."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'visible')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
+        assert row["mcp_view"] == "hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 32").fetchone()
+        assert row["mcp_view"] == "visible"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 33").fetchone()
+        assert row["mcp_view"] == "visible"
+
+    def test_path_prefix_scope_still_works_with_hierarchy(self, conn):
+        """Regression: folder:/path/ matching still works with hierarchy data."""
+        _seed_folder_hierarchy(conn)
+        conn.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/Users/me/Work/', 'hidden')"
+        )
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:/Users/me/Work/")
+
+        for fid in (30, 32, 33):
+            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+    def test_single_folder_visibility_resolves_ancestor_policy(self, conn):
+        """Single-item resolver walks ancestors for folder:{id} policies."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.visibility import resolve_visibility_with_source
+
+        state, source = resolve_visibility_with_source(conn, "folder", 33)
+        assert state == "hidden"
+        assert source == "folder:30"
+
+    def test_folder_without_parent_id_falls_through_gracefully(self, conn):
+        """NULL parent_folder_id terminates ancestor walk without crash."""
+        _seed_entities(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:31")
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
+
 class TestRecalculateProjectCascades:
     def test_stamps_project_and_children(self, conn):
         """project:3 stamps project + files/emails/chats/folders with project_id=3."""

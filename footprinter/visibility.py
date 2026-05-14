@@ -613,7 +613,7 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
     rows = _chunked_query(
         cursor,
         """
-        SELECT folder.id, folder.path, folder.project_id,
+        SELECT folder.id, folder.path, folder.project_id, folder.parent_folder_id,
                COALESCE(folder.client_id, project.client_id) AS client_id
         FROM folders folder
         LEFT JOIN projects project ON folder.project_id = project.id
@@ -649,6 +649,20 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
         item_scope = f"folder:{folder_id}"
         if item_scope in all_policies:
             policies.append((_resolve(all_policies[item_scope]), item_scope))
+        else:
+            # 1b. Ancestor folder ID policies (nearest ancestor wins)
+            parent_id = row["parent_folder_id"]
+            visited = {folder_id}
+            while parent_id and parent_id not in visited:
+                visited.add(parent_id)
+                ancestor_scope = f"folder:{parent_id}"
+                if ancestor_scope in all_policies:
+                    policies.append((_resolve(all_policies[ancestor_scope]), ancestor_scope))
+                    break
+                parent_row = conn.execute(
+                    "SELECT parent_folder_id FROM folders WHERE id = ?", (parent_id,)
+                ).fetchone()
+                parent_id = parent_row["parent_folder_id"] if parent_row else None
 
         # 2. Folder prefix match
         path = row["path"] or ""
@@ -1012,7 +1026,7 @@ def _resolve_folder_visibility_with_source(cursor, folder_id: int) -> Tuple[Visi
     """Resolve folder visibility with source tracking."""
     cursor.execute(
         """
-        SELECT folder.path, folder.project_id,
+        SELECT folder.path, folder.project_id, folder.parent_folder_id,
                COALESCE(folder.client_id, project.client_id) AS client_id
         FROM folders folder
         LEFT JOIN projects project ON folder.project_id = project.id
@@ -1031,6 +1045,20 @@ def _resolve_folder_visibility_with_source(cursor, folder_id: int) -> Tuple[Visi
     item_policy = _get_policy(cursor, f"folder:{folder_id}")
     if item_policy is not None:
         policies.append((item_policy, f"folder:{folder_id}"))
+    else:
+        # 1b. Ancestor folder ID policies (nearest ancestor wins)
+        parent_id = row["parent_folder_id"]
+        visited = {folder_id}
+        while parent_id and parent_id not in visited:
+            visited.add(parent_id)
+            ancestor_policy = _get_policy(cursor, f"folder:{parent_id}")
+            if ancestor_policy is not None:
+                policies.append((ancestor_policy, f"folder:{parent_id}"))
+                break
+            parent_row = cursor.execute(
+                "SELECT parent_folder_id FROM folders WHERE id = ?", (parent_id,)
+            ).fetchone()
+            parent_id = parent_row["parent_folder_id"] if parent_row else None
 
     # 2. Folder prefix match (most specific first)
     path = row["path"] or ""
