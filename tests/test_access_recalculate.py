@@ -270,6 +270,23 @@ class TestRecalculateFolderIdScope:
         assert set(ids.get("folder", [])) == {30, 32, 33}
         assert set(ids.get("file", [])) == {1, 60, 61}
 
+    def test_folder_id_scope_stamps_descendant_folders(self, conn):
+        """folder:{id} policy stamps the parent and all descendant folders."""
+        _seed_folder_hierarchy(conn)
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
+        conn.commit()
+
+        from footprinter.access import recalculate_access
+
+        recalculate_access(conn, "folder:30")
+
+        for fid in (30, 32, 33):
+            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+
+        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
+        assert row["mcp_view"] == "inherit"
+
 
 class TestRecalculateProjectCascades:
     def test_stamps_project_and_children(self, conn):
