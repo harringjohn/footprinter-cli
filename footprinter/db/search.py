@@ -423,11 +423,12 @@ def search_browser_keyword(
     date_to: Optional[str] = None,
     limit: int = 50,
     status: "str | list[str] | None" = None,
+    exclude_hidden: bool = True,
 ) -> list[dict]:
     """Keyword search for browser visits with optional filters.
 
-    Returns list of dicts with visit metadata. Source-level visibility
-    gating is handled by the service layer, not here.
+    Returns list of dicts with visit metadata including cached ``mcp_view``
+    and ``mcp_read`` columns for per-row access filtering.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     The visits table has no ``status_reason`` column, so only ``status`` is surfaced.
     """
@@ -436,6 +437,9 @@ def search_browser_keyword(
     status_conds, status_params = _status_clause(status, column="status")
     where: list[str] = list(status_conds)
     params.extend(status_params)
+
+    if exclude_hidden:
+        where.append("mcp_view != 'hidden'")
 
     if has_query:
         cond, cond_params = build_term_conditions(["url", "title"], list(terms))
@@ -454,7 +458,7 @@ def search_browser_keyword(
 
     rows = conn.execute(
         f"""
-        SELECT id, url, title, visit_time, browser, status
+        SELECT id, url, title, visit_time, browser, status, mcp_view, mcp_read
         FROM visits
         WHERE {where_sql}
         ORDER BY visit_time DESC
@@ -471,6 +475,8 @@ def search_browser_keyword(
             "visit_time": r["visit_time"],
             "browser": r["browser"],
             "status": r["status"],
+            "mcp_view": r["mcp_view"],
+            "mcp_read": r["mcp_read"],
         }
         for r in rows
     ]

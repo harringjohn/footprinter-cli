@@ -149,6 +149,9 @@ class TestSearchBrowserGating:
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:browser', 'hidden')"
         )
         service_db.commit()
+        from footprinter.access import recalculate_access
+
+        recalculate_access(service_db, "source:browser")
         result = search_service.search(
             service_db,
             query="",
@@ -164,6 +167,9 @@ class TestSearchBrowserGating:
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:browser', 'opaque')"
         )
         service_db.commit()
+        from footprinter.access import recalculate_access
+
+        recalculate_access(service_db, "source:browser")
         result = search_service.search(
             service_db,
             query="",
