@@ -348,15 +348,14 @@ def _process_folder_csv_rows(
     conn,
     rows: list[dict],
     service,
-) -> tuple[int, int, int, list[dict]]:
+) -> tuple[int, int, list[dict]]:
     """Process folder CSV rows through folder_service.assign().
 
-    Returns (assigned, skipped, errors, error_details).
+    Returns (assigned, errors, error_details).
     """
     from footprinter.services.roles import Role
 
     assigned = 0
-    skipped = 0
     errors = 0
     error_details: list[dict] = []
 
@@ -384,7 +383,7 @@ def _process_folder_csv_rows(
             errors += 1
             error_details.append({"row": i, "error": str(e)})
 
-    return assigned, skipped, errors, error_details
+    return assigned, errors, error_details
 
 
 def _dry_run_folder_csv_rows(
@@ -835,14 +834,14 @@ def _handle_folder_csv(args) -> None:
         ingest_id = ingest_svc.begin("upsert_folder_assign", mode="bulk", trigger="cli:upsert")
 
         try:
-            assigned, skipped, errors, error_details = _process_folder_csv_rows(
+            assigned, errors, error_details = _process_folder_csv_rows(
                 conn, rows, service,
             )
 
             ingest_svc.complete(
                 ingest_id,
                 result={
-                    "items_processed": assigned + skipped + errors,
+                    "items_processed": assigned + errors,
                     "items_new": assigned,
                     "items_updated": 0,
                     "errors": errors,
@@ -856,7 +855,7 @@ def _handle_folder_csv(args) -> None:
             sys.exit(1)
 
     summary = {
-        "total": assigned + skipped + errors,
+        "total": assigned + errors,
         "assigned": assigned,
         "errors": errors,
     }
@@ -871,7 +870,7 @@ def _handle_folder_csv(args) -> None:
         table.add_column("Count", justify="right")
         table.add_row("Assigned", str(assigned))
         table.add_row("Errors", str(errors))
-        table.add_row("Total", str(assigned + skipped + errors))
+        table.add_row("Total", str(assigned + errors))
         console.print(table)
 
 

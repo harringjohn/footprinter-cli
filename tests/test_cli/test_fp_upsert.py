@@ -257,6 +257,37 @@ class TestUpsertFoldersCsv:
         Path(csv_path).unlink(missing_ok=True)
 
     @patch("footprinter.cli.upsert.open_db")
+    def test_csv_commit_json_total_is_assigned_plus_errors(self, mock_open_db):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv([
+            "folder_path,project_id",
+            "/tmp/docs,5",
+            "/nonexistent,3",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                side_effect=lambda conn, p: {"id": 10, "project_id": None} if p == "/tmp/docs" else None,
+            ),
+            patch(
+                "footprinter.services.folder_service.assign",
+                return_value={"id": 10, "project_id": 5},
+            ),
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--commit", "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["assigned"] == 1
+        assert result["errors"] == 1
+        assert result["total"] == result["assigned"] + result["errors"]
+        assert "skipped" not in result
+        Path(csv_path).unlink(missing_ok=True)
+
+    @patch("footprinter.cli.upsert.open_db")
     def test_csv_unresolvable_project_name(self, mock_open_db):
         _patched_open_db(mock_open_db)
         csv_path = _write_csv([
