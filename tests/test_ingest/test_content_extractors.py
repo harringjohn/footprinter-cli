@@ -391,25 +391,37 @@ class TestChunkSizeDefaults:
         extractor = FullContentExtractor()
         assert extractor.chunk_size == 1000
 
-    def test_default_chunk_overlap_is_150(self):
-        """FullContentExtractor defaults to 150-char overlap (matching chunking.py)."""
+    def test_default_chunk_overlap_is_fractional(self):
+        """FullContentExtractor defaults to 0.15 fractional overlap."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
         extractor = FullContentExtractor()
-        assert extractor.chunk_overlap == 150
+        assert extractor.chunk_overlap == 0.15
 
-    def test_fractional_overlap_auto_converts(self):
-        """Legacy float overlap is auto-converted to int chars."""
+    def test_legacy_int_overlap_auto_converts_to_fractional(self):
+        """Legacy int overlap (e.g. 150) is auto-converted to fractional."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
-        extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=0.15)
-        assert extractor.chunk_overlap == 150
+        extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=150)
+        assert extractor.chunk_overlap == 0.15
+
+    def test_legacy_int_overlap_emits_deprecation_warning(self):
+        """Passing int overlap to FullContentExtractor emits DeprecationWarning."""
+        import warnings
+
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            FullContentExtractor(chunk_size=1000, chunk_overlap=150)
+            deprecation_msgs = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_msgs) == 1
 
     def test_extract_with_chunking_delegates_to_chunk_content(self, temp_dir):
         """FullContentExtractor delegates to chunk_content and returns dicts."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
-        extractor = FullContentExtractor(chunk_size=100, chunk_overlap=10)
+        extractor = FullContentExtractor(chunk_size=100, chunk_overlap=0.1)
         f = temp_dir / "words.txt"
         f.write_text(" ".join(["hello"] * 100))
         chunks = extractor.extract_with_chunking(f)
@@ -491,7 +503,7 @@ class TestVectorizationConfigLoading:
             "vectorization": {
                 "file_types": [".md", ".txt"],
                 "chunk_size": 500,
-                "chunk_overlap": 200,
+                "chunk_overlap": 0.4,
                 "exclude_patterns": ["**/exports/**"],
             },
         }
@@ -525,14 +537,14 @@ class TestVectorizationConfigLoading:
             "indexing": {"max_file_size_mb": 10},
             "vectorization": {
                 "chunk_size": 500,
-                "chunk_overlap": 200,
+                "chunk_overlap": 0.4,
                 "file_types": [".md", ".txt"],
                 "exclude_patterns": ["**/exports/**"],
             },
         }
         ext = FullContentExtractor.from_config(config)
         assert ext.chunk_size == 500
-        assert ext.chunk_overlap == 200
+        assert ext.chunk_overlap == 0.4
         assert ext.file_types == [".md", ".txt"]
         assert ext.exclude_patterns == ["**/exports/**"]
         assert ext.max_file_size_bytes == 10 * 1024 * 1024
@@ -543,10 +555,23 @@ class TestVectorizationConfigLoading:
 
         ext = FullContentExtractor.from_config({})
         assert ext.chunk_size == 1000
-        assert ext.chunk_overlap == 150
+        assert ext.chunk_overlap == 0.15
         assert ext.file_types is None
         assert ext.exclude_patterns is None
         assert ext.max_file_size_bytes == 0
+
+    def test_from_config_legacy_int_overlap(self):
+        """from_config() with legacy int chunk_overlap auto-converts to fractional."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+
+        config = {
+            "vectorization": {
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+            },
+        }
+        ext = FullContentExtractor.from_config(config)
+        assert ext.chunk_overlap == 0.2
 
     def test_from_config_partial(self):
         """from_config() with only chunk_size overrides that, defaults the rest."""
@@ -555,7 +580,7 @@ class TestVectorizationConfigLoading:
         config = {"vectorization": {"chunk_size": 750}}
         ext = FullContentExtractor.from_config(config)
         assert ext.chunk_size == 750
-        assert ext.chunk_overlap == 150
+        assert ext.chunk_overlap == 0.15
         assert ext.file_types is None
         assert ext.exclude_patterns is None
         assert ext.max_file_size_bytes == 0

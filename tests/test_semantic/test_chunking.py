@@ -30,10 +30,10 @@ class TestChunkDefaults:
 
         assert DEFAULT_CHUNK_SIZE == 1000
 
-    def test_default_overlap_is_150(self):
+    def test_default_overlap_is_fractional(self):
         from footprinter.semantic.chunking import DEFAULT_CHUNK_OVERLAP
 
-        assert DEFAULT_CHUNK_OVERLAP == 150
+        assert DEFAULT_CHUNK_OVERLAP == 0.15
 
     def test_3000_chars_produces_multiple_chunks(self):
         """3000 chars at 1000-char chunk size should produce 3+ chunks."""
@@ -81,12 +81,62 @@ class TestChunkContent:
         assert len(result) == 1
         assert result[0][0] == ""
 
+    def test_fractional_overlap_computes_correct_chars(self):
+        """chunk_overlap=0.1 with chunk_size=1000 -> 100-char overlap, step ~900."""
+        content = "a " * 1500  # 3000 chars
+        result = chunk_content(content, chunk_size=1000, chunk_overlap=0.1)
+        assert len(result) >= 3
+
+    def test_legacy_absolute_overlap_still_works_with_warning(self):
+        """Passing chunk_overlap=150 (>=1.0) emits DeprecationWarning but works."""
+        import warnings
+
+        content = "word " * 600  # 3000 chars
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = chunk_content(content, chunk_size=1000, chunk_overlap=150)
+            assert len(result) >= 3
+            deprecation_msgs = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_msgs) == 1
+            assert "fractional" in str(deprecation_msgs[0].message).lower()
+
+    def test_zero_overlap_no_warning(self):
+        """chunk_overlap=0.0 means no overlap, no warning."""
+        import warnings
+
+        content = "word " * 600
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = chunk_content(content, chunk_size=1000, chunk_overlap=0.0)
+            assert len(result) >= 3
+            deprecation_msgs = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_msgs) == 0
+
     def test_custom_chunk_size(self):
         content = "a " * 100  # 200 chars
-        result = chunk_content(content, chunk_size=100, chunk_overlap=10)
+        result = chunk_content(content, chunk_size=100, chunk_overlap=0.1)
         assert len(result) >= 2
         for text, _idx, _total in result:
             assert len(text) <= 110  # Allow margin for word boundary
+
+    def test_overlap_ge_chunk_size_raises(self):
+        """Overlap >= chunk_size would cause an infinite loop; reject it."""
+        import pytest
+
+        with pytest.raises(ValueError, match="must be less than chunk_size"):
+            chunk_content("word " * 600, chunk_size=1000, chunk_overlap=1000)
+
+    def test_overlap_1_0_uses_legacy_path(self):
+        """chunk_overlap=1.0 hits the legacy path (1 char), not 100% fractional."""
+        import warnings
+
+        content = "word " * 600
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = chunk_content(content, chunk_size=1000, chunk_overlap=1.0)
+            assert len(result) >= 3
+            deprecation_msgs = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_msgs) == 1
 
     def test_total_chunks_backfilled(self):
         content = "word " * 3000
