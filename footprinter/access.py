@@ -185,6 +185,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
         if is_folder_path_scope(scope):
             # folder:{path} → files/folders with matching path prefix
             path = os.path.expanduser(value)
+            # Escape LIKE metacharacters so literal %, _ in paths match correctly
             escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             result = {}
             for etype in ENTITY_META:
@@ -227,7 +228,7 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
             ph = ",".join("?" * len(desc_ids))
             file_rows = conn.execute(
                 f"SELECT id FROM files WHERE folder_id IN ({ph}) AND status = 'listed'",
-                desc_ids,
+                tuple(desc_ids),
             ).fetchall()
             file_ids = [r["id"] for r in file_rows]
             if file_ids:
