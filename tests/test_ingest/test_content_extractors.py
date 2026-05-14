@@ -391,12 +391,34 @@ class TestChunkSizeDefaults:
         extractor = FullContentExtractor()
         assert extractor.chunk_size == 1000
 
-    def test_default_chunk_overlap_is_015(self):
-        """FullContentExtractor defaults to 15% overlap."""
+    def test_default_chunk_overlap_is_150(self):
+        """FullContentExtractor defaults to 150-char overlap (matching chunking.py)."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
         extractor = FullContentExtractor()
-        assert extractor.chunk_overlap == 0.15
+        assert extractor.chunk_overlap == 150
+
+    def test_fractional_overlap_auto_converts(self):
+        """Legacy float overlap is auto-converted to int chars."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+
+        extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=0.15)
+        assert extractor.chunk_overlap == 150
+
+    def test_extract_with_chunking_respects_word_boundaries(self, temp_dir):
+        """Chunks should not split mid-word."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+
+        extractor = FullContentExtractor(chunk_size=100, chunk_overlap=10)
+        f = temp_dir / "words.txt"
+        f.write_text(" ".join(["hello"] * 50))
+        chunks = extractor.extract_with_chunking(f)
+        assert len(chunks) >= 2
+        for chunk in chunks:
+            text = chunk["content"]
+            assert "content" in chunk
+            assert "chunk_index" in chunk
+            assert "total_chunks" in chunk
 
 
 class TestExcludePatterns:
@@ -469,7 +491,7 @@ class TestVectorizationConfigLoading:
             "vectorization": {
                 "file_types": [".md", ".txt"],
                 "chunk_size": 500,
-                "chunk_overlap": 0.2,
+                "chunk_overlap": 200,
                 "exclude_patterns": ["**/exports/**"],
             },
         }
@@ -503,14 +525,14 @@ class TestVectorizationConfigLoading:
             "indexing": {"max_file_size_mb": 10},
             "vectorization": {
                 "chunk_size": 500,
-                "chunk_overlap": 0.2,
+                "chunk_overlap": 200,
                 "file_types": [".md", ".txt"],
                 "exclude_patterns": ["**/exports/**"],
             },
         }
         ext = FullContentExtractor.from_config(config)
         assert ext.chunk_size == 500
-        assert ext.chunk_overlap == 0.2
+        assert ext.chunk_overlap == 200
         assert ext.file_types == [".md", ".txt"]
         assert ext.exclude_patterns == ["**/exports/**"]
         assert ext.max_file_size_bytes == 10 * 1024 * 1024
@@ -521,7 +543,7 @@ class TestVectorizationConfigLoading:
 
         ext = FullContentExtractor.from_config({})
         assert ext.chunk_size == 1000
-        assert ext.chunk_overlap == 0.15
+        assert ext.chunk_overlap == 150
         assert ext.file_types is None
         assert ext.exclude_patterns is None
         assert ext.max_file_size_bytes == 0
@@ -533,7 +555,7 @@ class TestVectorizationConfigLoading:
         config = {"vectorization": {"chunk_size": 750}}
         ext = FullContentExtractor.from_config(config)
         assert ext.chunk_size == 750
-        assert ext.chunk_overlap == 0.15
+        assert ext.chunk_overlap == 150
         assert ext.file_types is None
         assert ext.exclude_patterns is None
         assert ext.max_file_size_bytes == 0
