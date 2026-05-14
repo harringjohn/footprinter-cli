@@ -234,6 +234,43 @@ class TestRecalculateFolderLikeEscaping:
         assert row["mcp_view"] == "inherit"
 
 
+def _seed_folder_hierarchy(conn):
+    """Extend _seed_entities with parent-child folder chain + files."""
+    _seed_entities(conn)
+    cur = conn.cursor()
+    cur.execute("UPDATE files SET folder_id = 30 WHERE id = 1")
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (32, '/Users/me/Work/widget/sub', 'Work/widget/sub', 'sub', 3, 30)"
+    )
+    cur.execute(
+        "INSERT INTO folders (id, path, relative_path, name, project_id, parent_folder_id) "
+        "VALUES (33, '/Users/me/Work/widget/sub/deep', 'Work/widget/sub/deep', 'deep', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (60, 'local', 'x.py', '/Users/me/Work/widget/sub/x.py', 'work', 3, 32)"
+    )
+    cur.execute(
+        "INSERT INTO files (id, source, name, path, account, project_id, folder_id) "
+        "VALUES (61, 'local', 'y.py', '/Users/me/Work/widget/sub/deep/y.py', 'work', 3, 33)"
+    )
+    conn.commit()
+
+
+class TestRecalculateFolderIdScope:
+    def test_folder_id_scope_enumerates_descendant_folders(self, conn):
+        """folder:{id} scope returns the folder and all descendants + their files."""
+        _seed_folder_hierarchy(conn)
+
+        from footprinter.access import _get_ids_for_scope
+
+        ids = _get_ids_for_scope(conn, "folder:30")
+
+        assert set(ids.get("folder", [])) == {30, 32, 33}
+        assert set(ids.get("file", [])) == {1, 60, 61}
+
+
 class TestRecalculateProjectCascades:
     def test_stamps_project_and_children(self, conn):
         """project:3 stamps project + files/emails/chats/folders with project_id=3."""
