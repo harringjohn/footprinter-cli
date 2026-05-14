@@ -120,8 +120,8 @@ class TestDeadCodeRemoved:
         from footprinter.cli._common import connect_db, console, output_json  # noqa: F401
 
     def test_status_cmd_imports_clean(self):
-        """status_cmd.py should import without errors after removing unused sqlite3."""
-        from footprinter.cli.status_cmd import register  # noqa: F401
+        """status.py register() should import without errors."""
+        from footprinter.cli.status import register  # noqa: F401
 
     def test_queries_project_imports_clean(self):
         """queries/project.py should import without errors after removing unused sqlite3."""

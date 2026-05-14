@@ -61,7 +61,7 @@ class TestExcludeCommand:
     def test_exclude_sets_flag(self, tmp_path):
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_exclude
+        from footprinter.cli.vectorize import _handle_exclude
 
         args = argparse.Namespace(entity="files", ids=[1, 2])
         _handle_exclude(args, db_path=db_path)
@@ -89,7 +89,7 @@ class TestExcludeCommand:
         conn.commit()
         conn.close()
 
-        from footprinter.cli.vectorize_cmd import _handle_exclude
+        from footprinter.cli.vectorize import _handle_exclude
 
         args = argparse.Namespace(entity="files", ids=[1])
         _handle_exclude(args, db_path=db_path)
@@ -106,7 +106,7 @@ class TestExcludeCommand:
         """fp vectorize exclude messages 1 should work on messages table."""
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_exclude
+        from footprinter.cli.vectorize import _handle_exclude
 
         args = argparse.Namespace(entity="messages", ids=[1])
         _handle_exclude(args, db_path=db_path)
@@ -131,7 +131,7 @@ class TestExcludeCommand:
         conn.commit()
         conn.close()
 
-        from footprinter.cli.vectorize_cmd import _handle_exclude
+        from footprinter.cli.vectorize import _handle_exclude
 
         out = __import__("io").StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
@@ -158,7 +158,7 @@ class TestIncludeCommand:
     def test_include_restores_flag(self, tmp_path):
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_include
+        from footprinter.cli.vectorize import _handle_include
 
         # File 3 was created with vectorize=0
         args = argparse.Namespace(entity="files", ids=[3])
@@ -176,7 +176,7 @@ class TestIncludeCommand:
         """Including an already-included record should be a no-op."""
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_include
+        from footprinter.cli.vectorize import _handle_include
 
         args = argparse.Namespace(entity="files", ids=[1])
         _handle_include(args, db_path=db_path)
@@ -201,7 +201,7 @@ class TestReviewCommand:
     def test_review_shows_counts(self, tmp_path):
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_review
+        from footprinter.cli.vectorize import _handle_review
 
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
@@ -219,7 +219,7 @@ class TestReviewCommand:
         """fp vectorize review files should filter to files only."""
         db_path = _make_test_db(tmp_path)
 
-        from footprinter.cli.vectorize_cmd import _handle_review
+        from footprinter.cli.vectorize import _handle_review
 
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
@@ -259,7 +259,7 @@ class TestReviewCommand:
         conn.commit()
         conn.close()
 
-        from footprinter.cli.vectorize_cmd import _handle_review
+        from footprinter.cli.vectorize import _handle_review
 
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out, width=120)
@@ -311,7 +311,7 @@ class TestImportCommand:
             )
         )
 
-        from footprinter.cli.vectorize_cmd import _handle_import
+        from footprinter.cli.vectorize import _handle_import
 
         args = argparse.Namespace(path=str(json_file))
         _handle_import(args, db_path=db_path)
@@ -333,7 +333,7 @@ class TestImportCommand:
         json_file = tmp_path / "ids.json"
         json_file.write_text(json.dumps([1, 2]))
 
-        from footprinter.cli.vectorize_cmd import _handle_import
+        from footprinter.cli.vectorize import _handle_import
 
         args = argparse.Namespace(path=str(json_file))
         _handle_import(args, db_path=db_path)
@@ -363,7 +363,7 @@ class TestImportCommand:
             )
         )
 
-        from footprinter.cli.vectorize_cmd import _handle_import
+        from footprinter.cli.vectorize import _handle_import
 
         args = argparse.Namespace(path=str(json_file))
         _handle_import(args, db_path=db_path)
@@ -386,7 +386,7 @@ class TestCLIRegistration:
     """fp vectorize should be registered and parseable."""
 
     def test_register_creates_subparser(self):
-        from footprinter.cli.vectorize_cmd import register
+        from footprinter.cli.vectorize import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -398,7 +398,7 @@ class TestCLIRegistration:
         assert args.ids == [1, 2]
 
     def test_review_subcommand(self):
-        from footprinter.cli.vectorize_cmd import register
+        from footprinter.cli.vectorize import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -408,7 +408,7 @@ class TestCLIRegistration:
         assert hasattr(args, "func")
 
     def test_import_subcommand(self):
-        from footprinter.cli.vectorize_cmd import register
+        from footprinter.cli.vectorize import register
 
         parent = argparse.ArgumentParser()
         subs = parent.add_subparsers()
@@ -468,7 +468,7 @@ class TestVectorizeRunFp:
             finally:
                 conn.close()
 
-        with patch("footprinter.cli.vectorize_cmd.open_db", _open):
+        with patch("footprinter.cli.vectorize.open_db", _open):
             _, _, code = run_fp("vectorize", "exclude", "files", "1", "2")
 
         assert code == 0
@@ -499,7 +499,7 @@ class TestVectorizeRunFp:
             finally:
                 conn.close()
 
-        with patch("footprinter.cli.vectorize_cmd.open_db", _open):
+        with patch("footprinter.cli.vectorize.open_db", _open):
             stdout, stderr, code = run_fp("vectorize", "review")
 
         assert code == 0
@@ -526,7 +526,7 @@ class TestVectorizeRunFp:
             finally:
                 conn.close()
 
-        with patch("footprinter.cli.vectorize_cmd.open_db", _open):
+        with patch("footprinter.cli.vectorize.open_db", _open):
             _, _, code = run_fp("vectorize", "import", str(json_file))
 
         assert code == 0

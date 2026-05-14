@@ -93,7 +93,7 @@ def test_status_last_run_flag_routes_correctly(monkeypatch, tmp_path):
     last_run_path.write_text(json.dumps(record))
 
     # Simulate the _handle function being called with --last-run
-    from footprinter.cli import status_cmd
+    from footprinter.cli import status
 
     # Build args object mimicking what argparse would produce
     args = argparse.Namespace(
@@ -105,7 +105,7 @@ def test_status_last_run_flag_routes_correctly(monkeypatch, tmp_path):
     )
 
     # Should not raise — it dispatches to print_last_run
-    status_cmd._handle(args)
+    status._handle(args)
 
 
 # ---------------------------------------------------------------------------
