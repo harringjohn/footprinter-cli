@@ -495,7 +495,9 @@ def insert_file(
     # THEN ?` backfill can run. If no project matches, NULL→NULL — fast-path is safe.
     if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
-        incoming_size = file_data.get("file_size") or file_data.get("size_bytes")
+        incoming_size = file_data.get("file_size")
+        if incoming_size is None:
+            incoming_size = file_data.get("size_bytes")
         if (
             incoming_sha is not None
             and existing["sha256_hash"] is not None

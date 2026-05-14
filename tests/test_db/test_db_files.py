@@ -344,6 +344,30 @@ class TestInsertFileUnchanged:
         assert second == ("updated", file_id)
         db.close()
 
+    def test_zero_byte_file_returns_unchanged(self, temp_db):
+        """0-byte files must hit the fast path — file_size=0 is valid, not falsy-None."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        first = files_db.insert_file(db.conn, self._payload(sha="abc", size=0))
+        assert first[0] == "inserted"
+        file_id = first[1]
+
+        cursor = db.conn.cursor()
+        cursor.execute("UPDATE files SET size_bytes = 0 WHERE id = ?", (file_id,))
+        db.conn.commit()
+
+        cursor.execute("SELECT updated_at FROM files WHERE id = ?", (file_id,))
+        updated_at_before = cursor.fetchone()["updated_at"]
+
+        second = files_db.insert_file(db.conn, self._payload(sha="abc", size=0))
+        assert second == ("unchanged", file_id)
+
+        cursor.execute("SELECT updated_at FROM files WHERE id = ?", (file_id,))
+        updated_at_after = cursor.fetchone()["updated_at"]
+        assert updated_at_after == updated_at_before, "unchanged path must not issue an UPDATE"
+        db.close()
+
 
 class TestFileStatus:
     """Test automatic status assignment in insert_file()."""

@@ -56,6 +56,7 @@ class VectorStore:
 
     _instance: Optional["VectorStore"] = None
     _lock = threading.Lock()
+    _REBUILD_STAMP = ".rebuild_stamp"
 
     def __init__(self, chroma_path: Optional[str] = None):
         if not _semantic_available():
@@ -97,6 +98,12 @@ class VectorStore:
         self.ef = get_embedding_function()
         self._embedding_dim = EMBEDDING_DIM
 
+        stamp_path = self.chroma_path / self._REBUILD_STAMP
+        try:
+            self._rebuild_id: Optional[str] = stamp_path.read_text().strip() if stamp_path.exists() else None
+        except OSError:
+            self._rebuild_id = None
+
     # ------------------------------------------------------------------
     # Singleton
     # ------------------------------------------------------------------
@@ -105,11 +112,25 @@ class VectorStore:
     def get_instance(cls, chroma_path: Optional[str] = None) -> "VectorStore":
         """Return a shared singleton instance (thread-safe).
 
-        If the chroma directory has been deleted (e.g., by _rebuild_vectors in
-        another process), the stale singleton is discarded and a fresh instance
-        is created.
+        If the rebuild stamp has changed (another process ran --rebuild-vectors
+        full) or the chroma directory has been deleted, the stale singleton is
+        discarded and a fresh instance is created.
         """
         with cls._lock:
+            if cls._instance is not None:
+                stamp_path = cls._instance.chroma_path / cls._REBUILD_STAMP
+                try:
+                    disk_stamp = stamp_path.read_text().strip() if stamp_path.exists() else None
+                except OSError:
+                    disk_stamp = None
+                if disk_stamp != cls._instance._rebuild_id:
+                    logger.warning(
+                        "Rebuild stamp changed (%s → %s) — resetting stale VectorStore singleton",
+                        cls._instance._rebuild_id,
+                        disk_stamp,
+                    )
+                    cls._instance = None
+
             if cls._instance is not None and not cls._instance.chroma_path.exists():
                 logger.warning(
                     "Chroma path %s no longer exists — resetting stale VectorStore singleton",

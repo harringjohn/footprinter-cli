@@ -395,6 +395,52 @@ class TestGetFolderNavigationStatusFilter:
         assert names == ["listed_sub", "unlisted_sub"]
 
 
+class TestListFoldersNullFolderId:
+    """list_folders with depth must count files even when folder_id is NULL (FPR-1768)."""
+
+    def _insert_folder(self, conn, path: str, relative_path: str) -> int:
+        cursor = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source)
+               VALUES (?, ?, ?, 'local')""",
+            (path, relative_path, path.rsplit("/", 1)[-1]),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+    def test_depth_counts_null_folder_id_files(self, tool_db):
+        fid = self._insert_folder(tool_db, "/Users/u/Work/proj", "/Work/proj")
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, size_bytes)
+               VALUES ('a.py', '/Users/u/Work/proj/a.py', 'local', 'listed', 200)"""
+        )
+        tool_db.commit()
+
+        result = list_folders(tool_db, depth=1)
+        folder = next(f for f in result["folders"] if f["id"] == fid)
+        assert folder["direct_files"] == 1
+        assert folder["total_size_bytes"] == 200
+
+    def test_default_and_depth_agree(self, tool_db):
+        """Default (pre-computed) and depth (live subquery) should produce consistent counts."""
+        from footprinter.db.folders import refresh_folder_counts
+
+        fid = self._insert_folder(tool_db, "/Users/u/Work/proj", "/Work/proj")
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, size_bytes)
+               VALUES ('a.py', '/Users/u/Work/proj/a.py', 'local', 'listed', 200)"""
+        )
+        tool_db.commit()
+        refresh_folder_counts(tool_db)
+
+        default = list_folders(tool_db, depth=None)
+        with_depth = list_folders(tool_db, depth=1)
+
+        default_folder = next(f for f in default["folders"] if f["id"] == fid)
+        depth_folder = next(f for f in with_depth["folders"] if f["id"] == fid)
+        assert default_folder["direct_files"] == depth_folder["direct_files"]
+        assert default_folder["total_size_bytes"] == depth_folder["total_size_bytes"]
+
+
 class TestRecursiveFileCountWithNestedFolders:
     """recursive_file_count must count files in descendant folders even when
     parent_folder_id is NULL (FPR-1619).
