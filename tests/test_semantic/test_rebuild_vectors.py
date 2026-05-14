@@ -154,7 +154,7 @@ class TestPhaseIsolation:
                     "source": "claude",
                 }
             ],
-            chats=[{"id": 1, "title": "t", "summary": None, "source": "claude", "created_at": "", "message_count": 1}],
+            chats=[{"id": 1, "title": "t", "source": "claude", "created_at": "", "message_count": 1}],
         )
         # Messages query should not have been executed
         executed_sqls = [str(c) for c in mock_cursor.execute.call_args_list]
@@ -188,7 +188,7 @@ class TestPhaseIsolation:
         """--phase chat_info should only vectorize chat info."""
         mock_inst, _, mock_cursor = _run_rebuild(
             phase="chat_info",
-            chats=[{"id": 1, "title": "t", "summary": None, "source": "claude", "created_at": "", "message_count": 1}],
+            chats=[{"id": 1, "title": "t", "source": "claude", "created_at": "", "message_count": 1}],
         )
         executed_sqls = [str(c) for c in mock_cursor.execute.call_args_list]
         file_queries = [s for s in executed_sqls if "FROM files" in s and "COUNT" not in s]
@@ -211,7 +211,7 @@ class TestPhaseIsolation:
                     "source": "claude",
                 }
             ],
-            chats=[{"id": 1, "title": "t", "summary": None, "source": "claude", "created_at": "", "message_count": 1}],
+            chats=[{"id": 1, "title": "t", "source": "claude", "created_at": "", "message_count": 1}],
         )
         executed_sqls = [str(c) for c in mock_cursor.execute.call_args_list]
         file_queries = [s for s in executed_sqls if "FROM files" in s and "COUNT" not in s]
@@ -424,7 +424,7 @@ class TestProgressOutput:
                 for i in range(5)
             ],
             chats=[
-                {"id": i, "title": "t", "summary": None, "source": "c", "created_at": "", "message_count": 1}
+                {"id": i, "title": "t", "source": "c", "created_at": "", "message_count": 1}
                 for i in range(2)
             ],
         )
@@ -863,7 +863,6 @@ class TestIncrementalMode:
             {
                 "id": 1,
                 "title": "Test Chat",
-                "summary": None,
                 "source": "claude",
                 "created_at": "",
                 "message_count": 5,

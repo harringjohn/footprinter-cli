@@ -206,8 +206,8 @@ class TestGetChatDetail:
         assert result["messages"][0]["content"] == "First"
         assert result["messages"][1]["content"] == "Second"
 
-    def test_returns_summary_and_relationship_fields(self, chat_conn):
-        """get_chat_detail() must include summary, client/project IDs and names."""
+    def test_returns_relationship_fields(self, chat_conn):
+        """get_chat_detail() must include client/project IDs and names."""
         from footprinter.db.chats import get_chat_detail
 
         chat_conn.execute(
@@ -220,16 +220,15 @@ class TestGetChatDetail:
         )
         chat_conn.execute(
             """INSERT INTO chats
-               (id, external_id, account, title, summary, message_count,
+               (id, external_id, account, title, message_count,
                 client_id, project_id, created_at, updated_at, status)
-               VALUES (10, 'c-rel', 'claude', 'Relationship Chat', 'test summary',
+               VALUES (10, 'c-rel', 'claude', 'Relationship Chat',
                        0, 1, 1, datetime('now'), datetime('now'), 'listed')"""
         )
         chat_conn.commit()
 
         result = get_chat_detail(chat_conn, 10)
         assert result is not None
-        assert result["summary"] == "test summary"
         assert result["client_id"] == 1
         assert result["project_id"] == 1
         assert result["project_name"] == "Alpha"

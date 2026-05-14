@@ -315,10 +315,10 @@ class TestSemanticIncludeFlags:
 
     def _seed_unlisted_chat(self, conn) -> int:
         cur = conn.execute(
-            """INSERT INTO chats (external_id, account, title, summary, message_count,
+            """INSERT INTO chats (external_id, account, title, message_count,
                                   status, mcp_view, mcp_read)
                VALUES ('conv-arch', 'claude', 'Archived Chat',
-                       'A chat about archived stuff', 1,
+                       1,
                        'unlisted', 'visible', 'allow')"""
         )
         conn.commit()

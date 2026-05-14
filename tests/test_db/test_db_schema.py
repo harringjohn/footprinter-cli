@@ -840,8 +840,8 @@ class TestFTS5Tables:
 
         # Insert a chat row directly (bypassing triggers)
         cursor.execute(
-            "INSERT INTO chats (external_id, account, title, summary) "
-            "VALUES ('test-ext-1', 'personal', 'Test Chat', 'A test summary')"
+            "INSERT INTO chats (external_id, account, title) "
+            "VALUES ('test-ext-1', 'personal', 'Test Chat')"
         )
         db.conn.commit()
 
@@ -910,8 +910,8 @@ class TestFTS5Tables:
 
         db = Database(temp_db)
         db.conn.execute(
-            "INSERT INTO files (id, source, name, content_preview, summary) "
-            "VALUES (1, 'local', 'report.pdf', 'quarterly revenue summary', 'Q3 financials')"
+            "INSERT INTO files (id, source, name, content_preview) "
+            "VALUES (1, 'local', 'report.pdf', 'quarterly revenue summary')"
         )
         db.conn.commit()
         row = db.conn.execute("SELECT * FROM files_fts WHERE files_fts MATCH '\"revenue\"*'").fetchone()
@@ -1058,8 +1058,8 @@ class TestFTS5Tables:
 
         # Insert with triggers active
         db.conn.execute(
-            "INSERT INTO files (id, source, name, content_preview, summary) "
-            "VALUES (1, 'local', 'existing.txt', 'existing preview', 'existing summary')"
+            "INSERT INTO files (id, source, name, content_preview) "
+            "VALUES (1, 'local', 'existing.txt', 'existing preview')"
         )
         db.conn.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, "
@@ -1068,16 +1068,16 @@ class TestFTS5Tables:
             "'Bob', 'bob@test.com', 'old body', '2024-01-01')"
         )
         db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, summary) "
-            "VALUES (1, 'chat-1', 'personal', 'Old chat', 'old chat summary')"
+            "INSERT INTO chats (id, external_id, account, title) "
+            "VALUES (1, 'chat-1', 'personal', 'Old chat')"
         )
         db.conn.commit()
 
         # Drop triggers, insert more rows (won't appear in FTS)
         db.drop_fts_triggers()
         db.conn.execute(
-            "INSERT INTO files (id, source, name, content_preview, summary) "
-            "VALUES (2, 'local', 'new_file.txt', 'new preview', 'new summary')"
+            "INSERT INTO files (id, source, name, content_preview) "
+            "VALUES (2, 'local', 'new_file.txt', 'new preview')"
         )
         db.conn.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, "
@@ -1086,8 +1086,8 @@ class TestFTS5Tables:
             "'Alice', 'alice@test.com', 'new body', '2024-02-01')"
         )
         db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, summary) "
-            "VALUES (2, 'chat-2', 'personal', 'New chat', 'new chat summary')"
+            "INSERT INTO chats (id, external_id, account, title) "
+            "VALUES (2, 'chat-2', 'personal', 'New chat')"
         )
         db.conn.commit()
 

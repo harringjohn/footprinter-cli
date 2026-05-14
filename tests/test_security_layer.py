@@ -689,7 +689,6 @@ class TestFilterResult:
             "project_id": 1,
             "client_id": 4,
             "title": "Secret Chat",
-            "summary": "Private",
             "mcp_view": "opaque",
         }
         filtered = filter_result("chat", result)

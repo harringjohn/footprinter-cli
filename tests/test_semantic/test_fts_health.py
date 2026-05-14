@@ -24,8 +24,8 @@ def fts_db(tmp_path):
         "'alice@test.com', 'Preview text', '2026-01-01')"
     )
     cursor.execute(
-        "INSERT INTO chats (external_id, account, title, summary, message_count) "
-        "VALUES ('chat-1', 'personal', 'Test Chat', 'A summary', 1)"
+        "INSERT INTO chats (external_id, account, title, message_count) "
+        "VALUES ('chat-1', 'personal', 'Test Chat', 1)"
     )
     db.conn.commit()
     yield db

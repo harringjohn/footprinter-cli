@@ -185,9 +185,9 @@ class TestSearchChatsKeyword:
 
     def test_excludes_removed_chats(self, db_conn):
         db_conn.execute(
-            """INSERT INTO chats (external_id, account, title, summary, message_count,
+            """INSERT INTO chats (external_id, account, title, message_count,
                                   created_at, mcp_view, mcp_read, status)
-               VALUES ('conv-rm', 'claude', 'Removed Chat', 'Gone', 0,
+               VALUES ('conv-rm', 'claude', 'Removed Chat', 0,
                        '2026-01-10', 'visible', 'allow', 'removed')"""
         )
         db_conn.commit()

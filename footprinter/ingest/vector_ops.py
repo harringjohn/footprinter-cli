@@ -420,7 +420,7 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
 
     cursor.execute(
         f"""
-        SELECT id, title, summary, account as source, created_at, message_count
+        SELECT id, title, account as source, created_at, message_count
         FROM chats
         WHERE status = 'listed'
             AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0
@@ -479,8 +479,6 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
 
         try:
             text_parts = [f"Chat: {conv['title'] or '(untitled)'}"]
-            if conv["summary"]:
-                text_parts.append(f"Summary: {conv['summary']}")
             text_parts.append(f"Source: {conv['source']}")
             searchable_text = "\n\n".join(text_parts)
 
@@ -494,7 +492,6 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
                     "created_at": conv["created_at"] or "",
                     "message_count": conv["message_count"] or 0,
                     "chunk_type": "chat_info",
-                    "has_summary": bool(conv["summary"]),
                 }
             )
             batch_conv_ids.append(conv["id"])

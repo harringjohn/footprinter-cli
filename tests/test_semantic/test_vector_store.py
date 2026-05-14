@@ -637,7 +637,6 @@ class TestIndexChatInfo:
         store.index_chat_info(
             chat_id=1,
             title="My Chat",
-            summary="About Python",
             source="claude",
             created_at="2024-01-01",
             message_count=10,
@@ -645,14 +644,12 @@ class TestIndexChatInfo:
         call_kwargs = conv_col.upsert.call_args[1]
         doc = call_kwargs["documents"][0]
         assert "Chat: My Chat" in doc
-        assert "Summary: About Python" in doc
 
     def test_uses_upsert(self, store, mock_chroma):
         _, conv_col, _ = mock_chroma
         store.index_chat_info(
             chat_id=1,
             title="Test",
-            summary=None,
             source="claude",
             created_at="",
             message_count=1,
@@ -664,7 +661,6 @@ class TestIndexChatInfo:
         store.index_chat_info(
             chat_id=99,
             title="Test",
-            summary=None,
             source="claude",
             created_at="",
             message_count=1,

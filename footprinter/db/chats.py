@@ -119,7 +119,7 @@ def get_chat_detail(
     cursor = conn.execute(
         """
         SELECT chat.id, chat.external_id, chat.account, chat.title,
-               chat.summary, chat.message_count,
+               chat.message_count,
                chat.created_at, chat.modified_at, chat.status, chat.merged_into_id,
                chat.client_id, chat.project_id,
                chat.mcp_view, chat.mcp_read,
@@ -140,7 +140,6 @@ def get_chat_detail(
         "external_id": row["external_id"],
         "account": row["account"],
         "title": row["title"],
-        "summary": row["summary"],
         "message_count": row["message_count"],
         "created_at": row["created_at"],
         "modified_at": row["modified_at"],
@@ -396,7 +395,6 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
         "external_id",
         "account",
         "title",
-        "summary",
         "created_at",
         "modified_at",
         "message_count",
@@ -406,7 +404,6 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
         conv_data["external_id"],
         conv_data.get("account"),
         conv_data.get("title"),
-        conv_data.get("summary"),
         conv_data.get("created_at"),
         conv_data.get("updated_at"),
         conv_data.get("message_count", 0),
@@ -424,7 +421,6 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
         ON CONFLICT(external_id) DO UPDATE SET
             account = excluded.account,
             title = excluded.title,
-            summary = excluded.summary,
             created_at = excluded.created_at,
             modified_at = excluded.modified_at,
             message_count = excluded.message_count,

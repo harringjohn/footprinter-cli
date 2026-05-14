@@ -20,7 +20,6 @@ def conn():
         "  external_id TEXT UNIQUE NOT NULL,"
         "  account TEXT NOT NULL,"
         "  title TEXT,"
-        "  summary TEXT,"
         "  created_at DATETIME,"
         "  modified_at DATETIME,"
         "  updated_at DATETIME,"

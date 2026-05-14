@@ -32,15 +32,6 @@ logger = logging.getLogger(__name__)
 # Source-specific metadata is stored in the `metadata` TEXT column
 # (JSON) on tables that need it: files, projects, chats, messages,
 # emails, clients.
-#
-# Columns populated by app or future scope
-# ─────────────────────────────────────────
-#   summary       TEXT     — AI-generated summary (files, emails, chats)
-#   summarized_at DATETIME — when summary was generated (files only)
-#
-# files_fts and chats_fts reference the summary column via FTS5
-# triggers, so summary stays in the standard schema.  emails also
-# has summary for consistency.  Tool-only installs leave them NULL.
 
 
 # Single source of truth for FTS5 virtual table definitions.
@@ -48,8 +39,8 @@ logger = logging.getLogger(__name__)
 _FTS_DEFINITIONS: dict[str, dict[str, Any]] = {
     "files_fts": {
         "base_table": "files",
-        "columns": ["name", "content_preview", "summary"],
-        "content_columns": ["content_preview", "summary"],
+        "columns": ["name", "content_preview"],
+        "content_columns": ["content_preview"],
     },
     "emails_fts": {
         "base_table": "emails",
@@ -58,8 +49,8 @@ _FTS_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "chats_fts": {
         "base_table": "chats",
-        "columns": ["title", "summary"],
-        "content_columns": ["summary"],
+        "columns": ["title"],
+        "content_columns": [],
     },
 }
 
@@ -172,10 +163,6 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-
-                -- AI-generated summaries
-                summary TEXT,
-                summarized_at DATETIME,
 
                 -- Display
                 display_name TEXT
@@ -386,7 +373,6 @@ class SchemaMixin:
                 external_id TEXT UNIQUE NOT NULL,
                 account TEXT NOT NULL,
                 title TEXT,
-                summary TEXT,
 
                 -- Origin timestamps
                 created_at DATETIME,
@@ -512,9 +498,6 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-
-                -- AI-generated summaries
-                summary TEXT,
 
                 -- Timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

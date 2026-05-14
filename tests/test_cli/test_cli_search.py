@@ -275,22 +275,21 @@ def _make_fts_db(tmp_path):
 
     conn.execute(
         """CREATE TABLE chats (
-            id INTEGER PRIMARY KEY, external_id TEXT, title TEXT, summary TEXT,
+            id INTEGER PRIMARY KEY, external_id TEXT, title TEXT,
             account TEXT, created_at TEXT, updated_at TEXT, message_count INTEGER,
             mcp_view TEXT DEFAULT 'inherit',
             status TEXT DEFAULT 'listed'
         )"""
     )
-    conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, summary, content=chats, content_rowid=id)")
+    conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, content=chats, content_rowid=id)")
     conn.execute(
-        """INSERT INTO chats (id, title, summary, account, created_at, message_count, mcp_view)
-           VALUES (1, 'Database migration planning', 'Discussion about migrating the database schema',
+        """INSERT INTO chats (id, title, account, created_at, message_count, mcp_view)
+           VALUES (1, 'Database migration planning',
                    'claude', '2026-01-10', 5, 'visible')"""
     )
     conn.execute(
-        "INSERT INTO chats_fts (rowid, title, summary)"
-        " VALUES (1, 'Database migration planning',"
-        " 'Discussion about migrating the database schema')"
+        "INSERT INTO chats_fts (rowid, title)"
+        " VALUES (1, 'Database migration planning')"
     )
 
     conn.commit()
@@ -649,7 +648,7 @@ class TestHybridKeywordOnlyChats:
                     "source": "claude",
                     "created_at": "2026-01-10",
                     "message_count": 5,
-                    "summary": "Discussion about migrating the database schema",
+                    "snippet": "Discussion about migrating the database schema",
                     "fts_score": 0.7,
                     "match_type": "keyword",
                 },
@@ -688,7 +687,7 @@ class TestHybridKeywordOnlyChats:
                     "source": "claude",
                     "created_at": "2026-01-10",
                     "message_count": 5,
-                    "summary": "A summary of the conversation",
+                    "snippet": "Title match: Test chat",
                     "fts_score": 0.7,
                     "match_type": "keyword",
                 },
@@ -708,7 +707,7 @@ class TestHybridKeywordOnlyChats:
         assert r["data"]["chat_title"] == "Test chat"
         assert r["data"]["source"] == "claude"
         assert r["data"]["chat_id"] == 1
-        assert "A summary" in r["data"]["snippet"]
+        assert "Test chat" in r["data"]["snippet"]
 
 
 class TestAutoFallback:

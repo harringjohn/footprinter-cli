@@ -62,11 +62,6 @@ def extract_snippet(content: str, query: str, window: int = 250) -> str:
 
 def chat_snippet(row: Dict) -> str:
     """Build a display snippet from a keyword_search result row."""
-    summary = row.get("summary")
-    if summary:
-        if len(summary) > 300:
-            return summary[:300] + "..."
-        return summary
     return f"Title match: {row['chat_title']}"
 
 
@@ -170,7 +165,7 @@ def keyword_search(
         if account:
             cursor.execute(
                 """
-                SELECT chat.id, chat.title, chat.summary, chat.account, chat.created_at, chat.message_count,
+                SELECT chat.id, chat.title, chat.account, chat.created_at, chat.message_count,
                        fts.rank as fts_rank
                 FROM chats_fts fts
                 JOIN chats chat ON chat.id = fts.rowid
@@ -185,7 +180,7 @@ def keyword_search(
         else:
             cursor.execute(
                 """
-                SELECT chat.id, chat.title, chat.summary, chat.account, chat.created_at, chat.message_count,
+                SELECT chat.id, chat.title, chat.account, chat.created_at, chat.message_count,
                        fts.rank as fts_rank
                 FROM chats_fts fts
                 JOIN chats chat ON chat.id = fts.rowid
@@ -209,7 +204,7 @@ def keyword_search(
                     "source": row["account"] or "unknown",
                     "created_at": row["created_at"] or "",
                     "message_count": row["message_count"] or 0,
-                    "summary": row["summary"] or "",
+                    "snippet": row["title"] or "",
                     "fts_score": fts_score,
                     "match_type": "keyword",
                 }
