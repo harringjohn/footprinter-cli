@@ -7,7 +7,7 @@
 # for that.
 #
 # Curl-pipe usage:
-#   curl -fsSL https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install.sh | bash
 #
 # What this script does:
 #   1. Ensures Python ≥ 3.11 is installed (downloads python.org .pkg if not)
@@ -27,7 +27,7 @@ if [ ! -f "$COMMON" ]; then
     # mktemp creates the file; curl writes into it. Reusing the same path
     # avoids the orphan tempfile that "$(mktemp).sh" leaves behind.
     COMMON="$(mktemp -t footprinter-install-common)"
-    curl -fsSL "https://raw.githubusercontent.com/swellcitygroup/footprinter/main/scripts/release/_install_common.sh" -o "$COMMON"
+    curl -fsSL "https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/_install_common.sh" -o "$COMMON"
 fi
 # shellcheck source=_install_common.sh
 source "$COMMON"
