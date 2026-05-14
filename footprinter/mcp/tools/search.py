@@ -1,13 +1,11 @@
 """Search tool: query across data sources."""
 
-from pathlib import Path
 from typing import Optional
 
 from footprinter.mcp.db import get_db, handle_db_errors
 from footprinter.services import search_service
 from footprinter.services.roles import Role
-
-HOME = str(Path.home())
+from footprinter.utils.paths import abbreviate_home as _shorten_path
 
 # Per-source result cap enforced at the MCP layer to stay under the
 # 1MB tool-result protocol limit. The service layer remains uncapped
@@ -67,12 +65,6 @@ def _build_search_summary(
         )
 
     return summary
-
-
-def _shorten_path(path: str) -> str:
-    if path and path.startswith(HOME):
-        return "~" + path[len(HOME) :]
-    return path or ""
 
 
 @handle_db_errors
