@@ -245,6 +245,10 @@ def _reset(args) -> None:
     reset_all = getattr(args, "all", False)
     scope = getattr(args, "scope", None)
 
+    if reset_all and scope:
+        console.print("[red]Cannot combine --all with a scope.[/red] Use one or the other.")
+        raise SystemExit(1)
+
     if not reset_all and not scope:
         console.print("[red]Specify a scope to reset, or use --all.[/red]")
         console.print()

@@ -349,6 +349,12 @@ class TestMcpReset:
         assert code == 0
         assert "no polic" in stdout.lower() or "not found" in stdout.lower()
 
+    def test_reset_all_with_scope_fails(self, policy_db):
+        """reset --all with a positional scope is rejected to prevent accidental nuke."""
+        stdout, stderr, code = run_fp("mcp", "reset", "--all", "folder:~/Work")
+        assert code != 0
+        assert "Cannot combine" in stdout + stderr
+
     def test_reset_all_clears_and_reseeds(self, policy_db):
         """reset --all clears all policies and re-seeds defaults."""
         run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
