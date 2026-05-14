@@ -369,6 +369,52 @@ class TestInsertFileUnchanged:
         db.close()
 
 
+class TestInsertFileZeroByteSize:
+    """0-byte files must store size_bytes=0 in the DB, not NULL."""
+
+    def _payload(self, sha="abc", size=0, path="/tmp/test/zero.txt"):
+        return {
+            "file_path": path,
+            "file_name": "zero.txt",
+            "file_type": "txt",
+            "file_size": size,
+            "sha256_hash": sha,
+            "md5_hash": "m",
+        }
+
+    def test_zero_byte_file_stores_size_zero(self, temp_db):
+        """INSERT path: file_size=0 must persist as size_bytes=0, not NULL."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        action, file_id = files_db.insert_file(db.conn, self._payload(size=0))
+        assert action == "inserted"
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT size_bytes FROM files WHERE id = ?", (file_id,))
+        row = cursor.fetchone()
+        assert row["size_bytes"] == 0, f"Expected 0, got {row['size_bytes']}"
+        db.close()
+
+    def test_zero_byte_file_update_path_stores_size_zero(self, temp_db):
+        """UPDATE path: re-insert with file_size=0 must persist as size_bytes=0, not NULL."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        action, file_id = files_db.insert_file(
+            db.conn, self._payload(sha="aaa", size=100)
+        )
+        assert action == "inserted"
+
+        files_db.insert_file(db.conn, self._payload(sha="bbb", size=0))
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT size_bytes FROM files WHERE id = ?", (file_id,))
+        row = cursor.fetchone()
+        assert row["size_bytes"] == 0, f"Expected 0, got {row['size_bytes']}"
+        db.close()
+
+
 class TestFileStatus:
     """Test automatic status assignment in insert_file()."""
 
