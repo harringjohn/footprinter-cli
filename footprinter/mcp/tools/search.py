@@ -67,7 +67,6 @@ def _build_search_summary(
     return summary
 
 
-
 @handle_db_errors
 def footprinter_search(
     query: str = "",
