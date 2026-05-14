@@ -144,6 +144,119 @@ class TestRunFolderStatsRunner:
         assert parent["total_size_bytes"] == 500
 
 
+class TestRunFolderStatsNullFolderId:
+    """Regression: refresh_folder_counts must handle files with folder_id = NULL (FPR-1768)."""
+
+    def test_null_folder_id_direct_count(self, conn):
+        """Files with folder_id NULL but path under a folder should still be counted."""
+        from footprinter.ingest.processing import run_folder_stats
+
+        _insert_folder(conn, 1, "/Users/me/Work/proj")
+        ts = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO files (id, source, name, path, size_bytes, status, indexed_at) "
+            "VALUES (1, 'local', 'a.py', '/Users/me/Work/proj/a.py', 100, 'listed', ?)",
+            (ts,),
+        )
+        conn.commit()
+
+        run_folder_stats(_make_db_wrapper(conn))
+
+        row = conn.execute(
+            "SELECT direct_file_count, total_size_bytes FROM folders WHERE id = 1"
+        ).fetchone()
+        assert row["direct_file_count"] == 1
+        assert row["total_size_bytes"] == 100
+
+    def test_null_folder_id_multiple_files(self, conn):
+        """Multiple NULL-folder_id files in the same folder produce correct totals."""
+        from footprinter.ingest.processing import run_folder_stats
+
+        _insert_folder(conn, 1, "/Users/me/Work/proj")
+        ts = datetime.now(timezone.utc).isoformat()
+        for i, (name, size) in enumerate(
+            [("a.py", 100), ("b.py", 250), ("c.txt", 50)], start=1
+        ):
+            conn.execute(
+                "INSERT INTO files (id, source, name, path, size_bytes, status, indexed_at) "
+                "VALUES (?, 'local', ?, ?, ?, 'listed', ?)",
+                (i, name, f"/Users/me/Work/proj/{name}", size, ts),
+            )
+        conn.commit()
+
+        run_folder_stats(_make_db_wrapper(conn))
+
+        row = conn.execute(
+            "SELECT direct_file_count, total_size_bytes FROM folders WHERE id = 1"
+        ).fetchone()
+        assert row["direct_file_count"] == 3
+        assert row["total_size_bytes"] == 400
+
+    def test_null_folder_id_not_double_counted_with_fk(self, conn):
+        """A file with folder_id set is NOT also matched by the path fallback."""
+        from footprinter.ingest.processing import run_folder_stats
+
+        _insert_folder(conn, 1, "/Users/me/Work/proj")
+        _insert_file(conn, 1, 1, "/Users/me/Work/proj/linked.py", 200)
+        ts = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO files (id, source, name, path, size_bytes, status, indexed_at) "
+            "VALUES (2, 'local', 'orphan.py', '/Users/me/Work/proj/orphan.py', 300, 'listed', ?)",
+            (ts,),
+        )
+        conn.commit()
+
+        run_folder_stats(_make_db_wrapper(conn))
+
+        row = conn.execute(
+            "SELECT direct_file_count, total_size_bytes FROM folders WHERE id = 1"
+        ).fetchone()
+        assert row["direct_file_count"] == 2
+        assert row["total_size_bytes"] == 500
+
+    def test_null_folder_id_subfolder_not_counted_as_direct(self, conn):
+        """Files in a subfolder path should NOT inflate the parent's direct_file_count."""
+        from footprinter.ingest.processing import run_folder_stats
+
+        _insert_folder(conn, 1, "/Users/me/Work/proj")
+        _insert_folder(conn, 2, "/Users/me/Work/proj/sub", parent_folder_id=1)
+        ts = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO files (id, source, name, path, size_bytes, status, indexed_at) "
+            "VALUES (1, 'local', 'deep.py', '/Users/me/Work/proj/sub/deep.py', 150, 'listed', ?)",
+            (ts,),
+        )
+        conn.commit()
+
+        run_folder_stats(_make_db_wrapper(conn))
+
+        parent = conn.execute(
+            "SELECT direct_file_count FROM folders WHERE id = 1"
+        ).fetchone()
+        assert parent["direct_file_count"] == 0
+
+        child = conn.execute(
+            "SELECT direct_file_count, total_size_bytes FROM folders WHERE id = 2"
+        ).fetchone()
+        assert child["direct_file_count"] == 1
+        assert child["total_size_bytes"] == 150
+
+    def test_zero_folders_stay_zero(self, conn):
+        """Folders with no files (by FK or path) remain at 0 — correct zero, not broken zero."""
+        from footprinter.ingest.processing import run_folder_stats
+
+        _insert_folder(conn, 1, "/Users/me/Work/empty")
+        conn.commit()
+
+        run_folder_stats(_make_db_wrapper(conn))
+
+        row = conn.execute(
+            "SELECT direct_file_count, total_size_bytes FROM folders WHERE id = 1"
+        ).fetchone()
+        assert row["direct_file_count"] == 0
+        assert row["total_size_bytes"] == 0
+
+
 class TestFolderStatsRegistration:
     """Pipeline registration: POST_PIPES list and orchestrator phase."""
 
