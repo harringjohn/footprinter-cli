@@ -133,7 +133,7 @@ def access_db(tmp_path, monkeypatch):
     """
     from footprinter.fixture import create_fixture, load_seed_manifest
 
-    from footprinter.access import recalculate_access
+    from footprinter.access_stamper import recalculate_access
     from footprinter.db.chats import insert_chat
     from footprinter.db.policies import set_permission_policy
     from footprinter.paths import get_bundled_path

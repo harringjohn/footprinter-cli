@@ -250,7 +250,7 @@ class TestAccessResolutionErrorHandling:
         from footprinter.ingest.processing import _read_last_run, run_access_resolution
 
         monkeypatch.setattr(
-            "footprinter.access.recalculate_access",
+            "footprinter.access_stamper.recalculate_access",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
         )
 
@@ -289,7 +289,7 @@ class TestAccessResolutionErrorHandling:
 
         # Patch batch_resolve_visibility where stamp_entities uses it
         monkeypatch.setattr(
-            "footprinter.access.batch_resolve_visibility",
+            "footprinter.access_stamper.batch_resolve_visibility",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("vis crash")),
         )
 
@@ -323,7 +323,7 @@ class TestAccessResolutionErrorHandling:
         _add_more_entities(conn, indexed_at="2099-01-01T00:00:00+00:00")
 
         # Save original so file processing succeeds, email processing fails
-        import footprinter.access as access_mod
+        import footprinter.access_stamper as access_mod
 
         original_batch_vis = access_mod.batch_resolve_visibility
         processed_types = []
@@ -335,7 +335,7 @@ class TestAccessResolutionErrorHandling:
             return original_batch_vis(conn, entity_type, ids)
 
         monkeypatch.setattr(
-            "footprinter.access.batch_resolve_visibility",
+            "footprinter.access_stamper.batch_resolve_visibility",
             selective_raise,
         )
 
@@ -462,7 +462,7 @@ class TestNoPrivateImports:
 
         private_names = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "footprinter.access":
+            if isinstance(node, ast.ImportFrom) and node.module == "footprinter.access_stamper":
                 for alias in node.names:
                     if alias.name.startswith("_"):
                         private_names.append(alias.name)

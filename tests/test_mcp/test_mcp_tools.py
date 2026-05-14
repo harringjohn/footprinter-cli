@@ -845,7 +845,7 @@ class TestContexterSearch:
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'hidden')")
         mcp_db.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(mcp_db, "source:browser")
 
@@ -868,7 +868,7 @@ class TestContexterSearch:
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'opaque')")
         mcp_db.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(mcp_db, "source:browser")
 

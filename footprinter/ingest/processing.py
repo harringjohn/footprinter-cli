@@ -54,7 +54,7 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
     Returns:
         PipeResult with per-entity-type counts in data.
     """
-    from footprinter.access import ENTITY_META, recalculate_access, stamp_entities
+    from footprinter.access_stamper import ENTITY_META, recalculate_access, stamp_entities
 
     conn = db.conn
     last_run = _read_last_run(conn, "access_resolution")

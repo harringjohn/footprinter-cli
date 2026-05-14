@@ -7,7 +7,7 @@ import sqlite3
 
 from rich.table import Table
 
-from footprinter.access import (
+from footprinter.access_stamper import (
     count_affected_entities,
     recalculate_access,
     recalculate_access_batched,

@@ -75,7 +75,7 @@ class TestFileEditRecalculate:
         update_file_relationships(conn, 1, project_id=4)
 
         # Trigger recalculate — this is what the wiring should do
-        from footprinter.access import recalculate_entity
+        from footprinter.access_stamper import recalculate_entity
 
         recalculate_entity(conn, "file", 1)
 
@@ -120,7 +120,7 @@ class TestProjectEditRecalculate:
         update_project(conn, 3, client_id=6)
 
         # Trigger recalculate — this is what the wiring should do
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "project:3")
 
