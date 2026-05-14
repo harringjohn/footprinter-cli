@@ -485,7 +485,9 @@ def insert_file(
 
     name = file_data.get("file_name") or file_data.get("name")
     content_type = file_data.get("file_type") or file_data.get("content_type")
-    size_bytes = file_data.get("file_size") or file_data.get("size_bytes")
+    size_bytes = file_data.get("file_size")
+    if size_bytes is None:
+        size_bytes = file_data.get("size_bytes")
 
     status, status_reason = _determine_file_status(name, file_path)
 
