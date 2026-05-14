@@ -700,7 +700,7 @@ class TestRebuildVectorsFileEnabled:
 
     def _run_rebuild(self, conn, quiet=True):
         """Run _rebuild_vectors with mocked VectorStore and DB, return the mock store."""
-        from footprinter.ingest.cli import _rebuild_vectors
+        from footprinter.ingest.vector_ops import _rebuild_vectors
 
         mock_store = MagicMock()
 
@@ -712,8 +712,8 @@ class TestRebuildVectorsFileEnabled:
                 patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
                 patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
             ):
-                with patch("footprinter.ingest.cli.get_db_path", return_value=":memory:"):
-                    with patch("footprinter.ingest.cli.sqlite3") as mock_sql:
+                with patch("footprinter.ingest.vector_ops.get_db_path", return_value=":memory:"):
+                    with patch("footprinter.ingest.vector_ops.sqlite3") as mock_sql:
                         mock_sql.connect.return_value = conn
                         mock_sql.Row = sqlite3.Row
                         _rebuild_vectors(quiet=quiet)

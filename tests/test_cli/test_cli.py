@@ -14,7 +14,7 @@ class TestCliModuleExports:
 
     def test_cli_module_exports_surviving(self):
         """_rebuild_vectors should be importable and callable."""
-        from footprinter.ingest.cli import _rebuild_vectors
+        from footprinter.ingest.vector_ops import _rebuild_vectors
 
         assert callable(_rebuild_vectors)
 
@@ -22,7 +22,7 @@ class TestCliModuleExports:
         """_dispatch_refresh should no longer exist in cli.py."""
         import importlib
 
-        cli = importlib.import_module("footprinter.ingest.cli")
+        cli = importlib.import_module("footprinter.ingest.vector_ops")
         assert not hasattr(cli, "_dispatch_refresh"), (
             "_dispatch_refresh still exists in cli.py — should be removed (dead code)"
         )
@@ -31,7 +31,7 @@ class TestCliModuleExports:
         """_dispatch_retention, _dispatch_chat, and main should not exist in cli.py."""
         import importlib
 
-        cli = importlib.import_module("footprinter.ingest.cli")
+        cli = importlib.import_module("footprinter.ingest.vector_ops")
         assert not hasattr(cli, "_dispatch_retention"), "_dispatch_retention still exists in cli.py"
         assert not hasattr(cli, "_dispatch_chat"), "_dispatch_chat still exists in cli.py"
         assert not hasattr(cli, "main"), "main still exists in cli.py"
@@ -67,7 +67,7 @@ class TestNoRetentionRefsInCli:
         purge_executor, scoring, or retention_reporter."""
         from pathlib import Path
 
-        cli_source = Path("footprinter/ingest/cli.py").read_text()
+        cli_source = Path("footprinter/ingest/vector_ops.py").read_text()
         forbidden = [
             "retention_classifier",
             "retention_manager",

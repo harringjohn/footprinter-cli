@@ -477,8 +477,8 @@ class TestVectorizationConfigLoading:
         mock_extractor_cls = MagicMock()
 
         with (
-            patch("footprinter.ingest.cli.sqlite3") as mock_sqlite,
-            patch("footprinter.ingest.cli.get_db_path", return_value="/tmp/test.db"),
+            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value=test_config),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
@@ -488,7 +488,7 @@ class TestVectorizationConfigLoading:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.cli import _rebuild_vectors
+            from footprinter.ingest.vector_ops import _rebuild_vectors
 
             _rebuild_vectors(quiet=True, source="all")
 

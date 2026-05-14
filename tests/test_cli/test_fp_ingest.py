@@ -114,7 +114,7 @@ class TestIngestPipeline:
 
         assert mock_orch.full_mode is True
 
-    @patch("footprinter.ingest.cli._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
     def test_rebuild_vectors(self, mock_rebuild):
         run_fp("ingest", "--rebuild-vectors")
 
