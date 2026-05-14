@@ -3385,3 +3385,18 @@ class TestSemanticOrdering:
         )
 
 
+class TestNoAgentIdentity:
+    """'Claude' must not appear as the agent performing actions on user data."""
+
+    def test_no_claude_as_agent_identity(self):
+        import re
+        from pathlib import Path
+
+        setup_src = Path(__file__).resolve().parents[2] / "footprinter" / "cli" / "setup.py"
+        text = setup_src.read_text()
+        hits = [
+            (i + 1, line.strip())
+            for i, line in enumerate(text.splitlines())
+            if re.search(r"\bClaude\b(?!\s+(Desktop|Code|or\b|\.zip))", line)
+        ]
+        assert hits == [], f"Claude used as agent identity: {hits}"

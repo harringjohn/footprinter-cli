@@ -1199,7 +1199,7 @@ def collect_vectorization_answers(
         "  search matches file contents — not just filenames. Connector\n"
         "  plugins (e.g. Gmail) use the same flag to store body previews.\n"
         "  [bold]Local only[/bold]: previews are written to a local SQLite database\n"
-        "  on your machine. Nothing is uploaded or shared, and Claude only sees\n"
+        "  on your machine. Nothing is uploaded or shared, and the MCP client only sees\n"
         "  content when you grant explicit permission via fp mcp.\n"
         "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]"
     )
@@ -1840,8 +1840,8 @@ def seed_access_policies() -> dict:
         console.print("  [dim]Manage with: fp mcp check[/dim]")
 
         # Explain what the defaults mean
-        console.print("\n  [dim]Visible[/dim] = Claude can see file names, sizes, and paths")
-        console.print("  [dim]Content allowed[/dim] = Claude can read file contents when asked")
+        console.print("\n  [dim]Visible[/dim] = the MCP client can see file names, sizes, and paths")
+        console.print("  [dim]Content allowed[/dim] = the MCP client can read file contents when asked")
         console.print(
             "  [dim]Security posture: fail-open (all reads allowed). "
             "See reference/mcp-access-control.md § Security Posture.[/dim]"
