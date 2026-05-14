@@ -13,11 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from footprinter.mcp.db import (
-    DatabaseNotInitializedError,
-    get_db,
-    handle_db_errors,
-)
+from footprinter.mcp.db import get_db, handle_db_errors
+from footprinter.utils.exceptions import DatabaseNotInitializedError
 from footprinter.mcp.errors import ERROR_HINTS, ERROR_MESSAGES
 from footprinter.mcp.tools.navigation import (
     footprinter_client,
@@ -43,7 +40,7 @@ class TestGetDbGuard:
 
     def test_get_db_raises_on_empty_db(self, empty_db):
         """Empty database (no tables) raises DatabaseNotInitializedError."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             with pytest.raises(DatabaseNotInitializedError):
                 with get_db() as _conn:
                     pass
@@ -52,9 +49,9 @@ class TestGetDbGuard:
         """Connection is closed even when _check_db_initialized raises."""
         mock_conn = MagicMock(spec=sqlite3.Connection)
         with (
-            patch("footprinter.mcp.db.sqlite3.connect", return_value=mock_conn),
-            patch("footprinter.mcp.db.get_db_path", return_value="/fake/path.db"),
-            patch("footprinter.mcp.db._check_db_initialized", side_effect=DatabaseNotInitializedError),
+            patch("footprinter.db_base.sqlite3.connect", return_value=mock_conn),
+            patch("footprinter.db_base.get_db_path", return_value="/fake/path.db"),
+            patch("footprinter.db_base._check_db_initialized", side_effect=DatabaseNotInitializedError),
         ):
             with pytest.raises(DatabaseNotInitializedError):
                 with get_db() as _conn:
@@ -64,7 +61,7 @@ class TestGetDbGuard:
     def test_get_db_succeeds_with_initialized_db(self, tool_db, tmp_path):
         """Initialized database (has files table) does not raise."""
         db_path = tmp_path / "test.db"
-        with patch("footprinter.mcp.db.get_db_path", return_value=db_path):
+        with patch("footprinter.db_base.get_db_path", return_value=db_path):
             with get_db() as conn:
                 assert conn is not None
 
@@ -97,46 +94,56 @@ class TestToolsErrorOnEmptyDb:
 
     def test_status_tool_error_on_empty_db(self, empty_db):
         """footprinter_status returns structured error, not raw exception."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_status()
         assert result["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_navigation_tools_error_on_empty_db(self, empty_db):
         """Navigation tools return structured error on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             assert footprinter_project("test")["error_code"] == "DB_NOT_INITIALIZED"
             assert footprinter_client("test")["error_code"] == "DB_NOT_INITIALIZED"
             assert footprinter_folder("~/test")["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_search_tool_error_on_empty_db(self, empty_db):
         """footprinter_search returns structured error on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_search("test")
         assert result["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_read_tool_error_on_empty_db(self, empty_db):
         """footprinter_read returns structured error on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_read("file", 1)
         assert result["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_semantic_files_error_on_empty_db(self, empty_db):
         """footprinter_semantic(source='files') returns DB_NOT_INITIALIZED on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_semantic("test query", source="files")
         assert result["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_semantic_all_error_on_empty_db(self, empty_db):
         """footprinter_semantic(source='all') returns DB_NOT_INITIALIZED on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_semantic("test query", source="all")
         assert result["error_code"] == "DB_NOT_INITIALIZED"
 
     def test_semantic_chats_error_on_empty_db(self, empty_db):
         """footprinter_semantic(source='chats') returns DB_NOT_INITIALIZED on empty DB."""
-        with patch("footprinter.mcp.db.get_db_path", return_value=empty_db):
+        with patch("footprinter.db_base.get_db_path", return_value=empty_db):
             result = footprinter_semantic("test query", source="chats")
         assert result["error_code"] == "DB_NOT_INITIALIZED"
+
+
+class TestSharedExceptionImport:
+    """Tests that DatabaseNotInitializedError lives in the shared module."""
+
+    def test_exception_importable_from_utils(self):
+        """DatabaseNotInitializedError can be imported from utils.exceptions."""
+        from footprinter.utils.exceptions import DatabaseNotInitializedError as SharedError
+
+        assert SharedError is DatabaseNotInitializedError
 
 
 class TestErrorCodeRegistration:
