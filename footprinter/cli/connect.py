@@ -57,7 +57,7 @@ def register(subparsers) -> None:
                 "Connectors add support for external data sources.\n"
                 "Each connector is a separate package.\n\n"
                 "No connectors are installed.\n\n"
-                "Learn more: https://github.com/swellcitygroup/footprinter"
+                "Learn more: https://github.com/harringjohn/footprinter-cli"
             )
             return
         _parser.print_help()
@@ -190,7 +190,7 @@ def _cmd_list(args) -> None:
             "No connectors installed.\n\n"
             "Connectors are separate packages that plug into Footprinter's\n"
             "ingest pipeline. To get started, visit:\n"
-            "  https://github.com/swellcitygroup/footprinter"
+            "  https://github.com/harringjohn/footprinter-cli"
         )
         return
 
@@ -240,7 +240,7 @@ def _cmd_install(args) -> None:
                 console.print(f"  [bold]{spec.name}[/bold] — {spec.description}")
             console.print("\nInstall one: [bold]fp connect install <name>[/bold]")
         else:
-            console.print("No connectors available.\n\nLearn more: https://github.com/swellcitygroup/footprinter")
+            console.print("No connectors available.\n\nLearn more: https://github.com/harringjohn/footprinter-cli")
         return
     spec = connectors.get(name)
     if spec is None:
