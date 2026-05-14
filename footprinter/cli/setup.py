@@ -545,6 +545,10 @@ def check_optional_features(
     sem_enabled = sem_cfg.get("file_vectorization", False) or sem_cfg.get("chat_vectorization", False)
     features.append(("Semantic Search", sem_installed, sem_enabled, "pip install footprinter-cli[semantic]"))
 
+    # Document Parsing (pypdf + python-docx + openpyxl + python-pptx)
+    parse_installed = all(_is_importable(m) for m in ("pypdf", "docx", "openpyxl", "pptx"))
+    features.append(("Document Parsing", parse_installed, parse_installed or None, "pip install footprinter-cli[parse]"))
+
     # Connector-declared features (dynamic)
     from footprinter.connectors import discover_connectors
 
