@@ -23,6 +23,11 @@ def chunk_content(
     Returns:
         List of (chunk_text, chunk_index, total_chunks) tuples.
     """
+    if chunk_overlap < 0:
+        raise ValueError(
+            f"chunk_overlap must be non-negative, got {chunk_overlap}"
+        )
+
     if chunk_overlap >= 1.0:
         warnings.warn(
             "Passing chunk_overlap as absolute characters is deprecated; "
