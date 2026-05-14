@@ -22,15 +22,35 @@ def _make_scanner(
     return FileScanner(_minimal_config(), since_datetime=since, known_paths=known_paths)
 
 
-# In Python 3.11, is_symlink() and resolve() both call Path.stat(),
-# so the mtime check at line 303 is the 4th stat call on our file.
-_MTIME_STAT_INDEX = 3
-
-
-# --- mtime check (line 302-308) ---
+# --- mtime check (line 292-306) ---
+#
+# scan_directory calls is_supported_file (line 286) immediately before the
+# mtime stat (line 292).  We use is_supported_file as a phase gate so the
+# stat mock only fires on the mtime call, regardless of how many times
+# pathlib internally calls Path.stat during is_symlink/resolve (varies
+# across Python versions — 3.14 changed pathlib internals).
 
 
 class TestMtimeCheck:
+    def _make_phase_mocks(self, scanner, error_cls: type[Exception] = OSError):
+        """Return (stat_side_effect, tracking_supported) that raise on the mtime stat."""
+        original_stat = Path.stat
+        original_is_supported = scanner.is_supported_file
+        supported_checked = False
+
+        def tracking_supported(fp):
+            nonlocal supported_checked
+            if Path(fp).name == "test.txt":
+                supported_checked = True
+            return original_is_supported(fp)
+
+        def stat_side_effect(self_path, *args, **kwargs):
+            if self_path.name == "test.txt" and supported_checked:
+                raise error_cls("disk error" if error_cls is OSError else "unexpected bug")
+            return original_stat(self_path, *args, **kwargs)
+
+        return stat_side_effect, tracking_supported
+
     def test_mtime_check_failure_logs_debug_and_continues(self, tmp_path, caplog):
         """OSError on mtime stat should log debug and still yield the file."""
         f = tmp_path / "test.txt"
@@ -38,20 +58,11 @@ class TestMtimeCheck:
 
         scanner = _make_scanner(since=datetime.now() - timedelta(days=1))
         fake_meta = {"file_path": str(f), "file_name": "test.txt"}
-
-        original_stat = Path.stat
-        call_count = 0
-
-        def stat_side_effect(self_path, *args, **kwargs):
-            nonlocal call_count
-            if self_path.name == "test.txt":
-                call_count += 1
-                if call_count == _MTIME_STAT_INDEX + 1:
-                    raise OSError("disk error")
-            return original_stat(self_path, *args, **kwargs)
+        stat_effect, supported_effect = self._make_phase_mocks(scanner)
 
         with (
-            patch.object(Path, "stat", stat_side_effect),
+            patch.object(Path, "stat", stat_effect),
+            patch.object(scanner, "is_supported_file", side_effect=supported_effect),
             patch.object(scanner, "get_file_metadata", return_value=fake_meta),
             caplog.at_level(logging.DEBUG, logger="footprinter.ingest.file_scanner"),
         ):
@@ -69,19 +80,14 @@ class TestMtimeCheck:
         f.write_text("hello")
 
         scanner = _make_scanner(since=datetime.now() - timedelta(days=1))
+        stat_effect, supported_effect = self._make_phase_mocks(
+            scanner, error_cls=RuntimeError,
+        )
 
-        original_stat = Path.stat
-        call_count = 0
-
-        def stat_side_effect(self_path, *args, **kwargs):
-            nonlocal call_count
-            if self_path.name == "test.txt":
-                call_count += 1
-                if call_count == _MTIME_STAT_INDEX + 1:
-                    raise RuntimeError("unexpected bug")
-            return original_stat(self_path, *args, **kwargs)
-
-        with patch.object(Path, "stat", stat_side_effect):
+        with (
+            patch.object(Path, "stat", stat_effect),
+            patch.object(scanner, "is_supported_file", side_effect=supported_effect),
+        ):
             with pytest.raises(RuntimeError, match="unexpected bug"):
                 list(scanner.scan_directory(str(tmp_path)))
 
