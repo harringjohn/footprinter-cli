@@ -793,11 +793,6 @@ class TestEmbeddingDim:
         assert EMBEDDING_DIM == 384
 
 
-# ---------------------------------------------------------------------------
-# TestRebuildStamp — stamp init caching (Group A)
-# ---------------------------------------------------------------------------
-
-
 class TestRebuildStamp:
     def test_rebuild_stamp_constant_exists(self):
         from footprinter.semantic.vector_store import VectorStore
@@ -833,11 +828,6 @@ class TestRebuildStamp:
         s = VectorStore(chroma_path=str(chroma_dir))
         assert s._rebuild_id == "abc123"
         VectorStore.reset_instance()
-
-
-# ---------------------------------------------------------------------------
-# TestRebuildStampStaleness — staleness detection in get_instance() (Group B + D)
-# ---------------------------------------------------------------------------
 
 
 class TestRebuildStampStaleness:
@@ -894,7 +884,7 @@ class TestRebuildStampStaleness:
         assert first._rebuild_id == "will_be_removed"
 
         (chroma_dir / ".rebuild_stamp").unlink()
-        second = VectorStore.get_instance()
+        second = VectorStore.get_instance(chroma_path=str(chroma_dir))
         assert second is not first
         assert second._rebuild_id is None
         VectorStore.reset_instance()

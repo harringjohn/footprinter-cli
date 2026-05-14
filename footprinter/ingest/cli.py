@@ -693,7 +693,7 @@ def _rebuild_vectors(
                 if console:
                     console.print(f"[dim]Deleted {chroma_path}[/dim]")
             store = VectorStore.get_instance()
-            (chroma_path / ".rebuild_stamp").write_text(uuid.uuid4().hex)
+            (chroma_path / VectorStore._REBUILD_STAMP).write_text(uuid.uuid4().hex)
         else:
             # Incremental/sync/single-phase — check existing chroma integrity
             try:

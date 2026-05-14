@@ -1506,11 +1506,6 @@ class TestPreflightVectorizeExclusion:
         assert counts["files"] == 2, f"Expected 2 files in incremental, got {counts['files']}"
 
 
-# ---------------------------------------------------------------------------
-# TestRebuildStampWrite — stamp file creation on full rebuild (Group C)
-# ---------------------------------------------------------------------------
-
-
 def _run_rebuild_with_real_path(
     tmp_path,
     mode="full",
@@ -1524,6 +1519,7 @@ def _run_rebuild_with_real_path(
     mock_cls = MagicMock()
     mock_cls.get_instance.return_value = mock_inst
     mock_cls.reset_instance = MagicMock()
+    mock_cls._REBUILD_STAMP = ".rebuild_stamp"
 
     mock_conn, mock_cursor = _make_mock_conn()
 
