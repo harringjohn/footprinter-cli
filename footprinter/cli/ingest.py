@@ -181,14 +181,14 @@ def _handle_ingest(args) -> None:
     """Route to the correct handler based on args."""
     # --repair-fts and --rebuild-vectors take precedence over everything
     if getattr(args, "repair_fts", False):
-        from footprinter.ingest.cli import _repair_fts
+        from footprinter.ingest.vector_ops import _repair_fts
 
         _repair_fts(quiet=getattr(args, "quiet", False))
         return
 
     rebuild_mode = getattr(args, "rebuild_vectors", None)
     if rebuild_mode:
-        from footprinter.ingest.cli import _rebuild_vectors
+        from footprinter.ingest.vector_ops import _rebuild_vectors
 
         _rebuild_vectors(
             quiet=getattr(args, "quiet", False),

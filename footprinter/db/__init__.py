@@ -1,4 +1,4 @@
-"""footprinter.db — public Python API for querying indexed data.
+"""footprinter.db — public Python API for querying and managing indexed data.
 
 Stable signatures, type hints, plain dict returns.
 All functions take sqlite3.Connection as their first parameter.

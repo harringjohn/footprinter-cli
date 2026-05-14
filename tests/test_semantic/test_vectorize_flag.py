@@ -92,7 +92,7 @@ class TestRebuildMessagesRespectsFlag:
         store = _make_mock_store()
         cursor = conn.cursor()
 
-        from footprinter.ingest.cli import _vectorize_messages
+        from footprinter.ingest.vector_ops import _vectorize_messages
 
         result = _vectorize_messages(conn, cursor, store, console=None)
 
@@ -125,7 +125,7 @@ class TestRebuildMessagesRespectsFlag:
         store = _make_mock_store()
         cursor = conn.cursor()
 
-        from footprinter.ingest.cli import _vectorize_messages
+        from footprinter.ingest.vector_ops import _vectorize_messages
 
         result = _vectorize_messages(conn, cursor, store, console=None)
 
@@ -160,7 +160,7 @@ class TestRebuildChatInfoRespectsFlag:
         store = _make_mock_store()
         cursor = conn.cursor()
 
-        from footprinter.ingest.cli import _vectorize_chat_info
+        from footprinter.ingest.vector_ops import _vectorize_chat_info
 
         result = _vectorize_chat_info(conn, cursor, store, console=None)
 

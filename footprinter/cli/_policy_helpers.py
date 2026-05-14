@@ -7,7 +7,7 @@ import sqlite3
 
 from rich.table import Table
 
-from footprinter.access import (
+from footprinter.access_stamper import (
     count_affected_entities,
     recalculate_access,
     recalculate_access_batched,
@@ -22,6 +22,7 @@ from footprinter.db.policies import (
     set_visibility_policy,
 )
 from footprinter.paths import get_db_path
+from footprinter.utils.paths import abbreviate_home
 
 CONFIRM_THRESHOLD = 100
 """Entity count above which policy changes require interactive confirmation."""
@@ -103,16 +104,6 @@ def normalize_path(path: str) -> str:
     elif normalized == home:
         normalized = "~"
     return normalized
-
-
-def abbreviate_home(path: str) -> str:
-    """Replace ``$HOME`` prefix with ``~`` for display."""
-    home = os.path.expanduser("~")
-    if path.startswith(home + os.sep):
-        return "~" + path[len(home) :]
-    elif path == home:
-        return "~"
-    return path
 
 
 # ---------------------------------------------------------------------------

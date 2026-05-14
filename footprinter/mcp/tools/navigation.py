@@ -3,20 +3,13 @@
 Thin MCP adapters — all query/filtering logic lives in the service layer.
 """
 
-from pathlib import Path
+import os
 
 from footprinter.mcp.db import get_db, handle_db_errors
 from footprinter.mcp.errors import mcp_error
 from footprinter.services import client_service, folder_service, project_service
 from footprinter.services.roles import Role
-
-HOME = str(Path.home())
-
-
-def _shorten(path: str) -> str:
-    if path and path.startswith(HOME):
-        return "~" + path[len(HOME) :]
-    return path or ""
+from footprinter.utils.paths import abbreviate_home as _shorten
 
 
 @handle_db_errors
@@ -66,7 +59,7 @@ def footprinter_folder(
     default for MCP) accepts the flags but always sees listed-only children.
     """
     if path.startswith("~"):
-        path = HOME + path[1:]
+        path = os.path.expanduser("~") + path[1:]
 
     with get_db() as conn:
         result = folder_service.get_by_path(

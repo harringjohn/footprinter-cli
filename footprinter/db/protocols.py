@@ -1,0 +1,16 @@
+"""Structural protocols for database interfaces."""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class FTSManager(Protocol):
+    """Object that manages FTS triggers and indexes."""
+
+    def check_fts_triggers(self) -> list[str]: ...
+    def create_fts_triggers(self) -> None: ...
+    def drop_fts_triggers(self) -> None: ...
+    def rebuild_fts_indexes(self) -> None: ...
+    def check_fts_health(self) -> dict: ...

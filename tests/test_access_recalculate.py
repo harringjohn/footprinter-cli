@@ -1,4 +1,4 @@
-"""Tests for footprinter.access — recalculation engine write-back."""
+"""Tests for footprinter.access_stamper — recalculation engine write-back."""
 
 import sqlite3
 
@@ -84,7 +84,7 @@ class TestRecalculateGlobal:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "global")
 
@@ -104,7 +104,7 @@ class TestRecalculateSourceScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "source:files")
 
@@ -124,7 +124,7 @@ class TestRecalculateAccountScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('account:personal', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "account:personal")
 
@@ -144,7 +144,7 @@ class TestRecalculateFolderPrefix:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/Users/me/Work/', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:/Users/me/Work/")
 
@@ -165,14 +165,14 @@ class TestRecalculateFolderTildeExpansion:
     def test_tilde_scope_expands_and_matches(self, conn, monkeypatch):
         """folder:~/Work/ expands ~ via os.path.expanduser before matching."""
         monkeypatch.setattr(
-            "footprinter.access.os.path.expanduser",
+            "footprinter.access_stamper.os.path.expanduser",
             lambda p: p.replace("~", "/Users/me"),
         )
         _seed_entities(conn)
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:~/Work/', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:~/Work/")
 
@@ -201,7 +201,7 @@ class TestRecalculateFolderLikeEscaping:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/Users/me/W_rk/', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:/Users/me/W_rk/")
 
@@ -222,7 +222,7 @@ class TestRecalculateFolderLikeEscaping:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/Users/me/50%done/', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:/Users/me/50%done/")
 
@@ -263,7 +263,7 @@ class TestRecalculateFolderIdScope:
         """folder:{id} scope returns the folder and all descendants + their files."""
         _seed_folder_hierarchy(conn)
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids = _get_ids_for_scope(conn, "folder:30")
 
@@ -276,7 +276,7 @@ class TestRecalculateFolderIdScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:30")
 
@@ -293,7 +293,7 @@ class TestRecalculateFolderIdScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:30")
 
@@ -311,7 +311,7 @@ class TestRecalculateFolderIdScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'visible')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:30")
 
@@ -332,7 +332,7 @@ class TestRecalculateFolderIdScope:
         )
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:/Users/me/Work/")
 
@@ -361,7 +361,7 @@ class TestRecalculateFolderIdScope:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:31")
 
@@ -376,7 +376,7 @@ class TestRecalculateProjectCascades:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:3', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "project:3")
 
@@ -412,7 +412,7 @@ class TestRecalculateClientCascades:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -452,7 +452,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -467,7 +467,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -487,7 +487,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -502,7 +502,7 @@ class TestRecalculateClientDirectAssignment:
         conn.execute("UPDATE files SET client_id = 5 WHERE id = 1")
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -517,7 +517,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -532,7 +532,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -552,7 +552,7 @@ class TestRecalculateClientDirectAssignment:
         )
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -566,7 +566,7 @@ class TestRecalculateClientDirectAssignment:
         conn.execute("UPDATE chats SET client_id = 5 WHERE id = 20")
         conn.commit()
 
-        from footprinter.access import _get_ids_for_scope
+        from footprinter.access_stamper import _get_ids_for_scope
 
         ids_by_type = _get_ids_for_scope(conn, "client:5")
 
@@ -589,7 +589,7 @@ class TestRecalculateClientStampsDirectClientEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -608,7 +608,7 @@ class TestRecalculateClientStampsDirectClientEntities:
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('client:5', 'deny')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -628,7 +628,7 @@ class TestRecalculateClientStampsDirectClientEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -645,7 +645,7 @@ class TestRecalculateClientStampsDirectClientEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -662,7 +662,7 @@ class TestRecalculateClientStampsDirectClientEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "client:5")
 
@@ -677,7 +677,7 @@ class TestRecalculateSingleEntity:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_entity
+        from footprinter.access_stamper import recalculate_entity
 
         result = recalculate_entity(conn, "file", 1)
 
@@ -697,7 +697,7 @@ class TestRecalculateSingleEntity:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_entity
+        from footprinter.access_stamper import recalculate_entity
 
         result = recalculate_entity(conn, "file", 9999)
         assert result == {"file": 0}
@@ -710,7 +710,7 @@ class TestStatsDict:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "global")
 
@@ -731,7 +731,7 @@ class TestCountAffectedEntities:
         """count_affected_entities('global') returns counts for all entity types."""
         _seed_entities(conn)
 
-        from footprinter.access import count_affected_entities
+        from footprinter.access_stamper import count_affected_entities
 
         counts = count_affected_entities(conn, "global")
 
@@ -748,7 +748,7 @@ class TestCountAffectedEntities:
         """count_affected_entities('file:1') returns {'file': 1}."""
         _seed_entities(conn)
 
-        from footprinter.access import count_affected_entities
+        from footprinter.access_stamper import count_affected_entities
 
         counts = count_affected_entities(conn, "file:1")
 
@@ -759,7 +759,7 @@ class TestCountAffectedEntities:
         """count_affected_entities('source:files') returns file count only."""
         _seed_entities(conn)
 
-        from footprinter.access import count_affected_entities
+        from footprinter.access_stamper import count_affected_entities
 
         counts = count_affected_entities(conn, "source:files")
 
@@ -779,7 +779,7 @@ class TestRecalculateBatched:
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'deny')")
         conn.commit()
 
-        from footprinter.access import recalculate_access, recalculate_access_batched
+        from footprinter.access_stamper import recalculate_access, recalculate_access_batched
 
         # Run batched with tiny batch_size to force multiple chunks
         stats = recalculate_access_batched(conn, "global", batch_size=2)
@@ -812,7 +812,7 @@ class TestRecalculateBatched:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access_batched
+        from footprinter.access_stamper import recalculate_access_batched
 
         batch_counts = []
         recalculate_access_batched(conn, "global", batch_size=1, on_batch=lambda n: batch_counts.append(n))
@@ -828,7 +828,7 @@ class TestRecalculateBatched:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access_batched
+        from footprinter.access_stamper import recalculate_access_batched
 
         # With batch_size=1 and 11 entities, on_batch should be called 11 times
         # (once per entity = once per batch commit).
@@ -844,7 +844,7 @@ class TestRecalculateBatched:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access_batched
+        from footprinter.access_stamper import recalculate_access_batched
 
         stats = recalculate_access_batched(conn, "global", batch_size=2)
 
@@ -869,13 +869,13 @@ class TestRoundTripMatchesBatchResolve:
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:files', 'deny')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
         from footprinter.permissions import batch_resolve_permissions
         from footprinter.visibility import batch_resolve_visibility
 
         recalculate_access(conn, "source:files")
 
-        from footprinter.access import _is_inherit_source
+        from footprinter.access_stamper import _is_inherit_source
 
         # Check files visibility — specific source writes resolved value
         file_ids = [r["id"] for r in conn.execute("SELECT id FROM files").fetchall()]
@@ -910,7 +910,7 @@ class TestStampEntities:
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'deny')")
         conn.commit()
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         stats = stamp_entities(conn, {"file": [1]})
 
@@ -932,7 +932,7 @@ class TestStampEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         stats = stamp_entities(conn, {"file": [1, 2], "email": [10]})
 
@@ -953,7 +953,7 @@ class TestStampEntities:
         """stamp_entities with empty ID lists returns empty dict, no crash."""
         _seed_entities(conn)
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         stats = stamp_entities(conn, {"file": []})
         assert stats == {}
@@ -964,7 +964,7 @@ class TestStampEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'hidden')")
         conn.commit()
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         stamp_entities(conn, {"file": [1]})
 
@@ -980,7 +980,7 @@ class TestStampEntities:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')")
         conn.commit()
 
-        import footprinter.access as access_mod
+        import footprinter.access_stamper as access_mod
 
         original_batch_vis = access_mod.batch_resolve_visibility
 
@@ -990,11 +990,11 @@ class TestStampEntities:
             return original_batch_vis(conn, entity_type, ids)
 
         monkeypatch.setattr(
-            "footprinter.access.batch_resolve_visibility",
+            "footprinter.access_stamper.batch_resolve_visibility",
             raise_on_email,
         )
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         with pytest.raises(RuntimeError, match="email vis crash"):
             stamp_entities(conn, {"file": [1, 2], "email": [10]})
@@ -1038,7 +1038,7 @@ class TestSqliteVariableLimit:
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:files', 'deny')")
         conn.commit()
 
-        from footprinter.access import stamp_entities
+        from footprinter.access_stamper import stamp_entities
 
         ids = list(range(1, count + 1))
         stats = stamp_entities(conn, {"file": ids})
@@ -1083,7 +1083,7 @@ class TestRecalculateSourceBrowser:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "source:browser")
 
@@ -1105,7 +1105,7 @@ class TestRecalculateSourceBrowser:
         """count_affected_entities('source:browser') returns visit count only."""
         _seed_entities(conn)
 
-        from footprinter.access import count_affected_entities
+        from footprinter.access_stamper import count_affected_entities
 
         counts = count_affected_entities(conn, "source:browser")
         assert counts == {"visit": 2}
@@ -1120,7 +1120,7 @@ class TestRecalculateVisitScopeGap:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:3', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "project:3")
 
@@ -1134,7 +1134,7 @@ class TestRecalculateVisitScopeGap:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('client:5', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "client:5")
 
@@ -1148,7 +1148,7 @@ class TestRecalculateVisitScopeGap:
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('account:work', 'hidden')")
         conn.commit()
 
-        from footprinter.access import recalculate_access
+        from footprinter.access_stamper import recalculate_access
 
         stats = recalculate_access(conn, "account:work")
 

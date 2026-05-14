@@ -200,7 +200,7 @@ class ChromeParser(BrowserParser):
                 pass
 
 
-class BrowserManager:
+class BrowserIndexer:
     """Manage parsing of multiple browsers."""
 
     def __init__(self, config: Dict, since: datetime | None = None):

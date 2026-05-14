@@ -99,7 +99,7 @@ def run_vectorization_stage(*, quiet: bool = False) -> None:
                 trail += f", {skipped_large} too large"
             console.print(f"  [green]✓[/green] Deep Read complete: {new} embedded" + trail)
         if skipped_large_files:
-            from footprinter.cli._policy_helpers import abbreviate_home
+            from footprinter.utils.paths import abbreviate_home
 
             console.print(
                 f"  [yellow]⚠[/yellow] Skipped {len(skipped_large_files)}"

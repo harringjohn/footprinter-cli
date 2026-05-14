@@ -12,12 +12,10 @@ import logging
 import sqlite3
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import Callable, List, Optional
 
+from footprinter.db.protocols import FTSManager
 from footprinter.utils.time import utc_now_iso
-
-if TYPE_CHECKING:
-    from footprinter.ingest.database import Database
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +30,7 @@ class IngestService:
     def __init__(
         self,
         conn: sqlite3.Connection,
-        get_db: Optional[Callable[[], Database]] = None,
+        get_db: Optional[Callable[[], FTSManager]] = None,
     ) -> None:
         self.conn = conn
         self._get_db = get_db
