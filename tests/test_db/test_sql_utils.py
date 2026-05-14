@@ -56,9 +56,22 @@ class TestUpdateEntityRelationships:
         fresh.close()
         assert row["project_id"] == 1
 
-    def test_assignment_source_fallback(self, db_conn):
-        result = update_entity_relationships(db_conn, "visits", 1, project_id=1)
+    def test_assignment_source_fallback(self, tmp_path):
+        """DB without assignment_source column still succeeds via OperationalError fallback."""
+        db_path = tmp_path / "minimal.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE projects (id INTEGER PRIMARY KEY, project_name TEXT)")
+        conn.execute("CREATE TABLE clients (id INTEGER PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE visits (id INTEGER PRIMARY KEY, project_id INTEGER, client_id INTEGER)")
+        conn.execute("INSERT INTO projects (id, project_name) VALUES (1, 'P1')")
+        conn.execute("INSERT INTO visits (id) VALUES (1)")
+        conn.commit()
+        result = update_entity_relationships(conn, "visits", 1, project_id=1)
         assert result is True
+        row = conn.execute("SELECT project_id FROM visits WHERE id = 1").fetchone()
+        assert row["project_id"] == 1
+        conn.close()
 
     @pytest.mark.parametrize("table", ["visits", "files", "chats", "emails"])
     def test_works_across_tables(self, db_conn, table):

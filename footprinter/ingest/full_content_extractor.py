@@ -57,7 +57,8 @@ class FullContentExtractor(ContentExtractor):
         Reads ``config["indexing"]["max_file_size_mb"]`` (default 0 = no
         limit) and ``config["vectorization"]`` (chunk_size, chunk_overlap,
         file_types, exclude_patterns).  Missing vectorization keys fall back
-        to constructor defaults.
+        to constructor defaults.  Legacy float ``chunk_overlap`` values
+        (e.g. ``0.15``) are auto-converted to int by the constructor.
         """
         max_mb = config.get("indexing", {}).get("max_file_size_mb", 0)
         vec_config = config.get("vectorization", {})

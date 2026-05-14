@@ -168,6 +168,9 @@ def build_remote_account_case_clauses(
     return case_lines, params
 
 
+_RELATIONSHIP_TABLES = frozenset({"visits", "files", "chats", "emails", "folders"})
+
+
 def update_entity_relationships(
     conn: sqlite3.Connection,
     table: str,
@@ -183,6 +186,8 @@ def update_entity_relationships(
     when the column exists (app-scope DBs only).
     Returns True on success, None if entity not found.
     """
+    if table not in _RELATIONSHIP_TABLES:
+        raise ValueError(f"Unsupported table: {table}")
     cursor = conn.execute(f"SELECT id FROM {table} WHERE id = ?", (entity_id,))
     if cursor.fetchone() is None:
         return None
@@ -220,6 +225,7 @@ def update_entity_relationships(
     except sqlite3.OperationalError as e:
         if "no such column" not in str(e):
             raise
+        # assignment_source not present (tool-only DB)
         sets.pop()
         conn.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE id = ?", params)
     conn.commit()

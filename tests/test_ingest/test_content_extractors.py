@@ -405,20 +405,20 @@ class TestChunkSizeDefaults:
         extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=0.15)
         assert extractor.chunk_overlap == 150
 
-    def test_extract_with_chunking_respects_word_boundaries(self, temp_dir):
-        """Chunks should not split mid-word."""
+    def test_extract_with_chunking_delegates_to_chunk_content(self, temp_dir):
+        """FullContentExtractor delegates to chunk_content and returns dicts."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
         extractor = FullContentExtractor(chunk_size=100, chunk_overlap=10)
         f = temp_dir / "words.txt"
-        f.write_text(" ".join(["hello"] * 50))
+        f.write_text(" ".join(["hello"] * 100))
         chunks = extractor.extract_with_chunking(f)
         assert len(chunks) >= 2
         for chunk in chunks:
-            text = chunk["content"]
-            assert "content" in chunk
-            assert "chunk_index" in chunk
-            assert "total_chunks" in chunk
+            assert isinstance(chunk, dict)
+            assert set(chunk.keys()) == {"content", "chunk_index", "total_chunks"}
+            assert chunk["total_chunks"] == len(chunks)
+            assert len(chunk["content"]) > 0
 
 
 class TestExcludePatterns:
