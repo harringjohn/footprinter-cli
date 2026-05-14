@@ -98,7 +98,7 @@ def batch_resolve_permissions(
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
-        item_type: 'file', 'email', 'chat', 'project', 'client'
+        item_type: 'file', 'email', 'chat', 'folder', 'project', 'client', 'visit'
         item_ids: List of row IDs
 
     Returns:
