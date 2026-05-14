@@ -14,6 +14,13 @@ Every service function:
 Interface layers assign the role:
 - CLI passes ``Role.ADMIN`` (full access, local user)
 - MCP passes ``Role.VIEWER`` (read-only, filtered metadata)
+
+Error return conventions:
+- Read operations (get, list_) return None when the entity is not found.
+- Write operations (assign, update) raise on invalid input
+  (ValueError, PermissionError).
+- Specialty services (search, semantic, status) return status-dicts
+  with structured error information.
 """
 
 from footprinter.services import (
