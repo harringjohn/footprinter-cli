@@ -113,10 +113,21 @@ ENTITY_META: dict[str, dict[str, Any]] = {
         "has_account": False,
         "path_column": None,
     },
+    "visit": {
+        "table": "visits",
+        "has_visibility": True,
+        "has_permissions": True,
+        "has_status": False,
+        "has_project_id": False,
+        "has_client_id": False,
+        "has_account": False,
+        "path_column": None,
+    },
 }
 
 # Reverse map: source scope suffix → entity type (e.g. "files" → "file")
 _SOURCE_TO_ENTITY = {meta["table"]: etype for etype, meta in ENTITY_META.items()}
+_SOURCE_TO_ENTITY["browser"] = "visit"
 
 
 # ---------------------------------------------------------------------------
