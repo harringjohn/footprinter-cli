@@ -210,7 +210,8 @@ def test_doc_parsing_installed():
 
     parse_mods = {"pypdf", "docx", "openpyxl", "pptx"}
 
-    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in parse_mods | {"chromadb", "onnxruntime"}):
+    all_mods = parse_mods | {"chromadb", "onnxruntime"}
+    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in all_mods):
         features = check_optional_features({})
 
     doc = next(f for f in features if f[0] == "Document Parsing")

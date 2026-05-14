@@ -29,8 +29,8 @@ def read_file(
     Requires ``metadata`` from a prior ``gate_access()`` call (status ``ok``).
     Returns dict with ``status`` (``ok`` or error), ``content``, ``metadata``.
     """
-    from footprinter.utils.extraction import extract_text, get_extractor_for_file
     from footprinter.source_registry import SourceRegistry
+    from footprinter.utils.extraction import extract_text, get_extractor_for_file
 
     meta = dict(metadata)
     source = meta.get("source", "")

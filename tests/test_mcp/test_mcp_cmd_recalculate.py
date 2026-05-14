@@ -126,7 +126,9 @@ class TestResetAllTriggersRecalculate:
     @patch("footprinter.cli.mcp_cmd.clear_permission_policies", return_value=2)
     @patch("footprinter.cli.mcp_cmd.clear_visibility_policies", return_value=3)
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_calls_recalculate_global(self, mock_db, mock_clear_vis, mock_clear_perm, mock_seed_vis, mock_seed_perm, mock_recalc):
+    def test_calls_recalculate_global(
+        self, mock_db, mock_clear_vis, mock_clear_perm, mock_seed_vis, mock_seed_perm, mock_recalc,
+    ):
         from footprinter.cli.mcp_cmd import _reset
 
         conn = _mock_conn()
@@ -471,7 +473,9 @@ class TestResetScopeConfirmation:
     @patch("footprinter.cli.mcp_cmd.delete_visibility_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.delete_permission_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_prompts_confirmation(self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm):
+    def test_large_scope_prompts_confirmation(
+        self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm,
+    ):
         from footprinter.cli.mcp_cmd import _reset
 
         conn = _mock_conn()
@@ -489,7 +493,9 @@ class TestResetScopeConfirmation:
     @patch("footprinter.cli.mcp_cmd.delete_visibility_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.delete_permission_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_cancelled_skips_recalculate(self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm):
+    def test_large_scope_cancelled_skips_recalculate(
+        self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm,
+    ):
         from footprinter.cli.mcp_cmd import _reset
 
         conn = _mock_conn()
@@ -514,7 +520,8 @@ class TestResetAllConfirmation:
     @patch("footprinter.cli.mcp_cmd.clear_visibility_policies", return_value=3)
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
     def test_large_scope_prompts_confirmation(
-        self, mock_db, mock_clear_vis, mock_clear_perm, mock_seed_vis, mock_seed_perm, mock_recalc, mock_count, mock_confirm
+        self, mock_db, mock_clear_vis, mock_clear_perm, mock_seed_vis,
+        mock_seed_perm, mock_recalc, mock_count, mock_confirm,
     ):
         from footprinter.cli.mcp_cmd import _reset
 

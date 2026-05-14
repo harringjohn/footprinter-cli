@@ -7,9 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from footprinter.utils.paths import abbreviate_home
 from footprinter.db import files as files_db
 from footprinter.source_registry import get_config
+from footprinter.utils.paths import abbreviate_home
 
 from .content_extractors import ContentExtractor
 from .database import Database
