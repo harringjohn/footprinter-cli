@@ -52,8 +52,14 @@ def _seed_entities(conn, indexed_at=None):
         "VALUES (20, 'chat1', 'claude', 'Debug session', 1, 1, ?)",
         (ts,),
     )
+    # Visit
+    cur.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser, indexed_at) "
+        "VALUES (40, 'https://example.com', 'Example', '2024-01-15T10:00:00', 'chrome', ?)",
+        (ts,),
+    )
     conn.commit()
-    return {"file": [1, 2], "email": [10], "chat": [20]}
+    return {"file": [1, 2], "email": [10], "chat": [20], "visit": [40]}
 
 
 def _add_more_entities(conn, indexed_at=None):

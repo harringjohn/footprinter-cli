@@ -587,14 +587,17 @@ class TestSearchBrowserKeywordStatusMatrix:
 
     def test_default_returns_only_listed(self, db_conn):
         _seed_mixed_status(db_conn, "visits")
-        results = search_browser_keyword(db_conn, terms=[], has_query=False, limit=50)
+        results = search_browser_keyword(
+            db_conn, terms=[], has_query=False, limit=50, exclude_hidden=False
+        )
         ids = sorted(r["id"] for r in results)
         assert ids == [1]
 
     def test_status_all_returns_everything(self, db_conn):
         _seed_mixed_status(db_conn, "visits")
         results = search_browser_keyword(
-            db_conn, terms=[], has_query=False, limit=50, status="all"
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
         )
         ids = sorted(r["id"] for r in results)
         assert ids == [1, 2, 3]
@@ -602,7 +605,8 @@ class TestSearchBrowserKeywordStatusMatrix:
     def test_results_include_status_field(self, db_conn):
         _seed_mixed_status(db_conn, "visits")
         results = search_browser_keyword(
-            db_conn, terms=[], has_query=False, limit=50, status="all"
+            db_conn, terms=[], has_query=False, limit=50, status="all",
+            exclude_hidden=False,
         )
         by_id = {r["id"]: r for r in results}
         assert by_id[3]["status"] == "removed"
