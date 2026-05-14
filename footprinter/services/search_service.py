@@ -20,7 +20,6 @@ from footprinter.services.access_service import (
 )
 from footprinter.services.includes import status_arg_for_role
 from footprinter.services.roles import Role
-from footprinter.visibility import get_source_visibility
 
 DEFAULT_SOURCES = ["files", "emails", "chats", "browser"]
 
@@ -137,18 +136,22 @@ def search(
             total_suppressed += suppressed
 
     if "browser" in sources:
-        browser_results = _search_browser_with_visibility(
+        browser_results = search_browser_keyword(
             conn,
             terms=terms,
             has_query=has_query,
             date_from=date_from,
             date_to=date_to,
             limit=limit,
-            role=role,
+            exclude_hidden=not role.sees_all,
             status=status_arg,
         )
-        if browser_results is not None:
+        if role.sees_all:
             results["browser"] = browser_results
+        else:
+            filtered, suppressed = filter_results_list("visit", browser_results)
+            results["browser"] = filtered
+            total_suppressed += suppressed
 
     if total_suppressed > 0:
         results["suppressed"] = total_suppressed
@@ -156,40 +159,3 @@ def search(
     return results
 
 
-def _search_browser_with_visibility(
-    conn: sqlite3.Connection,
-    *,
-    terms: list[str],
-    has_query: bool,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    limit: int = 50,
-    role: Role = Role.ADMIN,
-    status: "str | list[str] | None" = None,
-) -> Optional[list[dict]]:
-    """Search browser visits with source-level visibility gating.
-
-    Returns None if source is hidden. The visibility check is business logic
-    that stays in the service; the SQL query is delegated to db.search.
-    """
-    browser_visibility = None
-    if not role.sees_all:
-        browser_visibility = get_source_visibility(conn, "source:browser")
-        if browser_visibility == "hidden":
-            return None
-
-    raw_results = search_browser_keyword(
-        conn,
-        terms=terms,
-        has_query=has_query,
-        date_from=date_from,
-        date_to=date_to,
-        limit=limit,
-        status=status,
-    )
-
-    # Source-level opaque gating
-    if browser_visibility == "opaque":
-        return [{"id": r["id"], "browser": r["browser"]} for r in raw_results]
-
-    return raw_results
