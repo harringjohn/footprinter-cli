@@ -443,20 +443,25 @@ def insert_chat(conn: sqlite3.Connection, conv_data: Dict[str, Any]) -> int:
 def insert_message(conn: sqlite3.Connection, msg_data: Dict[str, Any]) -> int:
     """Insert a chat message record."""
     cursor = conn.cursor()
+    columns = [
+        "chat_id", "message_id", "role", "content", "created_at", "metadata",
+        "status",
+    ]
+    params: list = [
+        msg_data["chat_id"],
+        msg_data.get("message_id"),
+        msg_data["role"],
+        msg_data.get("content"),
+        msg_data.get("created_at"),
+        json.dumps(msg_data.get("metadata", {})),
+        msg_data.get("status", "listed"),
+    ]
+
+    columns.extend(["indexed_at", "updated_at"])
+    value_parts = ["?"] * len(params) + ["CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP"]
     cursor.execute(
-        """
-        INSERT INTO messages
-        (chat_id, message_id, role, content, created_at, metadata)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """,
-        (
-            msg_data["chat_id"],
-            msg_data.get("message_id"),
-            msg_data["role"],
-            msg_data.get("content"),
-            msg_data.get("created_at"),
-            json.dumps(msg_data.get("metadata", {})),
-        ),
+        f"INSERT INTO messages ({', '.join(columns)}) VALUES ({', '.join(value_parts)})",
+        params,
     )
     return cursor.lastrowid
 
