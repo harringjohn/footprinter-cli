@@ -7,6 +7,8 @@ own progress UI. Centralized here so both call sites stay consistent.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from footprinter.cli._common import console
 
 
@@ -20,11 +22,16 @@ def _file_vectorization_in_config() -> bool:
         return False
 
 
-def run_vectorization_stage(*, quiet: bool = False) -> None:
+def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int]]" = None) -> None:
     """Run vectorization as a follow-up stage after the main pipeline.
 
     No-op when ``semantic.file_vectorization`` is disabled. On failure
     the wizard/ingest run continues — vectorization is best-effort.
+
+    Args:
+        quiet: Suppress Rich output.
+        file_ids: When provided, scope vectorization to these file IDs only.
+            None means broad (all unvectorized files).
     """
     if not _file_vectorization_in_config():
         return
@@ -68,7 +75,7 @@ def run_vectorization_stage(*, quiet: bool = False) -> None:
             if progress is not None and task_id is not None:
                 progress.update(task_id, completed=count)
 
-        result = orchestrator.run_vectorization(on_progress=on_progress)
+        result = orchestrator.run_vectorization(on_progress=on_progress, file_ids=file_ids)
 
         if progress is not None:
             progress.stop()
