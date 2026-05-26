@@ -1,4 +1,4 @@
-"""Tests for FullContentExtractor size gates (FPR-1722)."""
+"""Tests for FullContentExtractor size gates."""
 
 import logging
 

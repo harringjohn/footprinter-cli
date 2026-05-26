@@ -145,7 +145,7 @@ class TestRunFolderStatsRunner:
 
 
 class TestRunFolderStatsNullFolderId:
-    """Regression: refresh_folder_counts must handle files with folder_id = NULL (FPR-1768)."""
+    """Regression: refresh_folder_counts must handle files with folder_id = NULL."""
 
     def test_null_folder_id_direct_count(self, conn):
         """Files with folder_id NULL but path under a folder should still be counted."""

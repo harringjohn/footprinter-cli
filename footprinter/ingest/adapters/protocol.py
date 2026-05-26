@@ -140,7 +140,7 @@ class PipeContext:
     last_run: Optional[datetime] = None
     on_progress: Optional[Callable[[int], None]] = None
     # When set, overrides source_config["directories"] for adapters that scan
-    # the local filesystem (local_folders, local_files). FPR-1624 — lets
+    # the local filesystem (local_folders, local_files). Lets
     # `fp setup folders add <path>` scope the scan to the new path only.
     # None means "use configured directories" (the fp ingest default).
     scan_roots: Optional[List[str]] = None

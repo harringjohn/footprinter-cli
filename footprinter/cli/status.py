@@ -482,7 +482,7 @@ def print_status(data: dict, health: dict) -> None:
     # Section 2: Source health (skip if no connectors configured)
     _print_source_health(health)
 
-    # Section 2.5: Per-entity status breakdown (FPR-1720)
+    # Section 2.5: Per-entity status breakdown
     _print_entity_counts(counts)
 
     # Section 3: Data counts table

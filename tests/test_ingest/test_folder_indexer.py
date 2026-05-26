@@ -1,4 +1,4 @@
-"""Tests for FolderIndexer.save_folders() change-detection fast-path (FPR-1623)."""
+"""Tests for FolderIndexer.save_folders() change-detection fast-path."""
 
 import time
 
@@ -92,7 +92,7 @@ class TestSaveFoldersChangeDetection:
         assert result == (1, 1, 1)
 
     def test_insert_populates_timestamps_via_schema_default(self, folder_db):
-        """Guards FPR-1717: indexed_at + updated_at must come from the schema
+        """indexed_at + updated_at must come from the schema
         DEFAULT after the hardcoded CURRENT_TIMESTAMP literals are removed."""
         indexer = FolderIndexer({}, folder_db)
         folder = _make_folder("/Users/test/Work/defaults")
@@ -107,7 +107,7 @@ class TestSaveFoldersChangeDetection:
 
 
 class TestSaveFoldersReactivation:
-    """FPR-1708: save_folders() must reactivate folders previously marked status='removed'.
+    """save_folders() must reactivate folders previously marked status='removed'.
 
     Mirrors the file indexer's CASE-based reactivation in db/files.py:575-588.
     """
@@ -199,7 +199,7 @@ class TestSaveFoldersReactivation:
 
 
 class TestExclusionPatterns:
-    """FPR-1641: FolderIndexer must apply exclusions.always like FileScanner does."""
+    """FolderIndexer must apply exclusions.always like FileScanner does."""
 
     def test_compile_always_exclusions_from_config(self, folder_db):
         """Indexer compiles exclusions.always patterns at construction."""
@@ -228,7 +228,7 @@ class TestExclusionPatterns:
         assert str(work / "proj" / "src") in paths
 
     def test_scan_prunes_excluded_descendant_under_configured_root(self, folder_db, tmp_path):
-        """Excluded subtree beneath a configured root is pruned (the FPR-1641 case)."""
+        """Excluded subtree beneath a configured root is pruned."""
         claude = tmp_path / ".claude"
         (claude / "session-env" / "snap").mkdir(parents=True)
         (claude / "projects" / "keep").mkdir(parents=True)

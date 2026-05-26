@@ -302,7 +302,7 @@ class TestSemanticFallbackNote:
 
 
 class TestSemanticIncludeFlags:
-    """include_unlisted/include_removed are ADMIN-only (FPR-1678).
+    """include_unlisted/include_removed are ADMIN-only.
 
     Threading reaches enrich_chat_visibility/enrich_file_metadata and the
     FTS5 fallbacks. VIEWER ignores the flags.

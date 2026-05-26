@@ -65,7 +65,7 @@ class FolderIndexer:
         """Compile 'always' exclusion patterns (apply to all folders).
 
         Mirrors FileScanner._compile_always_exclusions so file and folder
-        scanners enforce the same config (FPR-1641).
+        scanners enforce the same config.
         """
         return self._compile_pattern_list("always")
 
@@ -156,7 +156,7 @@ class FolderIndexer:
 
             for dirpath, dirnames, _ in os.walk(expanded_root):
                 # Skip the current dir entirely (no emit, no descent) when it
-                # matches a config exclusion (FPR-1641).
+                # matches a config exclusion.
                 if self._dir_is_excluded(dirpath, active_always=active_always):
                     dirnames[:] = []
                     continue
@@ -235,7 +235,7 @@ class FolderIndexer:
                 # are unchanged. scanned_at is regenerated each scan, so it's
                 # excluded from the comparison. Mirrors files.py:486-508.
                 # A status='removed' row never takes the fast path — reactivation
-                # is itself a meaningful change (FPR-1708).
+                # is itself a meaningful change.
                 cursor.execute(
                     "SELECT relative_path, name, parent_path, status FROM folders WHERE path = ?",
                     (folder["path"],),

@@ -1,4 +1,4 @@
-"""Tests for `fp ingest --preview` (FPR-1723).
+"""Tests for `fp ingest --preview`.
 
 The preview path runs the FileScanner against the configured directories,
 aggregates a ScanSummary, prints it, and exits without invoking the

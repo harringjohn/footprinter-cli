@@ -772,3 +772,48 @@ class TestRunRemoved:
         """fp run should be rejected as an invalid choice."""
         _, _, code = run_fp("run", "--help")
         assert code != 0
+
+
+# ---------------------------------------------------------------------------
+# _extract_touched_file_ids helper
+# ---------------------------------------------------------------------------
+
+
+class TestExtractTouchedFileIds:
+    """_extract_touched_file_ids extracts IDs from local_files stage results."""
+
+    def test_extracts_ids_from_local_files_stage(self):
+        from footprinter.cli.ingest import _extract_touched_file_ids
+
+        results = [
+            {"stage": "local_folders", "status": "completed"},
+            {"stage": "local_files", "status": "completed", "touched_file_ids": [10, 20, 30]},
+        ]
+        assert _extract_touched_file_ids(results) == [10, 20, 30]
+
+    def test_returns_empty_when_no_local_files_stage(self):
+        from footprinter.cli.ingest import _extract_touched_file_ids
+
+        results = [
+            {"stage": "local_folders", "status": "completed"},
+            {"stage": "browser", "status": "completed"},
+        ]
+        assert _extract_touched_file_ids(results) == []
+
+    def test_returns_empty_for_empty_results(self):
+        from footprinter.cli.ingest import _extract_touched_file_ids
+
+        assert _extract_touched_file_ids([]) == []
+        assert _extract_touched_file_ids(None) == []
+
+    def test_returns_empty_when_touched_file_ids_missing(self):
+        from footprinter.cli.ingest import _extract_touched_file_ids
+
+        results = [{"stage": "local_files", "status": "completed"}]
+        assert _extract_touched_file_ids(results) == []
+
+    def test_returns_empty_when_touched_file_ids_none(self):
+        from footprinter.cli.ingest import _extract_touched_file_ids
+
+        results = [{"stage": "local_files", "status": "completed", "touched_file_ids": None}]
+        assert _extract_touched_file_ids(results) == []

@@ -641,7 +641,7 @@ class SchemaMixin:
         # Capture which FTS tables existed BEFORE the CREATE IF NOT EXISTS
         # below.  COUNT(*) on an external-content FTS5 table is delegated
         # to the content table and therefore unreliable as an emptiness
-        # check (FPR-1638) — the prior gate `if COUNT(*) == 0` always
+        # check — the prior gate `if COUNT(*) == 0` always
         # short-circuited because the count came from the base table.
         fts_placeholders = ", ".join("?" for _ in _FTS_DEFINITIONS)
         existing_fts_tables = {

@@ -108,7 +108,7 @@ class TestBrowserAccessColumns:
 
 
 class TestInsertVisitSchemaDefaults:
-    """Guards FPR-1717: indexed_at / updated_at must come from the schema
+    """indexed_at / updated_at must come from the schema
     DEFAULT after the hardcoded CURRENT_TIMESTAMP literals are removed."""
 
     def test_insert_visit_populates_timestamps_via_default(self, tool_db):

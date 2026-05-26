@@ -8,7 +8,7 @@ Covers:
   Unsupported platform handling
   Ctrl-C / PromptCancelled handling
   UX/logic fixes: pre-prompt entry check, restart-only-on-removal, 3-step
-    numbering, deps-left-behind note (FPR-1634)
+    numbering, deps-left-behind note
 """
 
 import json
@@ -352,7 +352,7 @@ class TestUninstallFlow:
         assert not fake_home.exists()
 
     # -----------------------------------------------------------------------
-    # FPR-1634 — UX/logic fixes
+    # UX/logic fixes
     # -----------------------------------------------------------------------
 
     def test_phase_mcp_skips_prompt_when_entry_absent(self, fake_home, tmp_path):

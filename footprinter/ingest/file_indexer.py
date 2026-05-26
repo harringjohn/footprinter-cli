@@ -37,7 +37,7 @@ class FileIndexer:
                 modified after this time. None means full scan.
             db: Optional shared Database handle. If None, creates its own.
             scan_roots: When set, scan only these paths instead of
-                config["directories"] (FPR-1624 — used by `fp setup folders add`).
+                config["directories"] (used by `fp setup folders add`).
         """
         self.config = get_config(config_path)
         self.db = db if db is not None else Database()

@@ -633,7 +633,7 @@ class TestDriveFiles:
         db.close()
 
     def test_insert_drive_file_uses_schema_defaults(self, temp_db):
-        """Guards FPR-1717: status + indexed_at + updated_at must come from
+        """status + indexed_at + updated_at must come from
         the schema DEFAULTs after the hardcoded literals are removed."""
         from footprinter.ingest.database import Database
 
@@ -817,7 +817,7 @@ class TestModuleLevelFileWrites:
 
 
 class TestGetKnownLocalPaths:
-    """Test files_db.get_known_local_paths() for move detection (FPR-1691)."""
+    """Test files_db.get_known_local_paths() for move detection."""
 
     def test_returns_paths_of_listed_files(self, temp_db):
         from footprinter.ingest.database import Database

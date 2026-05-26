@@ -4,7 +4,7 @@ Validates that metadata.vectorize=0 causes records to be skipped across
 the chat vectorization paths: rebuild (cli.py) and ingest-time
 (chat_indexer.py). File-ingest coverage moved to
 tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero
-when FPR-1721 split file vectorization into its own follow-up stage.
+when file vectorization was split into its own follow-up stage.
 """
 
 import json
@@ -177,7 +177,7 @@ class TestRebuildChatInfoRespectsFlag:
 # ChatIndexer._vectorize_message() respects metadata.vectorize flag
 #
 # (The FileIndexer equivalent was removed when vectorization moved out of
-# file ingest in FPR-1721. Coverage is now in
+# file ingest. Coverage is now in
 # tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero.)
 # ---------------------------------------------------------------------------
 

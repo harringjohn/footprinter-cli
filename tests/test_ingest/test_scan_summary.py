@@ -1,4 +1,4 @@
-"""Tests for footprinter.ingest.scan_summary.ScanSummary (FPR-1723).
+"""Tests for footprinter.ingest.scan_summary.ScanSummary.
 
 Aggregates scanner output into a preview summary: counts by extension,
 top-N largest files, top-N largest directories, and outliers above a

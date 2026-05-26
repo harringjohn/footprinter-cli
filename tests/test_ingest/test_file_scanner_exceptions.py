@@ -144,11 +144,11 @@ class TestScanDirectoryOuter:
                 list(scanner.scan_directory(str(tmp_path)))
 
 
-# --- moved file detection (FPR-1691) ---
+# --- moved file detection ---
 
 
 class TestMovedFileDetection:
-    """FPR-1691: incremental ingest must detect files moved to new paths."""
+    """Incremental ingest must detect files moved to new paths."""
 
     def _set_mtime(self, path: Path, dt: datetime):
         """Set file mtime to a specific datetime."""

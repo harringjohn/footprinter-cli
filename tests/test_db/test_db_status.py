@@ -276,7 +276,7 @@ def test_entity_status_breakdown_surfaces_legacy_values():
 
     Schema CHECK constraints reject these values now, so we build raw tables
     matching the schema shape but without the constraint to simulate a
-    pre-FPR-1659 database.
+    pre-constraint database.
     """
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

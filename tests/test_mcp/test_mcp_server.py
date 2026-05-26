@@ -293,7 +293,7 @@ class TestReadmeModuleStructure:
 
 
 # ---------------------------------------------------------------------------
-# TestResourceRegistration — MCP resources (FPR-1681)
+# TestResourceRegistration — MCP resources
 # ---------------------------------------------------------------------------
 class TestResourceRegistration:
     """Tests for resource registration on the server."""
@@ -316,7 +316,7 @@ class TestResourceRegistration:
         assert len(self._get_resource_uris(server)) >= 1
 
     def test_expected_resource_uris(self):
-        """Server ships ambient-context resources plus the discoverability surface (FPR-786)."""
+        """Server ships ambient-context resources plus the discoverability surface."""
         from footprinter.mcp.server import _build_server
 
         server = _build_server()

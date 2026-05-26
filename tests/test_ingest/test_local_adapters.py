@@ -128,7 +128,7 @@ class TestLocalFoldersRun:
 
 
 class TestLocalFoldersMarkRemoved:
-    """run() invokes mark_removed_folders() with the scanned path set (FPR-1654)."""
+    """run() invokes mark_removed_folders() with the scanned path set."""
 
     @patch("footprinter.ingest.adapters.local_folders.mark_removed_folders")
     @patch("footprinter.ingest.adapters.local_folders.FolderIndexer")
@@ -185,7 +185,7 @@ class TestLocalFoldersMarkRemoved:
         mark_removed_folders. Otherwise `fp setup folders add <path>` would
         scan only the new path and mass-mark every other folder as removed.
         Mirrors the FileIndexer's `if not self.incremental:` gate around
-        mark_removed_files (FPR-1640)."""
+        mark_removed_files."""
         from footprinter.ingest.adapters.local_folders import LocalFoldersAdapter
 
         scanner_instance = MockScanner.return_value

@@ -616,7 +616,7 @@ def _render_preview(summary, *, threshold_bytes: int, console_):
 
 
 def _ingest_preview(args) -> None:
-    """Pre-scan configured directories and print a summary (FPR-1723).
+    """Pre-scan configured directories and print a summary.
 
     No DB writes, no vectorization. Always prints a summary so ``--preview``
     is meaningful even in scripts: ``--quiet`` switches to a single-line
