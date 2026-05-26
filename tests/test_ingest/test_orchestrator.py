@@ -448,8 +448,8 @@ class TestPrintFunctions:
 class TestOrchestratorIntegration:
     """Integration tests with mocked dependencies."""
 
-    def test_chat_stage_returns_info_status(self, temp_dir):
-        """Chat stage should return info status (manual import required)."""
+    def test_chat_stage_returns_completed_status(self, temp_dir):
+        """Chat stage should return completed status after scanning."""
         from footprinter.ingest.orchestrator import DataPipelineOrchestrator
 
         config_path = temp_dir / "config.yaml"
@@ -460,7 +460,7 @@ class TestOrchestratorIntegration:
         # Mock _get_db to return a mock database
         mock_db = MagicMock()
 
-        # Mock ChatIndexer used inside ChatAdapter
+        # Mock ChatIndexer and suppress Claude Code scanning (no real dirs)
         with patch.object(orchestrator, "_get_db", return_value=mock_db):
             with patch("footprinter.ingest.adapters.chat.ChatIndexer") as MockChatManager:
                 mock_manager = MagicMock()
@@ -471,10 +471,10 @@ class TestOrchestratorIntegration:
                 }
                 MockChatManager.return_value = mock_manager
 
-                result = orchestrator.run_pipe("chat")
+                with patch("footprinter.ingest.adapters.chat.CLAUDE_CODE_PROJECTS_DIR", temp_dir / "nonexistent"):
+                    result = orchestrator.run_pipe("chat")
 
-        assert result["status"] == "info"
-        assert "note" in result
+        assert result["status"] == "completed"
         assert result["current_chats"] == 5
 
 
