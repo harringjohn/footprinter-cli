@@ -61,7 +61,7 @@ class ChatAdapter:
         if not all_sessions:
             return PipeResult.completed("chat", sessions_indexed=0, skipped=0, errors=0)
 
-        insert_fn = partial(self._insert_session, db)
+        insert_fn = partial(self._insert_session, db, ctx.full_mode)
         return ingest_entries(
             "chat",
             all_sessions,
@@ -72,14 +72,15 @@ class ChatAdapter:
             on_progress=ctx.on_progress,
         )
 
-    def _insert_session(self, db: Any, session: Dict) -> Any:
+    def _insert_session(self, db: Any, full_mode: bool, session: Dict) -> Any:
         existing_id = chats_db.get_chat_id_by_uuid(db.conn, session["external_id"])
         if existing_id:
-            existing = db.conn.execute(
-                "SELECT message_count FROM chats WHERE id = ?", (existing_id,)
-            ).fetchone()
-            if existing and existing["message_count"] == session["message_count"]:
-                return False
+            if not full_mode:
+                existing = db.conn.execute(
+                    "SELECT message_count FROM chats WHERE id = ?", (existing_id,)
+                ).fetchone()
+                if existing and existing["message_count"] == session["message_count"]:
+                    return False
 
             chats_db.delete_chat_messages(db.conn, existing_id)
 
