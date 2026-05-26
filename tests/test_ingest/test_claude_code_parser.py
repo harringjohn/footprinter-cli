@@ -257,3 +257,9 @@ class TestWalksSubdirectories:
         ids = {c["external_id"] for c in chats}
         assert "proj-a-session-0001" in ids
         assert "proj-b-session-0001" in ids
+
+
+class TestExports:
+    def test_importable_from_package(self):
+        from footprinter.ingest.chat_parsers import ClaudeCodeParser as Exported
+        assert Exported is ClaudeCodeParser
