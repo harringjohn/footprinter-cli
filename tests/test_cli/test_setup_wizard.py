@@ -1246,6 +1246,36 @@ class TestPhaseOrdering:
             f"seed_access_policies must run after run_orchestrator; got: {order}"
         )
 
+    def test_access_policies_seeded_when_indexing_declined(self):
+        """seed_access_policies runs even when the user declines indexing.
+
+        The call sits outside the indexing if/else block so it fires
+        regardless of the user's choice. On fresh installs with no DB
+        the function returns {} silently; on re-runs with an existing DB
+        it seeds or confirms policies.
+        """
+        seed_mock = MagicMock()
+        confirm_mock = MagicMock(side_effect=[True, False])
+        run_wizard_mocked(
+            seed_access_policies=seed_mock,
+            **{"Confirm.ask": confirm_mock},
+        )
+        seed_mock.assert_called_once()
+
+    def test_access_policies_seeded_after_orchestrator_exception(self):
+        """seed_access_policies runs even if run_orchestrator raises.
+
+        The wizard catches orchestrator errors with a broad except so
+        setup can continue. Seeding must still fire after the catch.
+        """
+        orch_mock = MagicMock(side_effect=RuntimeError("indexing failed"))
+        seed_mock = MagicMock()
+        run_wizard_mocked(
+            run_orchestrator=orch_mock,
+            seed_access_policies=seed_mock,
+        )
+        seed_mock.assert_called_once()
+
     def test_content_phase_runs_after_data_sources(self):
         """collect_vectorization_answers runs after collect_chat_export_path so the
         Content & Search phase comes after Data Sources."""
