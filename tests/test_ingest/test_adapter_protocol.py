@@ -374,7 +374,7 @@ class TestChatAdapterProtocol:
         MockManager.side_effect = Exception("database locked")
 
         db = MagicMock()
-        ctx = PipeContext(source_config={})
+        ctx = PipeContext(source_config={}, scan_roots=[])
 
         adapter = ChatAdapter()
         result = adapter.run(db, ctx)

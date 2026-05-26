@@ -6,6 +6,7 @@ for Claude Code session JSONL files.
 
 from __future__ import annotations
 
+import itertools
 import logging
 from functools import partial
 from pathlib import Path
@@ -53,18 +54,14 @@ class ChatAdapter:
         if not scan_dirs:
             return PipeResult.completed("chat", sessions_indexed=0, skipped=0, errors=0)
 
-        all_sessions = []
-        for scan_dir in scan_dirs:
-            parser = ClaudeCodeParser(scan_dir)
-            all_sessions.extend(parser.parse_sessions())
-
-        if not all_sessions:
-            return PipeResult.completed("chat", sessions_indexed=0, skipped=0, errors=0)
+        sessions = itertools.chain.from_iterable(
+            ClaudeCodeParser(d).parse_sessions() for d in scan_dirs
+        )
 
         insert_fn = partial(self._insert_session, db, ctx.full_mode)
         return ingest_entries(
             "chat",
-            all_sessions,
+            sessions,
             insert_fn,
             count_label="sessions_indexed",
             conn=db.conn,
@@ -76,15 +73,15 @@ class ChatAdapter:
         existing_id = chats_db.get_chat_id_by_uuid(db.conn, session["external_id"])
         if existing_id:
             if not full_mode:
-                existing = db.conn.execute(
-                    "SELECT message_count FROM chats WHERE id = ?", (existing_id,)
-                ).fetchone()
-                if existing and existing["message_count"] == session["message_count"]:
+                row_count = db.conn.execute(
+                    "SELECT COUNT(*) FROM messages WHERE chat_id = ?", (existing_id,)
+                ).fetchone()[0]
+                if row_count == session["message_count"]:
                     return False
 
             chats_db.delete_chat_messages(db.conn, existing_id)
 
-        chats_db.insert_chat(db.conn, {
+        internal_id = chats_db.insert_chat(db.conn, {
             "external_id": session["external_id"],
             "account": session["source"],
             "title": session["title"],
@@ -94,7 +91,6 @@ class ChatAdapter:
             "metadata": session.get("metadata", {}),
         })
 
-        internal_id = chats_db.get_chat_id_by_uuid(db.conn, session["external_id"])
         for msg in session["messages"]:
             chats_db.insert_message(db.conn, {
                 "chat_id": internal_id,
