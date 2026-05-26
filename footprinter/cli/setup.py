@@ -714,8 +714,8 @@ def run_interactive_wizard():
     An unnumbered Welcome panel precedes 6 numbered steps: Data Sources,
     Content & Search, Confirm & Write, Claude Desktop, Populate, Summary.
 
-    Access policies are seeded silently inside Confirm & Write (no
-    visible step). Claude Desktop runs before Populate so the user can
+    Access policies are seeded inside Populate, after the orchestrator
+    creates the DB. Claude Desktop runs before Populate so the user can
     restart Claude Desktop while indexing finishes.
 
     PromptCancelled and KeyboardInterrupt propagate to the caller
@@ -797,10 +797,6 @@ def run_interactive_wizard():
 
     config = generate_config(answers, connector_results=connector_results, semantic=semantic_answers, existing=existing)
     write_config(config)
-    # Seed default MCP access policies silently as part of writing config —
-    # not a visible phase. The "Restrict to metadata only?" prompt inside
-    # the helper is the only user-facing decision.
-    seed_access_policies()
 
     # Phase 4: Claude Desktop
     _print_phase(4, 6, "Claude Desktop")
@@ -832,6 +828,7 @@ def run_interactive_wizard():
             run_orchestrator(answers, connector_results=connector_results)
         except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
             console.print(f"  [yellow]Indexing error: {e}[/yellow]")
+        seed_access_policies()
         if chat_export_path:
             try:
                 chat_result = import_chat_export(chat_export_path)
