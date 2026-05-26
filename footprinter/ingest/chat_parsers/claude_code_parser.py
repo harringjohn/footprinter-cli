@@ -97,8 +97,10 @@ class ClaudeCodeParser:
 
     def _extract_title(self, entries: List[Dict]) -> str:
         for entry in entries:
-            if entry.get("type") == "ai-title" and entry.get("title"):
-                return entry["title"]
+            if entry.get("type") == "ai-title":
+                title = entry.get("aiTitle") or entry.get("title")
+                if title:
+                    return title
         return ""
 
     def _parse_message(self, entry: Dict) -> Dict:

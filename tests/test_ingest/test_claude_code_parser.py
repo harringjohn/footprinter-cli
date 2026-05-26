@@ -52,7 +52,7 @@ def _make_assistant_entry(session_id: str, uuid: str, content_blocks: list, minu
 
 
 def _make_title_entry(session_id: str, title: str):
-    return {"type": "ai-title", "sessionId": session_id, "title": title}
+    return {"type": "ai-title", "sessionId": session_id, "aiTitle": title}
 
 
 def _make_system_entry(session_id: str):
