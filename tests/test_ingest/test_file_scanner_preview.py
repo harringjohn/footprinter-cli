@@ -1,4 +1,4 @@
-"""Tests for the FileScanner preview/skip-hashing path (FPR-1723)."""
+"""Tests for the FileScanner preview/skip-hashing path."""
 
 from pathlib import Path
 

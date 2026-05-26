@@ -220,7 +220,7 @@ def get_folder_navigation(
 
     # Recursive file count across all descendants (excludes hidden files; respects status filter).
     # Uses path-prefix matching rather than parent_folder_id because ingestion
-    # populates parent_path (string) but not the FK column (FPR-1619).
+    # populates parent_path (string) but not the FK column.
     recursive_status_sql = (
         " AND " + " AND ".join(status_conds) if status_conds else ""
     )
@@ -638,7 +638,7 @@ def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
     """Refresh pre-computed file counts for all folders.
 
     Uses folder_id FK for direct counts with a path-prefix fallback for
-    files where folder_id is NULL (FPR-1768). Propagates totals up the
+    files where folder_id is NULL. Propagates totals up the
     parent_folder_id hierarchy by processing from leaves to roots.
 
     Returns stats about the refresh operation.

@@ -1,7 +1,7 @@
 """
 Tests for FileIndexer.
 
-Vectorization moved out of file ingest in FPR-1721 — it now runs as a
+Vectorization moved out of file ingest — it now runs as a
 follow-up stage (footprinter.ingest.processing.run_vectorization). These
 tests pin the contracts the indexer still owns: config delegation,
 incremental cutoff, vector-store init for stale-file cleanup, the
@@ -190,7 +190,7 @@ class TestVectorStoreInitWarning:
 
 
 class TestInsertBatchVectorizationSkip:
-    """FPR-1721: _insert_batch() never vectorizes inline; commits exactly once."""
+    """_insert_batch() never vectorizes inline; commits exactly once."""
 
     def _make_indexer(self):
         """Create a FileIndexer instance without requiring config/db."""
@@ -204,7 +204,7 @@ class TestInsertBatchVectorizationSkip:
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file", return_value=("inserted", 42))
     def test_insert_batch_does_not_call_vector_store(self, mock_insert):
-        """FPR-1721: _insert_batch() must not touch the vector store.
+        """_insert_batch() must not touch the vector store.
 
         Vectorization runs as a separate follow-up stage via
         footprinter.ingest.processing.run_vectorization. The fast ingest pass
@@ -322,7 +322,7 @@ class TestInsertFileResultType:
         assert second[1] == first[1]  # same file_id
 
     def test_insert_file_clears_vectorized_at_on_update(self, db):
-        """FPR-1721: UPDATE must clear vectorized_at so run_vectorization re-embeds.
+        """UPDATE must clear vectorized_at so run_vectorization re-embeds.
 
         Without this, the phased-ingest follow-up stage (which queries
         ``vectorized_at IS NULL``) silently skips files whose content
@@ -443,7 +443,7 @@ class TestInsertBatchCounts:
     def test_insert_batch_counts_unchanged(self, mock_insert):
         """'unchanged' results increment the counter but are excluded from touched_ids.
 
-        FPR-1721: vectorization moved to a follow-up stage. Backfilling of
+        Vectorization moved to a follow-up stage. Backfilling of
         unchanged-but-not-yet-vectorized files now happens in
         ``run_vectorization`` via the ``vectorized_at IS NULL`` query.
         """
@@ -471,7 +471,7 @@ class TestInsertBatchCounts:
 
 
 class TestInsertBatchTouchedIds:
-    """FPR-1799: _insert_batch() returns touched file IDs for scoped vectorization."""
+    """_insert_batch() returns touched file IDs for scoped vectorization."""
 
     def _make_indexer(self):
         from footprinter.ingest.file_indexer import FileIndexer
@@ -702,7 +702,7 @@ class TestContentExtractionGating:
 
 
 class TestInsertBatchPerFileLogging:
-    """FPR-1625: _insert_batch() logs each inserted/updated file path.
+    """_insert_batch() logs each inserted/updated file path.
 
     Incremental mode → INFO; full mode → DEBUG; unchanged/skipped → silent.
     Paths under $HOME are abbreviated to ~/...; others stay verbatim.
@@ -838,7 +838,7 @@ class TestInsertBatchPerFileLogging:
 
 
 class TestMovedFileWiring:
-    """FPR-1691: FileIndexer loads known paths and passes them to FileScanner."""
+    """FileIndexer loads known paths and passes them to FileScanner."""
 
     def test_incremental_passes_known_paths_to_scanner(self):
         """FileIndexer(last_run=datetime) loads known paths and passes them to FileScanner."""

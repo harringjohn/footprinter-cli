@@ -149,7 +149,7 @@ browsers:
         assert orchestrator.full_mode is True
 
     def test_exposes_run_vectorization(self, temp_dir):
-        """FPR-1721: orchestrator exposes run_vectorization that delegates to the runner.
+        """Orchestrator exposes run_vectorization that delegates to the runner.
 
         Phased ingest needs the orchestrator to drive vectorization as a
         follow-up stage after the main pipeline returns. CLI/setup callers
@@ -301,7 +301,7 @@ class TestOrchestratorStageExecution:
         assert any(r["stage"] == "access_resolution" for r in results)
 
     def test_run_pipes_appends_post_pipes(self, temp_dir):
-        """run_pipes() auto-appends POST_PIPES after user-specified pipes (FPR-1690)."""
+        """run_pipes() auto-appends POST_PIPES after user-specified pipes."""
         from footprinter.ingest.orchestrator import DataPipelineOrchestrator
         from footprinter.ingest.registry import POST_PIPES
 
@@ -322,7 +322,7 @@ class TestOrchestratorStageExecution:
         assert dispatched == ["local_files"] + list(POST_PIPES)
 
     def test_run_pipes_appends_post_pipes_multiple_sources(self, temp_dir):
-        """run_pipes() with multiple sources appends POST_PIPES after all of them (FPR-1690)."""
+        """run_pipes() with multiple sources appends POST_PIPES after all of them."""
         from footprinter.ingest.orchestrator import DataPipelineOrchestrator
         from footprinter.ingest.registry import POST_PIPES
 

@@ -421,7 +421,7 @@ class TestWhereClauseRemoved:
 
 
 # ---------------------------------------------------------------------------
-# FPR-1678: status kwarg matrix for keyword search + FTS5 + enrichment.
+# Status kwarg matrix for keyword search + FTS5 + enrichment.
 # ADMIN-only widening flows from MCP tool → service layer → these functions.
 # ---------------------------------------------------------------------------
 

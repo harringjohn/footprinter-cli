@@ -839,9 +839,8 @@ def run_interactive_wizard():
         # _offer_csv_import_wizard can open it and insert rows. Asking earlier
         # (in Data Sources) would silently skip on fresh installs.
         _offer_csv_import_wizard()
-        # FPR-1721: phased ingest — main pipeline returned, so the index is
-        # usable now. Print the "ready" line then run vectorization with its
-        # own progress UI as a follow-up.
+        # Phased ingest — main pipeline returned, so the index is usable now.
+        # Run vectorization with its own progress UI as a follow-up.
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
         run_vectorization_stage()
@@ -1545,7 +1544,7 @@ def _run_orchestrator_stages(stages: list[str], scan_roots: list[str] | None = N
 
     Args:
         stages: List of stage names (e.g. ["local_folders", "local_files"]).
-        scan_roots: Optional override for filesystem-scanning pipes (FPR-1624).
+        scan_roots: Optional override for filesystem-scanning pipes.
             When provided, local_folders/local_files scan only these paths.
             When None, all configured directories are scanned.
     """
@@ -1752,7 +1751,7 @@ def folders_add(path: str, index: bool = True) -> int:
 
     if index:
         if Confirm.ask("Run indexing for the new folder now?", default=True):
-            # FPR-1624: scope the scan to the newly added directory so we don't
+            # Scope the scan to the newly added directory so we don't
             # rewalk every configured root for a single new folder.
             _run_orchestrator_stages(
                 ["local_folders", "local_files"], scan_roots=[normalized]

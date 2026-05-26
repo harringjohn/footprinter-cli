@@ -4391,11 +4391,11 @@ class TestPathContainment:
 
 
 # ---------------------------------------------------------------------------
-# TestIncludeFlagsForwarding — FPR-1678
+# TestIncludeFlagsForwarding
 # ---------------------------------------------------------------------------
 class TestIncludeFlagsForwarding:
     """The three discovery tools accept include_unlisted/include_removed and
-    forward them verbatim to the service layer (FPR-1678).
+    forward them verbatim to the service layer.
 
     MCP entry points always run as VIEWER, so the flags pass through but the
     service layer ignores them. These tests assert the wiring, not VIEWER

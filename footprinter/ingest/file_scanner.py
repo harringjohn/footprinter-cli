@@ -58,7 +58,7 @@ class FileScanner:
             since_datetime: If provided, only scan files modified after this datetime
                            (for incremental indexing)
             scan_roots: When set, scan only these paths instead of
-                config["directories"] (FPR-1624 — used by `fp setup folders add`).
+                config["directories"] (used by `fp setup folders add`).
             known_paths: Already-indexed local file paths. When provided,
                 files with old mtime at unknown paths are yielded as moved files.
         """
@@ -143,7 +143,7 @@ class FileScanner:
 
         When ``skip_hashing`` is True, the expensive sha256/md5 reads are
         skipped and the corresponding fields are returned as ``None``. Used
-        by ``fp ingest --preview`` (FPR-1723) where hashing dominates wall
+        by ``fp ingest --preview`` where hashing dominates wall
         clock on large trees and is unnecessary for a summary.
         """
         try:
@@ -190,7 +190,7 @@ class FileScanner:
 
         Yields file metadata dictionaries for indexing.
         If since_datetime is set, only yields files modified after that time.
-        When ``skip_hashing`` is True, sha256/md5 are not computed (FPR-1723 preview).
+        When ``skip_hashing`` is True, sha256/md5 are not computed (preview mode).
         """
         directory_path = Path(directory).expanduser().resolve()
 
@@ -332,7 +332,7 @@ class FileScanner:
         """Scan all configured directories (or only ``scan_roots`` when set).
 
         ``skip_hashing`` propagates to ``scan_directory`` for the preview path
-        (FPR-1723), where the heavy md5/sha256 reads are unnecessary.
+        (preview mode), where the heavy md5/sha256 reads are unnecessary.
         """
         directories = (
             self.scan_roots if self.scan_roots is not None else self.config.get("directories", [])

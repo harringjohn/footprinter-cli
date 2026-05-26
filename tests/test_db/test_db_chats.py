@@ -107,7 +107,7 @@ def test_insert_chat_accepts_explicit_status(conn):
 
 
 # ---------------------------------------------------------------------------
-# insert_message — mirrors insert_chat coverage (FPR-1489)
+# insert_message — mirrors insert_chat coverage
 # ---------------------------------------------------------------------------
 
 

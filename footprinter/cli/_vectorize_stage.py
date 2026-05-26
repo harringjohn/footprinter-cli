@@ -1,4 +1,4 @@
-"""Shared post-ingest vectorization stage helper (FPR-1721).
+"""Shared post-ingest vectorization stage helper.
 
 Phased ingest: ``fp setup`` and ``fp ingest`` print "index is ready"
 once the main pipeline returns, then run this follow-up stage with its

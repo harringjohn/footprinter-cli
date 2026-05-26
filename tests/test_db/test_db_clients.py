@@ -82,7 +82,7 @@ class TestListClientsFileCountAlignment:
 class TestSchemaDefaultsForNewRows:
     """New-row insert paths must produce status='listed' via the schema DEFAULT.
 
-    Guards FPR-1717: removing the hardcoded ``'listed'`` literal from
+    Guards that removing the hardcoded ``'listed'`` literal from
     ``create_client`` / ``create_project`` INSERTs must not change the
     observed value for new rows.
     """

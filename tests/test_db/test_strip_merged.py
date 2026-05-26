@@ -1,4 +1,4 @@
-"""Structural assertions for the v1.0.2 merge-stripping (FPR-1683)."""
+"""Structural assertions for the v1.0.2 merge-stripping."""
 
 import sqlite3
 

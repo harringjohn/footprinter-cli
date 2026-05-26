@@ -212,7 +212,7 @@ class TestFoldersAdd:
             exit_code = folders_add(str(new_dir), index=True)
 
         assert exit_code == 0
-        # FPR-1624: scan must be scoped to the newly added directory, not all configured roots.
+        # Scan must be scoped to the newly added directory, not all configured roots.
         mock_orch.assert_called_once_with(
             ["local_folders", "local_files"], scan_roots=[str(new_dir)]
         )

@@ -246,7 +246,7 @@ class TestLastRunFromIngests:
 
 
 class TestLastRunPrefersAggregate:
-    """When pipe='all' rows exist they win over per-pipe rows (FPR-1627)."""
+    """When pipe='all' rows exist they win over per-pipe rows."""
 
     def _seed_per_pipe(self, conn):
         conn.execute(

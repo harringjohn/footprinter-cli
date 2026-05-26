@@ -1,4 +1,4 @@
-"""Tests for footprinter.ingest.processing runners (FPR-1721).
+"""Tests for footprinter.ingest.processing runners.
 
 Covers the ``run_vectorization`` post-ingest stage that replaces inline
 per-row vectorization in ``FileIndexer._insert_batch``.
@@ -148,7 +148,7 @@ class TestRunVectorization:
 
     def test_run_vectorization_records_skipped_large_files(self, tmp_path):
         """Files larger than the configured vectorize cap are skipped and
-        listed in result.data with their path + size (FPR-1722)."""
+        listed in result.data with their path + size."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
         from footprinter.ingest.processing import run_vectorization
 
@@ -198,7 +198,7 @@ class TestRunVectorization:
         assert skipped[0]["size_bytes"] == 8192
 
     def test_run_vectorization_normal_file_still_vectorized(self, tmp_path):
-        """Regression: under-cap files are still vectorized (FPR-1722)."""
+        """Regression: under-cap files are still vectorized."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
         from footprinter.ingest.processing import run_vectorization
 
@@ -271,7 +271,7 @@ class TestRunVectorization:
 
 
 class TestScopedVectorization:
-    """FPR-1799: run_vectorization with file_ids scopes to specific files."""
+    """run_vectorization with file_ids scopes to specific files."""
 
     def test_scoped_vectorizes_only_given_ids(self, tmp_path):
         """When file_ids is provided, only those files are vectorized."""

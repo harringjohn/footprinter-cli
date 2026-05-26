@@ -1,4 +1,4 @@
-"""Aggregator for scanner output used by ``fp ingest --preview`` (FPR-1723).
+"""Aggregator for scanner output used by ``fp ingest --preview``.
 
 Pure data layer: consumes ``FileScanner`` metadata dicts and produces
 counts by extension, top-N largest files, top-N largest directories,

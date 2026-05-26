@@ -79,7 +79,7 @@ class TestListFoldersDefaultExclude:
 
 
 class TestMarkRemovedFolders:
-    """Test folders.mark_removed_folders() — phantom folder cleanup (FPR-1654)."""
+    """Test folders.mark_removed_folders() — phantom folder cleanup."""
 
     def _insert_local(self, conn, path: str) -> int:
         cursor = conn.execute(
@@ -159,7 +159,7 @@ class TestMarkRemovedFolders:
 
 
 class TestListFoldersStatusFilter:
-    """list_folders() must exclude status='removed' by default and accept overrides (FPR-1707)."""
+    """list_folders() must exclude status='removed' by default and accept overrides."""
 
     def _insert(self, conn, path: str, status: str = "listed") -> int:
         cursor = conn.execute(
@@ -206,7 +206,7 @@ class TestListFoldersStatusFilter:
 
 
 class TestListFoldersDepthDefault:
-    """Default depth must be None — full listing, not depth-1 subset (FPR-1631)."""
+    """Default depth must be None — full listing, not depth-1 subset."""
 
     def _insert(self, conn, path: str, relative_path: str) -> int:
         cursor = conn.execute(
@@ -232,7 +232,7 @@ class TestListFoldersDepthDefault:
 
 class TestListFoldersUsesPrecomputedCounts:
     """When depth is None, use folders.direct_file_count and total_size_bytes
-    instead of correlated subqueries against the files table (FPR-1631)."""
+    instead of correlated subqueries against the files table."""
 
     def test_reads_precomputed_columns_without_files(self, tool_db):
         tool_db.execute(
@@ -254,7 +254,7 @@ class TestListFoldersUsesPrecomputedCounts:
 
 class TestListFoldersDepthExplicitStillRollsUp:
     """When depth is explicitly set, the CTE+subquery rollup is preserved
-    so callers asking for shallow listings still see descendant counts (FPR-1631)."""
+    so callers asking for shallow listings still see descendant counts."""
 
     def test_depth_filter_rolls_up_descendant_files(self, tool_db):
         parent_cur = tool_db.execute(
@@ -285,7 +285,7 @@ class TestListFoldersDepthExplicitStillRollsUp:
 
 
 class TestGetFolderNavigationStatusFilter:
-    """get_folder_navigation respects the status kwarg (FPR-1678).
+    """get_folder_navigation respects the status kwarg.
 
     Default returns only listed children. Widening lets ADMIN-flagged callers
     see unlisted/removed files; recursive count widens to match.
@@ -396,7 +396,7 @@ class TestGetFolderNavigationStatusFilter:
 
 
 class TestListFoldersNullFolderId:
-    """list_folders with depth must count files even when folder_id is NULL (FPR-1768)."""
+    """list_folders with depth must count files even when folder_id is NULL."""
 
     def _insert_folder(self, conn, path: str, relative_path: str) -> int:
         cursor = conn.execute(
@@ -443,7 +443,7 @@ class TestListFoldersNullFolderId:
 
 class TestRecursiveFileCountWithNestedFolders:
     """recursive_file_count must count files in descendant folders even when
-    parent_folder_id is NULL (FPR-1619).
+    parent_folder_id is NULL.
 
     Production ingestion (folder_indexer.py) populates parent_path but never
     parent_folder_id, so the descendant relationship must be derived from the

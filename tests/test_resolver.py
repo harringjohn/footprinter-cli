@@ -328,7 +328,7 @@ class TestQueriesSubmoduleImports:
 
 
 class TestHardDeleteHelpers:
-    """Hard-delete helpers exist on db.projects and db.clients (FPR-1684).
+    """Hard-delete helpers exist on db.projects and db.clients.
 
     Replaces the old "no delete_project" guardrail: the trichotomy work
     splits soft-delete (fp upsert --status removed) from hard-delete

@@ -94,7 +94,7 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
 
 
 # ---------------------------------------------------------------------------
-# Vectorization runner (FPR-1721)
+# Vectorization runner
 # ---------------------------------------------------------------------------
 
 

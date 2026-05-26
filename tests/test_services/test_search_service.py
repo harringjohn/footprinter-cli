@@ -184,7 +184,7 @@ class TestSearchBrowserGating:
 
 
 class TestSearchIncludeFlags:
-    """include_unlisted/include_removed are ADMIN-only (FPR-1678).
+    """include_unlisted/include_removed are ADMIN-only.
 
     VIEWER callers (the default for MCP) accept the flags but they have no
     effect — the service still applies the listed-only default filter.

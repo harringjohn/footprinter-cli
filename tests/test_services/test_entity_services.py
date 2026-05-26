@@ -633,7 +633,7 @@ class TestFolderService:
     def test_list_default_depth_is_none(self, service_db):
         # All three fixture folders sit at /Work/<project>/src — depth 2 below
         # home — so the old depth=1 default would drop them. The default must
-        # now return everything (FPR-1631).
+        # now return everything.
         result = folder_service.list_(service_db, role=Role.ADMIN)
         assert len(result["folders"]) == 3
 
