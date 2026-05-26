@@ -57,6 +57,7 @@ class LocalFilesAdapter:
                 skipped=counts["skipped"],
                 errors=counts["errors"],
                 mode="full" if ctx.full_mode else "incremental",
+                touched_file_ids=counts.get("touched_file_ids", []),
             )
         except Exception as e:
             logger.error(f"local_files stage failed: {e}")

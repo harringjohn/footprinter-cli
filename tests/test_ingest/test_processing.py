@@ -268,3 +268,112 @@ class TestRunVectorization:
             "SELECT vectorized_at FROM files WHERE id = ?", (opted_out_id,)
         ).fetchone()
         assert row["vectorized_at"] is None
+
+
+class TestScopedVectorization:
+    """FPR-1799: run_vectorization with file_ids scopes to specific files."""
+
+    def test_scoped_vectorizes_only_given_ids(self, tmp_path):
+        """When file_ids is provided, only those files are vectorized."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "a.txt").write_text("alpha")
+        (tmp_path / "b.txt").write_text("beta")
+        (tmp_path / "c.txt").write_text("gamma")
+        id_a = _insert_file(db, file_path=str(tmp_path / "a.txt"))
+        id_b = _insert_file(db, file_path=str(tmp_path / "b.txt"))
+        id_c = _insert_file(db, file_path=str(tmp_path / "c.txt"))
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+        ):
+            result = run_vectorization(db, file_ids=[id_a])
+
+        assert mock_store.upsert_file.call_count == 1
+        assert mock_store.upsert_file.call_args[0][0] == id_a
+        assert result.data.get("vectorized_new") == 1
+
+        row_b = db.conn.execute("SELECT vectorized_at FROM files WHERE id = ?", (id_b,)).fetchone()
+        row_c = db.conn.execute("SELECT vectorized_at FROM files WHERE id = ?", (id_c,)).fetchone()
+        assert row_b["vectorized_at"] is None
+        assert row_c["vectorized_at"] is None
+
+    def test_scoped_empty_ids_noop(self, tmp_path):
+        """file_ids=[] means nothing to vectorize — early return."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        _insert_file(db, file_path=str(tmp_path / "x.txt"))
+
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+        ):
+            result = run_vectorization(db, file_ids=[])
+
+        mock_store.upsert_file.assert_not_called()
+        assert result.status.value == "completed"
+        assert result.data.get("vectorized_new", 0) == 0
+
+    def test_scoped_ignores_removed_status(self, tmp_path):
+        """Even if a removed file's ID is in file_ids, it's still skipped."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "removed.txt").write_text("content")
+        removed_id = _insert_file(db, file_path=str(tmp_path / "removed.txt"), status="removed")
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+        ):
+            result = run_vectorization(db, file_ids=[removed_id])
+
+        mock_store.upsert_file.assert_not_called()
+
+    def test_none_file_ids_broad_query(self, tmp_path):
+        """file_ids=None keeps the existing broad WHERE vectorized_at IS NULL behavior."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "a.txt").write_text("alpha")
+        (tmp_path / "b.txt").write_text("beta")
+        id_a = _insert_file(db, file_path=str(tmp_path / "a.txt"))
+        id_b = _insert_file(db, file_path=str(tmp_path / "b.txt"))
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+        ):
+            result = run_vectorization(db, file_ids=None)
+
+        assert mock_store.upsert_file.call_count == 2
+        assert result.data.get("vectorized_new") == 2

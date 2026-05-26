@@ -118,9 +118,9 @@ class DataPipelineOrchestrator:
             on_progress=on_progress, pipe_hook=hook, scan_roots=scan_roots,
         )
 
-    def run_vectorization(self, on_progress=None):
+    def run_vectorization(self, on_progress=None, file_ids=None):
         """Run the vectorization follow-up stage after the main pipeline."""
-        return run_vectorization(self._get_db(), full_mode=self.full_mode, on_progress=on_progress)
+        return run_vectorization(self._get_db(), full_mode=self.full_mode, on_progress=on_progress, file_ids=file_ids)
 
     def get_status(self) -> Dict:
         """Return current data counts and pipeline health."""

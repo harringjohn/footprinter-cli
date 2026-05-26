@@ -403,7 +403,7 @@ class TestInsertBatchCounts:
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file")
     def test_insert_batch_counts_inserts_and_updates(self, mock_insert):
-        """_insert_batch returns (inserted, updated, skipped, unchanged) tuple."""
+        """_insert_batch returns (inserted, updated, skipped, unchanged, touched_ids) tuple."""
         indexer = self._make_indexer()
         mock_insert.side_effect = [
             ("inserted", 1),
@@ -419,7 +419,7 @@ class TestInsertBatchCounts:
 
         result = indexer._insert_batch(batch)
 
-        assert result == (1, 1, 1, 0)  # 1 inserted, 1 updated, 1 skipped, 0 unchanged
+        assert result == (1, 1, 1, 0, [1, 2])  # 1 inserted, 1 updated, 1 skipped, 0 unchanged, touched=[1,2]
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file")
     def test_insert_batch_counts_reactivated_as_inserted(self, mock_insert):
@@ -437,11 +437,11 @@ class TestInsertBatchCounts:
 
         result = indexer._insert_batch(batch)
 
-        assert result == (1, 1, 0, 0)
+        assert result == (1, 1, 0, 0, [10, 20])
 
     @patch("footprinter.ingest.file_indexer.files_db.insert_file")
     def test_insert_batch_counts_unchanged(self, mock_insert):
-        """'unchanged' results increment the counter; vectorization is no longer inline.
+        """'unchanged' results increment the counter but are excluded from touched_ids.
 
         FPR-1721: vectorization moved to a follow-up stage. Backfilling of
         unchanged-but-not-yet-vectorized files now happens in
@@ -465,9 +465,46 @@ class TestInsertBatchCounts:
         with patch.object(indexer, "_get_vector_store") as mock_getter:
             result = indexer._insert_batch(batch)
 
-        assert result == (1, 0, 0, 2)
+        assert result == (1, 0, 0, 2, [1])  # only inserted file in touched_ids
         mock_getter.assert_not_called()
         assert sentinel_store.mock_calls == []
+
+
+class TestInsertBatchTouchedIds:
+    """FPR-1799: _insert_batch() returns touched file IDs for scoped vectorization."""
+
+    def _make_indexer(self):
+        from footprinter.ingest.file_indexer import FileIndexer
+
+        indexer = FileIndexer.__new__(FileIndexer)
+        indexer.db = MagicMock()
+        indexer._vector_store = None
+        indexer.incremental = False
+        return indexer
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file")
+    def test_insert_batch_returns_touched_ids(self, mock_insert):
+        """touched_ids includes IDs for inserted and updated, not unchanged or skipped."""
+        indexer = self._make_indexer()
+        mock_insert.side_effect = [
+            ("inserted", 10),
+            ("updated", 20),
+            ("unchanged", 30),
+            None,  # skipped
+            ("inserted", 50),
+        ]
+
+        batch = [{"file_path": f"/{i}.txt"} for i in range(5)]
+        _, _, _, _, touched_ids = indexer._insert_batch(batch)
+
+        assert touched_ids == [10, 20, 50]
+
+    @patch("footprinter.ingest.file_indexer.files_db.insert_file")
+    def test_insert_batch_empty_batch_returns_empty_touched(self, mock_insert):
+        """Empty batch returns empty touched_ids list."""
+        indexer = self._make_indexer()
+        result = indexer._insert_batch([])
+        assert result == (0, 0, 0, 0, [])
 
 
 class TestIndexFilesCountDict:
@@ -492,7 +529,7 @@ class TestIndexFilesCountDict:
 
     @patch("footprinter.ingest.file_indexer.files_db.mark_removed_files", return_value=0)
     def test_index_files_returns_count_dict(self, mock_mark_removed):
-        """index_files() returns dict with inserted/updated/skipped/errors keys."""
+        """index_files() returns dict with inserted/updated/skipped/errors/touched_file_ids keys."""
         indexer = self._make_indexer()
         indexer.file_scanner.scan_all_directories.return_value = iter(
             [
@@ -503,7 +540,7 @@ class TestIndexFilesCountDict:
         )
 
         with (
-            patch.object(indexer, "_insert_batch", return_value=(2, 1, 0, 5)),
+            patch.object(indexer, "_insert_batch", return_value=(2, 1, 0, 5, [10, 20])),
             patch.object(indexer, "content_extractor") as mock_ce,
         ):
             mock_ce.extract.return_value = "preview"
@@ -516,6 +553,8 @@ class TestIndexFilesCountDict:
         assert "errors" in result
         assert "unchanged" in result
         assert result["unchanged"] == 5
+        assert "touched_file_ids" in result
+        assert result["touched_file_ids"] == [10, 20]
 
 class TestVectorCleanupOnRemoval:
     """Test that index_files() deletes vectors for files marked as removed."""
@@ -594,7 +633,7 @@ class TestContentExtractionGating:
             ]
         )
 
-        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0)):
+        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0, [])):
             indexer.index_files()
 
         indexer.content_extractor.extract.assert_not_called()
@@ -609,7 +648,7 @@ class TestContentExtractionGating:
             ]
         )
 
-        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0)):
+        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0, [])):
             indexer.index_files()
 
         indexer.content_extractor.extract.assert_called_once()
@@ -628,7 +667,7 @@ class TestContentExtractionGating:
 
         def capture_batch(batch, *args, **kwargs):
             batches.extend(batch)
-            return (1, 0, 0, 0)
+            return (1, 0, 0, 0, [])
 
         with patch.object(indexer, "_insert_batch", side_effect=capture_batch):
             indexer.index_files()
@@ -656,7 +695,7 @@ class TestContentExtractionGating:
             ]
         )
 
-        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0)):
+        with patch.object(indexer, "_insert_batch", return_value=(1, 0, 0, 0, [])):
             indexer.index_files()
 
         indexer.content_extractor.extract.assert_not_called()

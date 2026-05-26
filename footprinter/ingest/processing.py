@@ -102,6 +102,7 @@ def run_vectorization(
     db: "Database",
     full_mode: bool = False,
     on_progress: Optional[Callable[[int], None]] = None,
+    file_ids: Optional[List[int]] = None,
 ) -> PipeResult:
     """Embed files that haven't been vectorized yet.
 
@@ -116,6 +117,8 @@ def run_vectorization(
             (listed and unlisted) by dropping the ``vectorized_at IS NULL`` clause.
         on_progress: Optional callback fired with cumulative file count
             after each file is processed.
+        file_ids: When provided, scope vectorization to only these file IDs.
+            Empty list means no-op. None means broad (existing behavior).
 
     Returns:
         PipeResult — ``skipped`` when ``file_vectorization`` is disabled,
@@ -127,12 +130,6 @@ def run_vectorization(
     if not _file_vectorization_enabled():
         return PipeResult.skipped("vectorization", "file_vectorization disabled")
 
-    where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
-    if not full_mode:
-        where += " AND vectorized_at IS NULL"
-
-    rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
-
     counts = {
         "vectorized_new": 0,
         "vectorized_failed": 0,
@@ -140,6 +137,28 @@ def run_vectorization(
         "vectorized_skipped_large": 0,
     }
     skipped_large_files: List[Dict[str, Any]] = []
+
+    if file_ids is not None and len(file_ids) == 0:
+        return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
+
+    if file_ids is not None:
+        where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        if len(file_ids) <= 500:
+            placeholders = ",".join("?" * len(file_ids))
+            where += f" AND id IN ({placeholders})"
+            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", file_ids).fetchall()
+        else:
+            db.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _vec_scope (file_id INTEGER PRIMARY KEY)")
+            db.conn.execute("DELETE FROM _vec_scope")
+            db.conn.executemany("INSERT INTO _vec_scope (file_id) VALUES (?)", [(fid,) for fid in file_ids])
+            where += " AND id IN (SELECT file_id FROM _vec_scope)"
+            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
+    else:
+        where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        if not full_mode:
+            where += " AND vectorized_at IS NULL"
+        rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
+
     if not rows:
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 

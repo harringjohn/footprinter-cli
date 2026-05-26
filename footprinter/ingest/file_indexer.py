@@ -87,9 +87,10 @@ class FileIndexer:
         unchanged_count = 0
         error_count = 0
         total_processed = 0
+        touched_file_ids: List[int] = []
         batch = []
-        batch_size = 1000  # Commit every 1000 files for performance
-        self._indexed_paths = set()  # Track all indexed paths for stale detection
+        batch_size = 1000
+        self._indexed_paths = set()
 
         for file_metadata in self.file_scanner.scan_all_directories():
             try:
@@ -107,11 +108,12 @@ class FileIndexer:
 
                 # Batch insert for performance
                 if len(batch) >= batch_size:
-                    bi, bu, bs, bun = self._insert_batch(batch, relationship_maps)
+                    bi, bu, bs, bun, b_touched = self._insert_batch(batch, relationship_maps)
                     inserted_count += bi
                     updated_count += bu
                     skipped_count += bs
                     unchanged_count += bun
+                    touched_file_ids.extend(b_touched)
                     batch = []
                     logger.info(
                         f"Progress: {inserted_count:,} inserted,"
@@ -128,13 +130,13 @@ class FileIndexer:
                 if on_progress is not None:
                     on_progress(total_processed)
 
-        # Insert remaining files
         if batch:
-            bi, bu, bs, bun = self._insert_batch(batch, relationship_maps)
+            bi, bu, bs, bun, b_touched = self._insert_batch(batch, relationship_maps)
             inserted_count += bi
             updated_count += bu
             skipped_count += bs
             unchanged_count += bun
+            touched_file_ids.extend(b_touched)
 
         # Mark stale files (no longer on disk)
         # Only do this in full mode - incremental mode only scans modified files
@@ -165,6 +167,7 @@ class FileIndexer:
             "skipped": skipped_count,
             "unchanged": unchanged_count,
             "errors": error_count,
+            "touched_file_ids": touched_file_ids,
         }
 
     def _get_vector_store(self):
@@ -186,31 +189,30 @@ class FileIndexer:
         """Insert a batch of files into files table.
 
         Returns:
-            Tuple of (inserted, updated, skipped, unchanged) counts
+            Tuple of (inserted, updated, skipped, unchanged, touched_ids)
         """
         inserted = 0
         updated = 0
         skipped = 0
         unchanged = 0
-        # Incremental mode logs per-file at INFO (counts are typically small);
-        # full mode emits at DEBUG so a fresh scan doesn't flood the log.
+        touched_ids: List[int] = []
         log_per_file = logger.info if self.incremental else logger.debug
         for file_metadata in batch:
             result = files_db.insert_file(self.db.conn, file_metadata, relationship_maps=relationship_maps)
             if result is None:
                 skipped += 1
                 continue
-            # FPR-1721: vectorization moved to follow-up stage
-            # (footprinter.ingest.processing.run_vectorization) — fast ingest only.
-            result_type, _file_id = result
+            result_type, file_id = result
             if result_type == "inserted":
                 inserted += 1
+                touched_ids.append(file_id)
             elif result_type == "unchanged":
                 unchanged += 1
             else:
                 result_type = "updated"
                 updated += 1
+                touched_ids.append(file_id)
             if result_type != "unchanged":
                 log_per_file("%s %s", result_type, abbreviate_home(file_metadata["file_path"]))
         self.db.conn.commit()
-        return inserted, updated, skipped, unchanged
+        return inserted, updated, skipped, unchanged, touched_ids

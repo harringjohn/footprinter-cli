@@ -450,6 +450,8 @@ def _run_with_logging(
         if not quiet:
             console.print(f"[dim]Log: {log_path}[/dim]")
 
+        return results
+
     except ValueError:
         if progress is not None:
             progress.stop()
@@ -466,6 +468,16 @@ def _run_with_logging(
             logging.root.removeHandler(file_handler)
             file_handler.close()
         orchestrator.close()
+
+
+def _extract_touched_file_ids(results) -> list:
+    """Extract touched_file_ids from the local_files stage result."""
+    if not results:
+        return []
+    for r in results:
+        if r.get("stage") == "local_files":
+            return r.get("touched_file_ids") or []
+    return []
 
 
 def _ingest_pipeline(args) -> None:
@@ -489,7 +501,7 @@ def _ingest_pipeline(args) -> None:
             sys.exit(1)
 
     try:
-        _run_with_logging(
+        results = _run_with_logging(
             orchestrator,
             pipes=pipes,
             mode=mode_str,
@@ -504,11 +516,11 @@ def _ingest_pipeline(args) -> None:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
 
-    # FPR-1721: vectorization runs as a follow-up stage when local_files was touched.
     if pipes is None or "local_files" in pipes:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
-        run_vectorization_stage(quiet=quiet)
+        file_ids = _extract_touched_file_ids(results) if pipes is not None else None
+        run_vectorization_stage(quiet=quiet, file_ids=file_ids)
 
 
 # Defaults for the preview render. Configurable via the indexing.preview_*
@@ -749,9 +761,7 @@ def _ingest_refresh(args) -> None:
     mode_str = "full" if orchestrator.full_mode else "incremental"
 
     try:
-        # Route through orchestrator.run_refresh so it uses the registry's
-        # source-scoped pipe list rather than requiring the caller to enumerate pipes.
-        _run_with_logging(
+        results = _run_with_logging(
             orchestrator,
             refresh_source=source,
             mode=mode_str,
@@ -766,8 +776,8 @@ def _ingest_refresh(args) -> None:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
 
-    # FPR-1721: vectorization follow-up when this refresh touched local_files.
     if "local_files" in stages:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
-        run_vectorization_stage(quiet=quiet)
+        file_ids = _extract_touched_file_ids(results)
+        run_vectorization_stage(quiet=quiet, file_ids=file_ids)
