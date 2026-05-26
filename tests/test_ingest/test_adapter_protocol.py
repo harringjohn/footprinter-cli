@@ -341,13 +341,13 @@ class TestChatAdapterProtocol:
         }
 
         db = MagicMock()
-        ctx = PipeContext(source_config={})
+        ctx = PipeContext(source_config={}, scan_roots=[])
 
         adapter = ChatAdapter()
         result = adapter.run(db, ctx)
 
         assert isinstance(result, PipeResult)
-        assert result.status == PipeStatus.INFO
+        assert result.status == PipeStatus.COMPLETED
         assert result.data["current_chats"] == 5
         assert result.data["current_messages"] == 120
         assert result.data["by_account"] == {"claude": 3, "chatgpt": 2}
@@ -374,7 +374,7 @@ class TestChatAdapterProtocol:
         MockManager.side_effect = Exception("database locked")
 
         db = MagicMock()
-        ctx = PipeContext(source_config={})
+        ctx = PipeContext(source_config={}, scan_roots=[])
 
         adapter = ChatAdapter()
         result = adapter.run(db, ctx)
