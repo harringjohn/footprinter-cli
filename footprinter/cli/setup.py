@@ -714,9 +714,11 @@ def run_interactive_wizard():
     An unnumbered Welcome panel precedes 6 numbered steps: Data Sources,
     Content & Search, Confirm & Write, Claude Desktop, Populate, Summary.
 
-    Access policies are seeded inside Populate, after the orchestrator
-    creates the DB. Claude Desktop runs before Populate so the user can
-    restart Claude Desktop while indexing finishes.
+    Access policies are seeded after the Populate if/else block so they
+    run regardless of whether the user accepts indexing. The function
+    handles a missing DB gracefully (returns {}). Claude Desktop runs
+    before Populate so the user can restart Claude Desktop while
+    indexing finishes.
 
     PromptCancelled and KeyboardInterrupt propagate to the caller
     (``_handle_setup``) which prints the cancellation message and
@@ -828,7 +830,6 @@ def run_interactive_wizard():
             run_orchestrator(answers, connector_results=connector_results)
         except Exception as e:  # Intentional broad catch: setup wizard step must not crash the wizard
             console.print(f"  [yellow]Indexing error: {e}[/yellow]")
-        seed_access_policies()
         if chat_export_path:
             try:
                 chat_result = import_chat_export(chat_export_path)
@@ -846,6 +847,8 @@ def run_interactive_wizard():
         run_vectorization_stage()
     else:
         console.print("  [dim]Skipped. Run later: fp ingest[/dim]")
+
+    seed_access_policies()
 
     # Phase 6: Summary
     _print_phase(6, 6, "Summary")
