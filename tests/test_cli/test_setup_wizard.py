@@ -1225,20 +1225,25 @@ class TestPhaseOrdering:
             f"CSV import must run after run_orchestrator (DB must exist); got {order}"
         )
 
-    def test_access_policies_seeded_silently_in_confirm_write(self):
-        """seed_access_policies runs after write_config and before offer_setup_claude
-        — silently inside Confirm & Write, not as a separate visible phase."""
+    def test_access_policies_seeded_after_orchestrator(self):
+        """seed_access_policies must run after run_orchestrator (which creates the DB).
+
+        On a fresh install the DB doesn't exist until the orchestrator's init_db()
+        runs in Phase 5 (Populate). Seeding before that silently no-ops because
+        connect_db() returns None for a missing DB file.
+        """
         order = []
-        write_mock = MagicMock(side_effect=lambda *a, **kw: order.append("write"))
+        orch_mock = MagicMock(side_effect=lambda *a, **kw: order.append("populate"))
         seed_mock = MagicMock(side_effect=lambda *a, **kw: order.append("seed"))
-        claude_mock = MagicMock(side_effect=lambda *a, **kw: order.append("claude") or False)
         run_wizard_mocked(
-            write_config=write_mock,
+            run_orchestrator=orch_mock,
             seed_access_policies=seed_mock,
-            offer_setup_claude=claude_mock,
         )
-        assert order == ["write", "seed", "claude"], (
-            f"Expected write -> seed -> claude, got: {order}"
+        assert "populate" in order and "seed" in order, (
+            f"Both populate and seed must be called; got: {order}"
+        )
+        assert order.index("populate") < order.index("seed"), (
+            f"seed_access_policies must run after run_orchestrator; got: {order}"
         )
 
     def test_content_phase_runs_after_data_sources(self):
