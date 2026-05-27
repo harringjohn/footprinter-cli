@@ -313,8 +313,11 @@ def _write_back_visibility(conn: sqlite3.Connection, entity_type: str, results: 
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_view = ? WHERE id = ?",
-        [("inherit" if _is_inherit_source(source) else state, eid) for eid, (state, source) in results.items()],
+        f"UPDATE {table} SET mcp_view = ?, mcp_view_source = ? WHERE id = ?",
+        [
+            ("inherit", None, eid) if _is_inherit_source(source) else (state, source, eid)
+            for eid, (state, source) in results.items()
+        ],
     )
 
 
@@ -327,9 +330,9 @@ def _write_back_permissions(conn: sqlite3.Connection, entity_type: str, results:
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_read = ? WHERE id = ?",
+        f"UPDATE {table} SET mcp_read = ?, mcp_read_source = ? WHERE id = ?",
         [
-            ("inherit" if _is_inherit_source(source) else ("allow" if allowed else "deny"), eid)
+            ("inherit", None, eid) if _is_inherit_source(source) else ("allow" if allowed else "deny", source, eid)
             for eid, (allowed, source) in results.items()
         ],
     )

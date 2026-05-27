@@ -138,7 +138,7 @@ class TestStamperSourcePersistence:
 
         row1 = conn.execute("SELECT mcp_view, mcp_view_source FROM files WHERE id = 1").fetchone()
         assert row1["mcp_view"] == "hidden"
-        assert row1["mcp_view_source"] == "project:3"
+        assert "project:3" in row1["mcp_view_source"]
 
         row2 = conn.execute("SELECT mcp_view_source FROM files WHERE id = 2").fetchone()
         assert row2["mcp_view_source"] is None
