@@ -171,6 +171,18 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_folder_by_relative_path(conn: sqlite3.Connection, relative_path: str) -> dict | None:
+    """Look up a folder by relative_path. Returns dict or None."""
+    row = conn.execute(
+        """SELECT id, path, relative_path, name, source,
+                  direct_file_count, total_size_bytes, scanned_at,
+                  project_id, external_id, account, mcp_view, mcp_read
+           FROM folders WHERE relative_path = ?""",
+        (relative_path,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def get_folder_navigation(
     conn: sqlite3.Connection,
     folder_id: int,
