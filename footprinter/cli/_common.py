@@ -290,7 +290,8 @@ def enrich_verbose_access(
             r["access_source"] = "—"
         elif r["mcp_read"] not in (None, "inherit"):
             r["access"] = "allow" if r["mcp_read"] == "allow" else "deny"
-            r["access_source"] = "cached"
+            stored = r.get("mcp_read_source")
+            r["access_source"] = stored if stored else "cached"
         else:
             resolved = resolve_inherit_permission(r["mcp_read"])
             r["access"] = resolved
@@ -299,6 +300,9 @@ def enrich_verbose_access(
             else:
                 r["access_source"] = "default"
         r["visibility"] = resolve_inherit_visibility(r.get("mcp_view"))
+        vis_stored = r.get("mcp_view_source")
+        if vis_stored:
+            r["visibility_source"] = vis_stored
 
 
 def verbose_access_cells(row: dict) -> list[str]:
