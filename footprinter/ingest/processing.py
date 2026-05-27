@@ -113,8 +113,8 @@ def run_vectorization(
 
     Args:
         db: Database instance.
-        full_mode: When True, re-embed every non-removed file
-            (listed and unlisted) by dropping the ``vectorized_at IS NULL`` clause.
+        full_mode: When True, re-embed every listed file
+            by dropping the ``vectorized_at IS NULL`` clause.
         on_progress: Optional callback fired with cumulative file count
             after each file is processed.
         file_ids: When provided, scope vectorization to only these file IDs.
@@ -142,7 +142,7 @@ def run_vectorization(
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 
     if file_ids is not None:
-        where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        where = "status = 'listed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
         if len(file_ids) <= 500:
             placeholders = ",".join("?" * len(file_ids))
             where += f" AND id IN ({placeholders})"
@@ -154,7 +154,7 @@ def run_vectorization(
             where += " AND id IN (SELECT file_id FROM _vec_scope)"
             rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
     else:
-        where = "status != 'removed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        where = "status = 'listed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
         if not full_mode:
             where += " AND vectorized_at IS NULL"
         rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
