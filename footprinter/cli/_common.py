@@ -265,10 +265,10 @@ def enrich_verbose_access(
 ) -> None:
     """Annotate rows in-place with resolved access fields.
 
-    Replaces raw ``mcp_*`` keys with a five-field access block appended
+    Replaces raw ``mcp_*`` keys with a six-field access block appended
     in order: ``mcp_view``, ``mcp_read``, ``visibility``, ``access``,
-    ``access_source``.  Internal provenance columns (``mcp_view_source``,
-    ``mcp_read_source``) are consumed then removed.
+    ``access_source``, ``visibility_source``.  Internal provenance columns
+    (``mcp_view_source``, ``mcp_read_source``) are consumed then removed.
 
     No-op if *rows* is empty.
     """
@@ -279,7 +279,7 @@ def enrich_verbose_access(
         mcp_read_present = "mcp_read" in r
         mcp_read = r.pop("mcp_read", None)
         read_source = r.pop("mcp_read_source", None)
-        r.pop("mcp_view_source", None)
+        view_source = r.pop("mcp_view_source", None)
 
         if not mcp_read_present:
             access = "—"
@@ -294,15 +294,23 @@ def enrich_verbose_access(
             else:
                 access_source = "default"
 
+        if mcp_view not in (None, "inherit"):
+            visibility_source = view_source if view_source else "cached"
+        elif mcp_view == "inherit":
+            visibility_source = "global" if _access.is_global_policy_loaded() else "baseline"
+        else:
+            visibility_source = "default"
+
         r["mcp_view"] = mcp_view
         r["mcp_read"] = mcp_read
         r["visibility"] = resolve_inherit_visibility(mcp_view)
         r["access"] = access
         r["access_source"] = access_source
+        r["visibility_source"] = visibility_source
 
 
 def verbose_access_cells(row: dict) -> list[str]:
-    """Return [mcp_view, mcp_read, visibility, access, source] with Rich color markup."""
+    """Return [mcp_view, mcp_read, visibility, access, source, vis_source] with Rich color markup."""
     vis_colors = {"visible": "green", "opaque": "yellow", "hidden": "red"}
 
     mcp_view = row.get("mcp_view")
@@ -342,7 +350,15 @@ def verbose_access_cells(row: dict) -> list[str]:
     else:
         source_cell = source
 
-    return [mcp_view_cell, mcp_read_cell, vis_cell, access_cell, source_cell]
+    vis_source = row.get("visibility_source")
+    if vis_source is None or vis_source == "—":
+        vis_source_cell = "[dim]—[/dim]"
+    elif vis_source == source:
+        vis_source_cell = "[dim]≡[/dim]"
+    else:
+        vis_source_cell = vis_source
+
+    return [mcp_view_cell, mcp_read_cell, vis_cell, access_cell, source_cell, vis_source_cell]
 
 
 def format_size(size_bytes: int) -> str:
