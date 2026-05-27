@@ -263,7 +263,7 @@ def enrich_verbose_access(
     *,
     id_key: str = "id",
 ) -> None:
-    """Annotate rows in-place with access, access_source, visibility.
+    """Annotate rows in-place with access, access_source, visibility, visibility_source.
 
     Uses ``resolve_inherit_visibility`` / ``resolve_inherit_permission``
     so that ``inherit`` values resolve to the global policy.  Since
@@ -271,14 +271,17 @@ def enrich_verbose_access(
     values resolve to the actual global policy in normal CLI usage.
     The baseline fallback remains as a defence-in-depth measure.
 
-    Three cases based on the ``mcp_read`` key in each row dict:
+    Four cases based on the ``mcp_read`` key in each row dict:
 
-    * **Key absent** (folders, visits): access = "—", source = "—"
+    * **Key absent** (folders): access = "—", source = "—"
     * **Key is None** (truly missing): fails closed, source = "default"
     * **Key is "inherit"**: resolved via global policy (source = "global")
       or baseline (source = "baseline") depending on whether ``load_globals``
       has been called
-    * **Key has a real value**: access from value, source = "cached"
+    * **Key has a real value**: access from value, source = stored
+      ``mcp_read_source`` if present, otherwise "cached" (legacy fallback)
+
+    When ``mcp_view_source`` is present, sets ``visibility_source`` on the row.
 
     No-op if *rows* is empty.
     """

@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 #   display_name  TEXT                    (auto-populated via trigger)
 #   mcp_read      TEXT DEFAULT 'inherit'  CHECK (allow|deny|inherit)
 #   mcp_view      TEXT DEFAULT 'inherit'  CHECK (hidden|opaque|visible|inherit)
+#   mcp_read_source TEXT                  (policy scope that set mcp_read)
+#   mcp_view_source TEXT                  (policy scope that set mcp_view)
 #
 # Data-source entities (files, folders, emails, chats, visits, messages)
 # also have audit timestamp columns:
