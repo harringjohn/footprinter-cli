@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
 
-class TestStageStatus:
+class TestPipeStatus:
     """PipeStatus enum covers all orchestrator status strings."""
 
     def test_has_all_five_values(self):
@@ -47,7 +47,7 @@ class TestErrorType:
         assert issubclass(ErrorType, Enum)
 
 
-class TestStageResult:
+class TestPipeResult:
     """PipeResult dataclass construction and defaults."""
 
     def test_minimal_construction(self):
@@ -89,7 +89,7 @@ class TestStageResult:
         assert "key" not in b.data
 
 
-class TestStageResultFactories:
+class TestPipeResultFactories:
     """Factory classmethods produce correct status and data."""
 
     def test_completed(self):
@@ -141,7 +141,7 @@ class TestStageResultFactories:
         assert result.data == {"chats": 5, "messages": 120}
 
 
-class TestStageResultSerialization:
+class TestPipeResultSerialization:
     """to_dict() output matches legacy orchestrator dict shape."""
 
     def test_completed_dict_shape(self):
@@ -193,7 +193,7 @@ class TestStageResultSerialization:
         assert d["count"] == 10
 
 
-class TestDataSourceAdapterProtocol:
+class TestPipeAdapterProtocol:
     """PipeAdapter is runtime-checkable."""
 
     def test_conforming_class_passes(self):
