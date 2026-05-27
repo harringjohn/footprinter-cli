@@ -230,6 +230,7 @@ def _handle_collection(args) -> None:
         table.add_column("Visibility")
         table.add_column("Access")
         table.add_column("Source")
+        table.add_column("Vis Source")
 
     for row in rows:
         cells = []
