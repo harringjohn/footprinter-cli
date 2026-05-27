@@ -263,49 +263,42 @@ def enrich_verbose_access(
     *,
     id_key: str = "id",
 ) -> None:
-    """Annotate rows in-place with access, access_source, visibility, visibility_source.
+    """Annotate rows in-place with resolved access fields.
 
-    Uses ``resolve_inherit_visibility`` / ``resolve_inherit_permission``
-    so that ``inherit`` values resolve to the global policy.  Since
-    ``open_db()`` calls ``load_globals`` before yielding, ``inherit``
-    values resolve to the actual global policy in normal CLI usage.
-    The baseline fallback remains as a defence-in-depth measure.
-
-    Four cases based on the ``mcp_read`` key in each row dict:
-
-    * **Key absent** (folders): access = "—", source = "—"
-    * **Key is None** (truly missing): fails closed, source = "default"
-    * **Key is "inherit"**: resolved via global policy (source = "global")
-      or baseline (source = "baseline") depending on whether ``load_globals``
-      has been called
-    * **Key has a real value**: access from value, source = stored
-      ``mcp_read_source`` if present, otherwise "cached" (legacy fallback)
-
-    When ``mcp_view_source`` is present, sets ``visibility_source`` on the row.
+    Replaces raw ``mcp_*`` keys with a five-field access block appended
+    in order: ``mcp_view``, ``mcp_read``, ``visibility``, ``access``,
+    ``access_source``.  Internal provenance columns (``mcp_view_source``,
+    ``mcp_read_source``) are consumed then removed.
 
     No-op if *rows* is empty.
     """
     if not rows:
         return
     for r in rows:
-        if "mcp_read" not in r:
-            r["access"] = "—"
-            r["access_source"] = "—"
-        elif r["mcp_read"] not in (None, "inherit"):
-            r["access"] = "allow" if r["mcp_read"] == "allow" else "deny"
-            stored = r.get("mcp_read_source")
-            r["access_source"] = stored if stored else "cached"
+        mcp_view = r.pop("mcp_view", None)
+        mcp_read_present = "mcp_read" in r
+        mcp_read = r.pop("mcp_read", None)
+        read_source = r.pop("mcp_read_source", None)
+        r.pop("mcp_view_source", None)
+
+        if not mcp_read_present:
+            access = "—"
+            access_source = "—"
+        elif mcp_read not in (None, "inherit"):
+            access = "allow" if mcp_read == "allow" else "deny"
+            access_source = read_source if read_source else "cached"
         else:
-            resolved = resolve_inherit_permission(r["mcp_read"])
-            r["access"] = resolved
-            if r["mcp_read"] == "inherit":
-                r["access_source"] = "global" if _access.is_global_policy_loaded() else "baseline"
+            access = resolve_inherit_permission(mcp_read)
+            if mcp_read == "inherit":
+                access_source = "global" if _access.is_global_policy_loaded() else "baseline"
             else:
-                r["access_source"] = "default"
-        r["visibility"] = resolve_inherit_visibility(r.get("mcp_view"))
-        vis_stored = r.get("mcp_view_source")
-        if vis_stored:
-            r["visibility_source"] = vis_stored
+                access_source = "default"
+
+        r["mcp_view"] = mcp_view
+        r["mcp_read"] = mcp_read
+        r["visibility"] = resolve_inherit_visibility(mcp_view)
+        r["access"] = access
+        r["access_source"] = access_source
 
 
 def verbose_access_cells(row: dict) -> list[str]:

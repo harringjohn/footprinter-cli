@@ -148,6 +148,7 @@ def _handle_single(args) -> None:
         sys.exit(1)
 
     if getattr(args, "json", False):
+        enrich_verbose_access([record], entity_type)
         output_json(record)
         return
 

@@ -194,7 +194,7 @@ class TestEnrichSourceDisplay:
         enrich_verbose_access([row], "file")
         assert row["access_source"] in ("global", "baseline")
 
-    def test_enrich_visibility_source_populated(self):
+    def test_enrich_drops_internal_source_fields(self):
         from footprinter.cli._common import enrich_verbose_access
 
         row = {
@@ -204,4 +204,32 @@ class TestEnrichSourceDisplay:
             "mcp_view_source": "folder:~/Work/",
         }
         enrich_verbose_access([row], "file")
-        assert row["visibility_source"] == "folder:~/Work/"
+        assert "mcp_read_source" not in row
+        assert "mcp_view_source" not in row
+        assert "visibility_source" not in row
+
+    def test_enrich_reorders_access_fields(self):
+        from footprinter.cli._common import enrich_verbose_access
+
+        row = {
+            "id": 1,
+            "name": "a.py",
+            "path": "/tmp/a.py",
+            "mcp_view": "visible",
+            "mcp_read": "allow",
+            "mcp_view_source": "source:files",
+            "mcp_read_source": "project:3",
+        }
+        enrich_verbose_access([row], "file")
+        keys = list(row.keys())
+        assert keys[-5:] == ["mcp_view", "mcp_read", "visibility", "access", "access_source"]
+
+    def test_enrich_folder_without_mcp_read(self):
+        from footprinter.cli._common import enrich_verbose_access
+
+        row = {"id": 30, "name": "widget", "mcp_view": "visible"}
+        enrich_verbose_access([row], "folder")
+        keys = list(row.keys())
+        assert keys[-5:] == ["mcp_view", "mcp_read", "visibility", "access", "access_source"]
+        assert row["access"] == "—"
+        assert row["access_source"] == "—"
