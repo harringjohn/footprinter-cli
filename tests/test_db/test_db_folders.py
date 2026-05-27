@@ -6,6 +6,8 @@ mcp_view and mcp_read in returned dicts.
 
 from footprinter.db.folders import (
     get_folder,
+    get_folder_by_path,
+    get_folder_by_relative_path,
     get_folder_navigation,
     list_folders,
     mark_removed_folders,
@@ -502,3 +504,34 @@ class TestRecursiveFileCountWithNestedFolders:
 
         result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
         assert result["recursive_file_count"] == 1
+
+
+class TestGetFolderByRelativePath:
+    """get_folder_by_relative_path looks up folders by the relative_path column."""
+
+    def _insert_folder(self, conn):
+        conn.execute(
+            """INSERT INTO folders
+                (path, relative_path, name, source, mcp_view, mcp_read)
+            VALUES
+                ('/Users/test/Work/demo', '/Work/demo', 'demo', 'local',
+                 'visible', 'allow')"""
+        )
+        conn.commit()
+
+    def test_returns_folder_matching_relative_path(self, tool_db):
+        self._insert_folder(tool_db)
+        result = get_folder_by_relative_path(tool_db, "/Work/demo")
+        assert result is not None
+        assert result["name"] == "demo"
+        assert result["path"] == "/Users/test/Work/demo"
+
+    def test_returns_none_when_no_match(self, tool_db):
+        result = get_folder_by_relative_path(tool_db, "/Nonexistent")
+        assert result is None
+
+    def test_returns_same_columns_as_get_folder_by_path(self, tool_db):
+        self._insert_folder(tool_db)
+        by_path = get_folder_by_path(tool_db, "/Users/test/Work/demo")
+        by_rel = get_folder_by_relative_path(tool_db, "/Work/demo")
+        assert set(by_path.keys()) == set(by_rel.keys())

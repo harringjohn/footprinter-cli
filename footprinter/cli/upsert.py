@@ -285,21 +285,51 @@ def _process_csv_rows(
     return created, updated, errors, error_details
 
 
+def _resolve_folder_by_path(
+    conn: sqlite3.Connection, raw_path: str
+) -> tuple[dict | None, str]:
+    """Resolve a folder path string to a folder row dict.
+
+    Returns (folder_row, resolved_path_str).  *resolved_path_str* is the
+    absolute path that was looked up (useful for error messages).
+
+    Resolution order:
+    1. expanduser() to handle ~/
+    2. If still relative, prepend Path.home() to make absolute
+    3. Try exact match on folders.path
+    4. If no match, strip the home prefix to derive relative_path
+       (e.g. /Work/demo) and try folders.relative_path.  Non-home
+       absolute paths fall through with a no-op fallback.
+    """
+    from footprinter.db.folders import get_folder_by_path, get_folder_by_relative_path
+
+    folder_path = Path(raw_path).expanduser()
+    if not folder_path.is_absolute():
+        folder_path = Path.home() / folder_path
+    path_str = str(folder_path).rstrip("/")
+
+    result = get_folder_by_path(conn, path_str)
+    if result is not None:
+        return result, path_str
+
+    home_str = str(Path.home())
+    rel_path = path_str[len(home_str):] if path_str.startswith(home_str) else path_str
+    return get_folder_by_relative_path(conn, rel_path), path_str
+
+
 def _resolve_folder_row(conn, row: dict, i: int) -> tuple[dict | None, dict | None]:
     """Resolve a folder CSV row to (kwargs, error).
 
     Returns (kwargs_dict, None) on success or (None, error_dict) on failure.
     kwargs_dict has folder_id, project_id, client_id ready for assign().
     """
-    from footprinter.db.folders import get_folder_by_path
-
-    folder_path = os.path.expanduser(row.get("folder_path", "").strip()).rstrip("/")
-    if not folder_path:
+    raw_path = row.get("folder_path", "").strip()
+    if not raw_path:
         return None, {"row": i, "error": "Missing folder_path value"}
 
-    folder_row = get_folder_by_path(conn, folder_path)
+    folder_row, resolved = _resolve_folder_by_path(conn, raw_path)
     if folder_row is None:
-        return None, {"row": i, "error": f"Folder not found: {folder_path!r}"}
+        return None, {"row": i, "error": f"Folder not found: {resolved!r}"}
 
     project_id: int | None = None
     client_id: int | None = None
@@ -699,7 +729,11 @@ def _handle_bulk_assign(args) -> None:
     svc_name, entity_type, _mode = ENTITY_MAP[noun]
     service = _get_service(svc_name)
 
-    folder_path = os.path.expanduser(args.folder).rstrip("/")
+    raw_folder = args.folder.strip()
+    folder_path = Path(raw_folder).expanduser()
+    if not folder_path.is_absolute():
+        folder_path = Path.home() / folder_path
+    folder_path = str(folder_path).rstrip("/")
     project_id = getattr(args, "project_id", None)
     client_id = getattr(args, "client_id", None)
 
@@ -736,12 +770,11 @@ def _handle_bulk_assign(args) -> None:
                 from footprinter.db.folders import (
                     cascade_client_id,
                     cascade_project_id,
-                    get_folder_by_path,
                 )
 
-                folder_row = get_folder_by_path(conn, folder_path)
+                folder_row, resolved = _resolve_folder_by_path(conn, raw_folder)
                 if folder_row is None:
-                    console.print(f"[red]Folder not found: {folder_path}[/red]")
+                    console.print(f"[red]Folder not found: {resolved}[/red]")
                     sys.exit(1)
                 folder_id = folder_row["id"]
 
