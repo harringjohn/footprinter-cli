@@ -87,7 +87,8 @@ def list_emails(
                email.labels, email.has_attachments, email.is_read,
                email.client_id, email.project_id,
                client.name AS client_name, project.project_name,
-               email.mcp_view, email.mcp_read
+               email.mcp_view, email.mcp_read,
+               email.mcp_view_source, email.mcp_read_source
         FROM emails email
         {fts_join}
         LEFT JOIN clients client ON email.client_id = client.id
@@ -122,6 +123,8 @@ def list_emails(
                 "project_name": row["project_name"],
                 "mcp_view": row["mcp_view"],
                 "mcp_read": row["mcp_read"],
+                "mcp_view_source": row["mcp_view_source"],
+                "mcp_read_source": row["mcp_read_source"],
             }
         )
 
@@ -171,6 +174,8 @@ def get_email(conn: sqlite3.Connection, email_id: int) -> Optional[dict]:
         "metadata": row["metadata"] or "",
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
 
 

@@ -158,6 +158,8 @@ class TestEntityExplicitFields:
             "mime_type",
             "mcp_view",
             "mcp_read",
+            "mcp_view_source",
+            "mcp_read_source",
             "project_name",
             "classification",
             "rc_content_type",

@@ -48,7 +48,8 @@ def list_visits(
         SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
                bv.client_id, bv.project_id,
                client.name AS client_name, project.project_name,
-               bv.mcp_view, bv.mcp_read
+               bv.mcp_view, bv.mcp_read,
+               bv.mcp_view_source, bv.mcp_read_source
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
@@ -74,6 +75,8 @@ def list_visits(
             "project_name": r["project_name"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
         }
         for r in rows
     ]
@@ -95,7 +98,8 @@ def get_visit(conn: sqlite3.Connection, entry_id: int) -> dict | None:
                bv.indexed_at, bv.status,
                bv.client_id, bv.project_id,
                client.name AS client_name, project.project_name,
-               bv.mcp_view, bv.mcp_read
+               bv.mcp_view, bv.mcp_read,
+               bv.mcp_view_source, bv.mcp_read_source
         FROM visits bv
         LEFT JOIN clients client ON bv.client_id = client.id
         LEFT JOIN projects project ON bv.project_id = project.id
@@ -121,6 +125,8 @@ def get_visit(conn: sqlite3.Connection, entry_id: int) -> dict | None:
         "project_name": row["project_name"],
         "mcp_view": row["mcp_view"],
         "mcp_read": row["mcp_read"],
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
 
 

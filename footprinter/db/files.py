@@ -52,7 +52,8 @@ def list_files(
     base = """
         SELECT file.id, file.name, file.path, file.source, file.status, file.content_type,
                file.size_bytes, file.modified_at, project.project_name,
-               file.mcp_view, file.mcp_read
+               file.mcp_view, file.mcp_read,
+               file.mcp_view_source, file.mcp_read_source
         FROM files file
         LEFT JOIN projects project ON file.project_id = project.id
     """
@@ -101,6 +102,8 @@ def list_files(
             "project_name": r["project_name"] or "",
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
         }
         for r in rows
     ]
@@ -123,6 +126,7 @@ def get_file(
                file.modified_at, file.indexed_at, file.project_id, file.md5_hash,
                file.external_id, file.account,
                file.mcp_view, file.mcp_read,
+               file.mcp_view_source, file.mcp_read_source,
                project.project_name
         FROM files file
         LEFT JOIN projects project ON file.project_id = project.id
@@ -154,6 +158,8 @@ def get_file(
         "project_name": row["project_name"],
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
 
 

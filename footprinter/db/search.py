@@ -297,7 +297,9 @@ def search_emails_keyword(
         SELECT email.id, email.message_id, email.subject, email.from_address,
                email.from_name, email.to_addresses, email.received_at,
                email.account, email.labels, email.body_preview,
-               email.mcp_view, email.mcp_read, email.status,
+               email.mcp_view, email.mcp_read,
+               email.mcp_view_source, email.mcp_read_source,
+               email.status,
                project.project_name, client.name AS client_name
         FROM emails email
         {fts_join}
@@ -325,6 +327,8 @@ def search_emails_keyword(
             "client_name": r["client_name"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
             "status": r["status"],
         }
         for r in rows
@@ -383,7 +387,8 @@ def search_chats_keyword(
         f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title,
                chat.created_at, chat.modified_at,
-               chat.message_count, chat.mcp_view, chat.mcp_read, chat.status,
+               chat.message_count, chat.mcp_view, chat.mcp_read,
+               chat.mcp_view_source, chat.mcp_read_source, chat.status,
                project.project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
@@ -407,6 +412,8 @@ def search_chats_keyword(
             "client_name": r["client_name"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
             "status": r["status"],
         }
         for r in rows
@@ -457,7 +464,8 @@ def search_browser_keyword(
 
     rows = conn.execute(
         f"""
-        SELECT id, url, title, visit_time, browser, status, mcp_view, mcp_read
+        SELECT id, url, title, visit_time, browser, status, mcp_view, mcp_read,
+               mcp_view_source, mcp_read_source
         FROM visits
         WHERE {where_sql}
         ORDER BY visit_time DESC
@@ -476,6 +484,8 @@ def search_browser_keyword(
             "status": r["status"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
         }
         for r in rows
     ]
@@ -560,6 +570,7 @@ def file_fts5_fallback(
         "SELECT file.id, file.source, file.name, file.path, "
         "file.content_type, file.size_bytes, "
         "file.modified_at, file.mcp_view, file.mcp_read, "
+        "file.mcp_view_source, file.mcp_read_source, "
         "file.status, file.status_reason, file.content_preview "
         "FROM files file "
         "JOIN files_fts fts ON fts.rowid = file.id "
@@ -587,6 +598,8 @@ def file_fts5_fallback(
                 "snippet": snippet,
                 "mcp_view": row["mcp_view"],
                 "mcp_read": row["mcp_read"],
+                "mcp_view_source": row["mcp_view_source"],
+                "mcp_read_source": row["mcp_read_source"],
                 "status": row["status"],
                 "status_reason": row["status_reason"],
             }
@@ -616,7 +629,7 @@ def enrich_chat_visibility(
     status_conds, status_params = _status_clause(status, column="status")
     extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
-        f"SELECT id, account, mcp_view, mcp_read, status FROM chats "
+        f"SELECT id, account, mcp_view, mcp_read, mcp_view_source, mcp_read_source, status FROM chats "
         f"WHERE id IN ({ph}){extra_where}",
         [*chat_ids, *status_params],
     ).fetchall()
@@ -641,7 +654,7 @@ def enrich_file_metadata(
     extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
         f"SELECT id, source, name, path, content_type, size_bytes, "
-        f"modified_at, mcp_view, mcp_read, status, status_reason "
+        f"modified_at, mcp_view, mcp_read, mcp_view_source, mcp_read_source, status, status_reason "
         f"FROM files WHERE id IN ({ph}){extra_where}",
         [*file_ids, *status_params],
     ).fetchall()

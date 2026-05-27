@@ -53,7 +53,8 @@ def list_clients(
     count_sql = f"SELECT COUNT(*) FROM clients client{where}"
     fetch_sql = f"""
         SELECT client.id, client.name, client.slug, client.client_type, client.status,
-               client.mcp_view, client.mcp_read, client.path_pattern,
+               client.mcp_view, client.mcp_read,
+               client.mcp_view_source, client.mcp_read_source, client.path_pattern,
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
@@ -76,6 +77,8 @@ def list_clients(
             "file_count": row["file_count"],
             "mcp_view": row["mcp_view"] or "inherit",
             "mcp_read": row["mcp_read"] or "inherit",
+            "mcp_view_source": row["mcp_view_source"],
+            "mcp_read_source": row["mcp_read_source"],
             "path_pattern": row["path_pattern"] or "",
         }
         for row in rows
@@ -219,7 +222,8 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT id, name, slug, client_type, status, path_pattern,
-                  mcp_view, mcp_read
+                  mcp_view, mcp_read,
+                  mcp_view_source, mcp_read_source
            FROM clients WHERE id = ?""",
         (client_id,),
     )
@@ -236,6 +240,8 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
         "path_pattern": row["path_pattern"] or "",
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
 
     # Attached projects
@@ -273,7 +279,8 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     """
     rows = conn.execute(
         """SELECT id, name, slug, client_type, path_pattern, status,
-                  created_at, mcp_view, mcp_read
+                  created_at, mcp_view, mcp_read,
+                  mcp_view_source, mcp_read_source
            FROM clients WHERE name LIKE ?""",
         (f"%{name}%",),
     ).fetchall()
