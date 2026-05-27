@@ -73,7 +73,8 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     """
     rows = conn.execute(
         """SELECT id, project_name, project_type, root_path, status, client,
-                  description, github_url, mcp_view, mcp_read
+                  description, github_url, mcp_view, mcp_read,
+                  mcp_view_source, mcp_read_source
            FROM projects
            WHERE project_name LIKE ?""",
         (f"%{name}%",),
@@ -121,7 +122,8 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     # Folders (include all — service layer filters by visibility)
     folders = conn.execute(
         """SELECT id, path, name, direct_file_count, total_size_bytes, source,
-                  mcp_view, mcp_read
+                  mcp_view, mcp_read,
+                  mcp_view_source, mcp_read_source
            FROM folders
            WHERE project_id = ?
            ORDER BY path""",
@@ -225,6 +227,7 @@ def list_projects(
         SELECT project.id, project.project_name, project.project_type, project.root_path,
                project.status, client.name AS client, project.description, project.github_url,
                project.root_folder_id, project.mcp_view, project.mcp_read,
+               project.mcp_view_source, project.mcp_read_source,
                root_folder.direct_file_count as root_file_count,
                (SELECT COUNT(*) FROM folders folder
                    WHERE folder.project_id = project.id) as folder_count
@@ -276,6 +279,8 @@ def list_projects(
                 "folder_count": row["folder_count"] or 0,
                 "mcp_view": row["mcp_view"] or "inherit",
                 "mcp_read": row["mcp_read"] or "inherit",
+                "mcp_view_source": row["mcp_view_source"],
+                "mcp_read_source": row["mcp_read_source"],
             }
         )
 
@@ -325,6 +330,7 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
                project.client_id, project.client, project.github_url,
                project.root_folder_id, project.metadata,
                project.mcp_read, project.mcp_view,
+               project.mcp_view_source, project.mcp_read_source,
                project.created_at, project.updated_at,
                client.name AS client_name,
                (SELECT COUNT(*) FROM files file
@@ -358,6 +364,8 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
         "folder_count": row["folder_count"],
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
     return result
 

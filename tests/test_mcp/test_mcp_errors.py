@@ -136,7 +136,9 @@ class TestInformationOracles:
                 status TEXT DEFAULT 'listed',
                 status_reason TEXT,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit'
+                mcp_read TEXT DEFAULT 'inherit',
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""
@@ -151,7 +153,9 @@ class TestInformationOracles:
                 received_at DATETIME,
                 body_preview TEXT,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit'
+                mcp_read TEXT DEFAULT 'inherit',
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""
@@ -164,7 +168,9 @@ class TestInformationOracles:
                 updated_at DATETIME,
                 message_count INTEGER,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit'
+                mcp_read TEXT DEFAULT 'inherit',
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""
@@ -189,7 +195,9 @@ class TestInformationOracles:
                 description TEXT,
                 github_url TEXT,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit'
+                mcp_read TEXT DEFAULT 'inherit',
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""
@@ -202,7 +210,9 @@ class TestInformationOracles:
                 status TEXT,
                 created_at DATETIME,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit'
+                mcp_read TEXT DEFAULT 'inherit',
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""
@@ -219,7 +229,9 @@ class TestInformationOracles:
                 external_id TEXT,
                 account TEXT,
                 mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT
+                mcp_read TEXT,
+                mcp_view_source TEXT,
+                mcp_read_source TEXT
             )
         """)
         cursor.execute("""

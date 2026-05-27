@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 #   display_name  TEXT                    (auto-populated via trigger)
 #   mcp_read      TEXT DEFAULT 'inherit'  CHECK (allow|deny|inherit)
 #   mcp_view      TEXT DEFAULT 'inherit'  CHECK (hidden|opaque|visible|inherit)
+#   mcp_read_source TEXT                  (policy scope that set mcp_read)
+#   mcp_view_source TEXT                  (policy scope that set mcp_view)
 #
 # Data-source entities (files, folders, emails, chats, visits, messages)
 # also have audit timestamp columns:
@@ -163,6 +165,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -256,6 +260,8 @@ class SchemaMixin:
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
                 mcp_read TEXT DEFAULT 'inherit'
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
+                mcp_view_source TEXT,
+                mcp_read_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -299,6 +305,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Origin timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -352,6 +360,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -398,6 +408,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Client/project association
                 client_id INTEGER REFERENCES clients(id),
@@ -448,6 +460,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Display
                 display_name TEXT,
@@ -498,6 +512,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -544,6 +560,8 @@ class SchemaMixin:
                     CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
                 mcp_view TEXT DEFAULT 'inherit'
                     CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
+                mcp_read_source TEXT,
+                mcp_view_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -731,6 +749,7 @@ class SchemaMixin:
                 END
             """)
 
+        self._ensure_source_columns()
         self.conn.commit()
 
         # Seed the sources registry from config
@@ -741,6 +760,16 @@ class SchemaMixin:
             registry.seed_from_config()
         except Exception as e:
             logger.warning(f"Could not seed sources from config: {e}")
+
+    def _ensure_source_columns(self):
+        """Add mcp_view_source/mcp_read_source to entity tables (idempotent upgrade)."""
+        for table in ACCESS_CONTROL_TABLES:
+            for col in ("mcp_view_source", "mcp_read_source"):
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
 
     # ========================================
     # FTS Trigger Management

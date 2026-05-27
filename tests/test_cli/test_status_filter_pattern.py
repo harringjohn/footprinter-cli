@@ -30,6 +30,8 @@ def conn():
         "  status TEXT DEFAULT 'listed',"
         "  mcp_read TEXT DEFAULT 'inherit',"
         "  mcp_view TEXT DEFAULT 'inherit',"
+        "  mcp_read_source TEXT,"
+        "  mcp_view_source TEXT,"
         "  client_id INTEGER,"
         "  assignment_source TEXT,"
         "  project_id INTEGER,"

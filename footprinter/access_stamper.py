@@ -305,31 +305,34 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
 
 
 def _write_back_visibility(conn: sqlite3.Connection, entity_type: str, results: dict[int, tuple]) -> None:
-    """Batch UPDATE mcp_view from resolve results.
+    """Batch UPDATE mcp_view and mcp_view_source from resolve results.
 
     Entities whose visibility comes from the global policy or the hardcoded
-    baseline are written as ``'inherit'`` — the MCP layer resolves them at
-    query time.  Entities with a specific policy get the resolved value.
+    baseline are written as ``'inherit'`` with ``mcp_view_source = NULL``.
+    Entities with a specific policy get the resolved value and source scope.
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_view = ? WHERE id = ?",
-        [("inherit" if _is_inherit_source(source) else state, eid) for eid, (state, source) in results.items()],
+        f"UPDATE {table} SET mcp_view = ?, mcp_view_source = ? WHERE id = ?",
+        [
+            ("inherit", None, eid) if _is_inherit_source(source) else (state, source, eid)
+            for eid, (state, source) in results.items()
+        ],
     )
 
 
 def _write_back_permissions(conn: sqlite3.Connection, entity_type: str, results: dict[int, tuple]) -> None:
-    """Batch UPDATE mcp_read from resolve results.
+    """Batch UPDATE mcp_read and mcp_read_source from resolve results.
 
     Entities whose permission comes from the global policy or the hardcoded
-    baseline are written as ``'inherit'`` — the MCP layer resolves them at
-    query time.  Entities with a specific policy get the resolved value.
+    baseline are written as ``'inherit'`` with ``mcp_read_source = NULL``.
+    Entities with a specific policy get the resolved value and source scope.
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_read = ? WHERE id = ?",
+        f"UPDATE {table} SET mcp_read = ?, mcp_read_source = ? WHERE id = ?",
         [
-            ("inherit" if _is_inherit_source(source) else ("allow" if allowed else "deny"), eid)
+            ("inherit", None, eid) if _is_inherit_source(source) else ("allow" if allowed else "deny", source, eid)
             for eid, (allowed, source) in results.items()
         ],
     )

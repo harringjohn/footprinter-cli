@@ -73,7 +73,8 @@ def list_chats(
     fetch_sql = f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title, chat.message_count,
                chat.created_at, chat.modified_at, chat.status, chat.merged_into_id,
-               chat.mcp_view, chat.mcp_read
+               chat.mcp_view, chat.mcp_read,
+               chat.mcp_view_source, chat.mcp_read_source
         FROM chats chat
         {where}
         ORDER BY {sort_col_sql} {order_sql}
@@ -94,6 +95,8 @@ def list_chats(
             "merged_into_id": r["merged_into_id"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
+            "mcp_view_source": r["mcp_view_source"],
+            "mcp_read_source": r["mcp_read_source"],
         }
         for r in rows
     ]
@@ -123,6 +126,7 @@ def get_chat_detail(
                chat.created_at, chat.modified_at, chat.status, chat.merged_into_id,
                chat.client_id, chat.project_id,
                chat.mcp_view, chat.mcp_read,
+               chat.mcp_view_source, chat.mcp_read_source,
                project.project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
@@ -151,6 +155,8 @@ def get_chat_detail(
         "client_name": row["client_name"],
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
+        "mcp_view_source": row["mcp_view_source"],
+        "mcp_read_source": row["mcp_read_source"],
     }
 
     msg_cursor = conn.execute(
