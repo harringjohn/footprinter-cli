@@ -523,19 +523,19 @@ Seeding uses `INSERT OR IGNORE`, so it never overwrites existing policies. Runni
 
 ### Security Posture
 
-Footprinter uses a **fail-open** read-permission posture by design. As a personal tool managing local data, the default is that everything indexed is readable by AI assistants. Visibility defaults are more conservative — metadata is hidden until `fp setup` seeds explicit policies.
+Footprinter uses a **fail-open** read-permission posture by design. As a personal tool managing local data, the default is that everything indexed is readable by AI assistants. Visibility defaults are more conservative — metadata is restricted to minimal fields (opaque) until `fp setup` seeds explicit policies.
 
 Two layers control this:
 
 | Layer | Constant | Default | Effect |
 |-------|----------|---------|--------|
 | **Hardcoded baseline** | `BASELINE_PERMISSION = True` | Allow | When zero policy rows exist, all reads are permitted |
-| **Hardcoded baseline** | `BASELINE_VISIBILITY = 'opaque'` | Opaque | When zero policy rows exist, metadata is hidden (conservative) |
+| **Hardcoded baseline** | `BASELINE_VISIBILITY = 'opaque'` | Opaque | When zero policy rows exist, metadata is restricted to minimal fields (conservative) |
 | **Seeded policies** | *(created by `fp setup`)* | Allow + Visible | Explicit `global` rows that override baselines |
 
 The distinction matters:
 
-- **Hardcoded baselines** are fallback constants in `permissions.py` and `visibility.py`. They apply only when the policy tables are completely empty (e.g., before running `fp setup`). The permission baseline is permissive (allow reads); the visibility baseline is conservative (hide metadata).
+- **Hardcoded baselines** are fallback constants in `permissions.py` and `visibility.py`. They apply only when the policy tables are completely empty (e.g., before running `fp setup`). The permission baseline is permissive (allow reads); the visibility baseline is conservative (opaque — minimal fields only).
 - **Seeded policies** are database rows created by `fp setup`. They make the open-access posture explicit and manageable — you can narrow them with `fp mcp set` commands.
 
 To switch to deny-by-default (metadata-only — metadata visible, content denied):
