@@ -309,7 +309,32 @@ def enrich_verbose_access(
 
 
 def verbose_access_cells(row: dict) -> list[str]:
-    """Return [access_cell, visibility_cell] with Rich color markup."""
+    """Return [mcp_view, mcp_read, visibility, access, source] with Rich color markup."""
+    vis_colors = {"visible": "green", "opaque": "yellow", "hidden": "red"}
+
+    mcp_view = row.get("mcp_view")
+    if mcp_view is None:
+        mcp_view_cell = "[dim]—[/dim]"
+    elif mcp_view == "inherit":
+        mcp_view_cell = "[dim]inherit[/dim]"
+    else:
+        vc = vis_colors.get(mcp_view, "white")
+        mcp_view_cell = f"[{vc}]{mcp_view}[/{vc}]"
+
+    mcp_read = row.get("mcp_read")
+    if mcp_read is None:
+        mcp_read_cell = "[dim]—[/dim]"
+    elif mcp_read == "inherit":
+        mcp_read_cell = "[dim]inherit[/dim]"
+    elif mcp_read == "allow":
+        mcp_read_cell = "[green]allow[/green]"
+    else:
+        mcp_read_cell = "[red]deny[/red]"
+
+    visibility = row.get("visibility", "opaque")
+    vis_color = vis_colors.get(visibility, "white")
+    vis_cell = f"[{vis_color}]{visibility}[/{vis_color}]"
+
     access = row.get("access", "deny")
     if access == "—":
         access_cell = "[dim]—[/dim]"
@@ -318,12 +343,13 @@ def verbose_access_cells(row: dict) -> list[str]:
     else:
         access_cell = "[red]deny[/red]"
 
-    visibility = row.get("visibility", "opaque")
-    vis_colors = {"visible": "green", "opaque": "yellow", "hidden": "red"}
-    vis_color = vis_colors.get(visibility, "white")
-    vis_cell = f"[{vis_color}]{visibility}[/{vis_color}]"
+    source = row.get("access_source")
+    if source is None or source == "—":
+        source_cell = "[dim]—[/dim]"
+    else:
+        source_cell = source
 
-    return [access_cell, vis_cell]
+    return [mcp_view_cell, mcp_read_cell, vis_cell, access_cell, source_cell]
 
 
 def format_size(size_bytes: int) -> str:

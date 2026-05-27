@@ -224,8 +224,11 @@ def _handle_collection(args) -> None:
             kwargs["justify"] = justify
         table.add_column(header, **kwargs)
     if verbose:
-        table.add_column("Access")
+        table.add_column("mcp_view")
+        table.add_column("mcp_read")
         table.add_column("Visibility")
+        table.add_column("Access")
+        table.add_column("Source")
 
     for row in rows:
         cells = []
