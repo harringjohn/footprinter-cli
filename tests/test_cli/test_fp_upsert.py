@@ -454,14 +454,14 @@ class TestUpsertFoldersCsv:
     @patch("footprinter.cli.upsert.open_db")
     def test_csv_tilde_path_resolves_via_expanduser(self, mock_open_db, tmp_path):
         """~/Work/sample-tool should expand to absolute and match path column."""
-        import os
+        from pathlib import Path
 
         _patched_open_db(mock_open_db)
         csv_path = _write_csv(tmp_path, [
             "folder_path,project_id",
             "~/Work/sample-tool,5",
         ])
-        expected_abs = os.path.expanduser("~/Work/sample-tool")
+        expected_abs = str(Path("~/Work/sample-tool").expanduser())
         with (
             patch(
                 "footprinter.db.folders.get_folder_by_path",
