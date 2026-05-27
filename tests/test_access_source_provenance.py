@@ -1,4 +1,4 @@
-"""Tests for FPR-1789 — access_source provenance tracking."""
+"""Tests for access_source provenance tracking."""
 
 import sqlite3
 
