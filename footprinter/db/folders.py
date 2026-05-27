@@ -180,7 +180,8 @@ def get_folder_by_relative_path(conn: sqlite3.Connection, relative_path: str) ->
     row = conn.execute(
         """SELECT id, path, relative_path, name, source,
                   direct_file_count, total_size_bytes, scanned_at,
-                  project_id, external_id, account, mcp_view, mcp_read
+                  project_id, external_id, account, mcp_view, mcp_read,
+                  mcp_view_source, mcp_read_source
            FROM folders WHERE relative_path = ?""",
         (relative_path,),
     ).fetchone()
