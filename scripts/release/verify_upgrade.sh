@@ -344,9 +344,12 @@ for name, table in entities:
 
 conn.close()
 print(json.dumps(snapshot))
-")
+" 2>&1) || true
 
-COUNTS_OK=$("$VENV_PY" -c "
+if [ -z "$POST_SNAPSHOT" ]; then
+    fail "could not capture post-upgrade entity counts (Python error)"
+else
+    COUNTS_OK=$("$VENV_PY" -c "
 import json, sys
 pre = json.loads(sys.argv[1])
 post = json.loads(sys.argv[2])
@@ -358,17 +361,18 @@ for entity in pre:
         print(f'  {entity}: {pre_total} -> {post_total} (LOST ROWS)', file=sys.stderr)
         ok = False
 print('yes' if ok else 'no')
-" "$PRE_SNAPSHOT" "$POST_SNAPSHOT")
+" "$PRE_SNAPSHOT" "$POST_SNAPSHOT" 2>&1) || true
 
-if [ "$COUNTS_OK" = "yes" ]; then
-    pass "entity counts survived upgrade"
-else
-    fail "entity counts changed after upgrade"
+    if [ "$COUNTS_OK" = "yes" ]; then
+        pass "entity counts survived upgrade"
+    else
+        fail "entity counts changed after upgrade"
+    fi
 fi
 
 # 2. No NULL status values
 NULL_COUNT=$("$VENV_PY" -c "
-import os, sqlite3
+import os, sys, sqlite3
 conn = sqlite3.connect(os.environ['FOOTPRINTER_DB_PATH'])
 tables = ['clients', 'projects', 'folders', 'files', 'chats', 'messages', 'emails', 'visits']
 total_null = 0
@@ -376,21 +380,23 @@ for t in tables:
     row = conn.execute(f'SELECT COUNT(*) FROM {t} WHERE status IS NULL').fetchone()
     count = row[0]
     if count > 0:
-        print(f'  {t}: {count} NULL status rows', flush=True)
+        print(f'  {t}: {count} NULL status rows', file=sys.stderr)
     total_null += count
 conn.close()
 print(total_null)
-")
+" 2>&1) || true
 
 if [ "$NULL_COUNT" = "0" ]; then
     pass "no NULL status values post-upgrade"
+elif [ -z "$NULL_COUNT" ] || ! [[ "$NULL_COUNT" =~ ^[0-9]+$ ]]; then
+    fail "could not check NULL status values (Python error)"
 else
     fail "${NULL_COUNT} rows have NULL status after upgrade"
 fi
 
 # 3. No legacy status values (active/hidden)
 LEGACY_COUNT=$("$VENV_PY" -c "
-import os, sqlite3
+import os, sys, sqlite3
 conn = sqlite3.connect(os.environ['FOOTPRINTER_DB_PATH'])
 tables = ['clients', 'projects', 'folders', 'files', 'chats', 'messages', 'emails', 'visits']
 total_legacy = 0
@@ -400,14 +406,16 @@ for t in tables:
     ).fetchone()
     count = row[0]
     if count > 0:
-        print(f'  {t}: {count} legacy status rows', flush=True)
+        print(f'  {t}: {count} legacy status rows', file=sys.stderr)
     total_legacy += count
 conn.close()
 print(total_legacy)
-")
+" 2>&1) || true
 
 if [ "$LEGACY_COUNT" = "0" ]; then
     pass "no legacy status values post-upgrade"
+elif [ -z "$LEGACY_COUNT" ] || ! [[ "$LEGACY_COUNT" =~ ^[0-9]+$ ]]; then
+    fail "could not check legacy status values (Python error)"
 else
     fail "${LEGACY_COUNT} rows have legacy status values after upgrade"
 fi
