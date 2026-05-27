@@ -535,3 +535,28 @@ class TestUpsertFoldersCsv:
         result = json.loads(stdout)
         assert result["errors"] == 1
         assert result["assigned"] == 0
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_folder_flag_relative_path_resolves(self, mock_open_db):
+        """--folder Work/sample-tool resolves via relative_path fallback."""
+        _patched_open_db(mock_open_db)
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value=None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+                return_value={"id": 10},
+            ),
+            patch(
+                "footprinter.db.folders.cascade_project_id",
+                return_value={"folders_updated": 1, "files_updated": 0},
+            ),
+        ):
+            _, _, code = run_fp(
+                "upsert", "folders", "--folder", "Work/sample-tool",
+                "--project-id", "1",
+            )
+
+        assert code == 0

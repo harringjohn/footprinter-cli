@@ -724,7 +724,13 @@ def _handle_bulk_assign(args) -> None:
     svc_name, entity_type, _mode = ENTITY_MAP[noun]
     service = _get_service(svc_name)
 
-    folder_path = os.path.expanduser(args.folder).rstrip("/")
+    from pathlib import Path
+
+    raw_folder = args.folder.strip()
+    folder_path = Path(raw_folder).expanduser()
+    if not folder_path.is_absolute():
+        folder_path = Path.home() / folder_path
+    folder_path = str(folder_path).rstrip("/")
     project_id = getattr(args, "project_id", None)
     client_id = getattr(args, "client_id", None)
 
@@ -761,12 +767,11 @@ def _handle_bulk_assign(args) -> None:
                 from footprinter.db.folders import (
                     cascade_client_id,
                     cascade_project_id,
-                    get_folder_by_path,
                 )
 
-                folder_row = get_folder_by_path(conn, folder_path)
+                folder_row = _resolve_folder_by_path(conn, raw_folder)
                 if folder_row is None:
-                    console.print(f"[red]Folder not found: {folder_path}[/red]")
+                    console.print(f"[red]Folder not found: {raw_folder}[/red]")
                     sys.exit(1)
                 folder_id = folder_row["id"]
 
