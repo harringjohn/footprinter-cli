@@ -235,9 +235,15 @@ class TestUpsertFoldersCsv:
             "/nonexistent,5",
             "/also/missing,3",
         ])
-        with patch(
-            "footprinter.db.folders.get_folder_by_path",
-            return_value=None,
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value=None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+                return_value=None,
+            ),
         ):
             stdout, _, code = run_fp(
                 "upsert", "folders", csv_path, "--commit", "--json",
@@ -261,6 +267,10 @@ class TestUpsertFoldersCsv:
             patch(
                 "footprinter.db.folders.get_folder_by_path",
                 side_effect=lambda conn, p: {"id": 10, "project_id": None} if p == "/tmp/docs" else None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+                return_value=None,
             ),
             patch(
                 "footprinter.services.folder_service.assign",
@@ -411,3 +421,117 @@ class TestUpsertFoldersCsv:
         result = json.loads(stdout)
         assert result["would_assign"] == 1
         assert result["already_matched"] == 0
+
+    # -- path resolution (FPR-1792) ----------------------------------------
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_bare_relative_path_resolves(self, mock_open_db, tmp_path):
+        """Bare relative path like Work/sample-tool resolves via relative_path fallback."""
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "folder_path,project_id",
+            "Work/sample-tool,5",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value=None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+                return_value={"id": 10, "project_id": None},
+            ),
+            patch(
+                "footprinter.services.folder_service.assign",
+                return_value={"id": 10, "project_id": 5},
+            ) as mock_assign,
+        ):
+            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+
+        assert code == 0
+        mock_assign.assert_called_once()
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_tilde_path_resolves_via_expanduser(self, mock_open_db, tmp_path):
+        """~/Work/sample-tool should expand to absolute and match path column."""
+        import os
+
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "folder_path,project_id",
+            "~/Work/sample-tool,5",
+        ])
+        expected_abs = os.path.expanduser("~/Work/sample-tool")
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                side_effect=lambda conn, p: {"id": 10, "project_id": None}
+                if p == expected_abs
+                else None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+            ) as mock_rel,
+            patch(
+                "footprinter.services.folder_service.assign",
+                return_value={"id": 10, "project_id": 5},
+            ),
+        ):
+            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+
+        assert code == 0
+        mock_rel.assert_not_called()
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_absolute_path_still_works(self, mock_open_db, tmp_path):
+        """Absolute paths should resolve on the first try without fallback."""
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "folder_path,project_id",
+            "/Users/test/Work/demo,5",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value={"id": 10, "project_id": None},
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+            ) as mock_rel,
+            patch(
+                "footprinter.services.folder_service.assign",
+                return_value={"id": 10, "project_id": 5},
+            ),
+        ):
+            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+
+        assert code == 0
+        mock_rel.assert_not_called()
+
+    @patch("footprinter.cli.upsert.open_db")
+    def test_csv_unresolvable_after_fallback(self, mock_open_db, tmp_path):
+        """Path matching neither path nor relative_path still produces a clear error."""
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "folder_path,project_id",
+            "nonexistent/nope,5",
+        ])
+        with (
+            patch(
+                "footprinter.db.folders.get_folder_by_path",
+                return_value=None,
+            ),
+            patch(
+                "footprinter.db.folders.get_folder_by_relative_path",
+                return_value=None,
+            ),
+        ):
+            stdout, _, code = run_fp(
+                "upsert", "folders", csv_path, "--commit", "--json",
+            )
+
+        assert code == 0
+        import json
+        result = json.loads(stdout)
+        assert result["errors"] == 1
+        assert result["assigned"] == 0

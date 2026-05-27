@@ -285,21 +285,46 @@ def _process_csv_rows(
     return created, updated, errors, error_details
 
 
+def _resolve_folder_by_path(conn, raw_path: str) -> dict | None:
+    """Resolve a folder path string to a folder row dict.
+
+    Resolution order:
+    1. expanduser() to handle ~/
+    2. If still relative, prepend Path.home() to make absolute
+    3. Try exact match on folders.path
+    4. If no match, derive relative_path and try folders.relative_path
+    """
+    from pathlib import Path
+
+    from footprinter.db.folders import get_folder_by_path, get_folder_by_relative_path
+
+    folder_path = Path(raw_path).expanduser()
+    if not folder_path.is_absolute():
+        folder_path = Path.home() / folder_path
+    path_str = str(folder_path).rstrip("/")
+
+    result = get_folder_by_path(conn, path_str)
+    if result is not None:
+        return result
+
+    home_str = str(Path.home())
+    rel_path = path_str[len(home_str):] if path_str.startswith(home_str) else path_str
+    return get_folder_by_relative_path(conn, rel_path)
+
+
 def _resolve_folder_row(conn, row: dict, i: int) -> tuple[dict | None, dict | None]:
     """Resolve a folder CSV row to (kwargs, error).
 
     Returns (kwargs_dict, None) on success or (None, error_dict) on failure.
     kwargs_dict has folder_id, project_id, client_id ready for assign().
     """
-    from footprinter.db.folders import get_folder_by_path
-
-    folder_path = os.path.expanduser(row.get("folder_path", "").strip()).rstrip("/")
-    if not folder_path:
+    raw_path = row.get("folder_path", "").strip()
+    if not raw_path:
         return None, {"row": i, "error": "Missing folder_path value"}
 
-    folder_row = get_folder_by_path(conn, folder_path)
+    folder_row = _resolve_folder_by_path(conn, raw_path)
     if folder_row is None:
-        return None, {"row": i, "error": f"Folder not found: {folder_path!r}"}
+        return None, {"row": i, "error": f"Folder not found: {raw_path!r}"}
 
     project_id: int | None = None
     client_id: int | None = None
