@@ -143,6 +143,8 @@ def run_vectorization(
 
     if file_ids is not None:
         where = "status = 'listed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        if not full_mode:
+            where += " AND vectorized_at IS NULL"
         if len(file_ids) <= 500:
             placeholders = ",".join("?" * len(file_ids))
             where += f" AND id IN ({placeholders})"
