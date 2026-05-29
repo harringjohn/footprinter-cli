@@ -1,16 +1,11 @@
-"""fp data — export, template, and import commands for entity CSV data.
+"""fp data — import metadata corrections for data-source entities.
 
-Export current data:
-    ``fp data export clients``
-    ``fp data export files --status active --limit 100``
-
-Generate import-compatible templates:
-    ``fp data template clients``
-    ``fp data template files --file template.csv``
-
-Import metadata corrections for data-source entities:
+Import metadata corrections:
     ``fp data import files corrections.csv``
     ``fp data import files corrections.csv --commit``
+
+Export and template functionality moved to ``fp view`` format flags
+(``--csv``, ``--json``, ``--template``).
 """
 
 import csv
@@ -18,107 +13,6 @@ import sys
 from dataclasses import dataclass, field
 
 from footprinter.cli._common import FORMATTER, add_json_flag, console, open_db, output_json
-from footprinter.cli.upsert import CSV_COLUMNS
-
-# ---------------------------------------------------------------------------
-# Export column specs — derived from CSV_COLUMNS (import column spec)
-# ---------------------------------------------------------------------------
-
-#: Export columns per entity: required + optional from CSV_COLUMNS,
-#: minus client_id for projects (internal DB ID, not user-facing).
-EXPORT_COLUMNS: dict[str, list[str]] = {
-    "client": CSV_COLUMNS["client"][0] + CSV_COLUMNS["client"][1],
-    "project": [c for c in CSV_COLUMNS["project"][0] + CSV_COLUMNS["project"][1] if c != "client_id"],
-}
-
-# ---------------------------------------------------------------------------
-# Export SQL queries (clients/projects only — data-source uses registry)
-# ---------------------------------------------------------------------------
-
-
-def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, list]:
-    """Return (sql, params) for an unbounded export query."""
-    params: list = []
-    if entity_type == "client":
-        sql = "SELECT name, client_type, slug, path_pattern, status FROM clients"
-        if status_filter:
-            sql += " WHERE status = ?"
-            params.append(status_filter)
-        else:
-            sql += " WHERE status = 'listed'"
-        sql += " ORDER BY name"
-    else:
-        sql = (
-            "SELECT p.project_name, p.root_path, "
-            "COALESCE(c.name, '') AS client, "
-            "p.project_type, p.description, p.github_url, p.status "
-            "FROM projects p LEFT JOIN clients c ON p.client_id = c.id"
-        )
-        if status_filter:
-            sql += " WHERE p.status = ?"
-            params.append(status_filter)
-        else:
-            sql += " WHERE p.status = 'listed'"
-        sql += " ORDER BY p.project_name"
-    return sql, params
-
-
-# ---------------------------------------------------------------------------
-# Template example rows (clients/projects only)
-# ---------------------------------------------------------------------------
-
-TEMPLATE_ROWS: dict[str, list[dict]] = {
-    "client": [
-        {
-            "name": "Acme Corp",
-            "client_type": "external",
-            "slug": "",
-            "path_pattern": "~/Work/clients/acme/",
-            "status": "listed",
-        },
-        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "listed"},
-        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "listed"},
-    ],
-    "project": [
-        {
-            "project_name": "My Web App",
-            "root_path": "~/Work/projects/my-app",
-            "client": "Acme Corp",
-            "project_type": "python",
-            "description": "A web application",
-            "github_url": "",
-            "status": "listed",
-        },
-        {
-            "project_name": "Documentation",
-            "root_path": "~/Work/docs",
-            "client": "",
-            "project_type": "docs",
-            "description": "Internal documentation",
-            "github_url": "",
-            "status": "listed",
-        },
-        {
-            "project_name": "Mobile App",
-            "root_path": "~/Work/mobile",
-            "client": "Internal Tools",
-            "project_type": "typescript",
-            "description": "Mobile app",
-            "github_url": "",
-            "status": "listed",
-        },
-    ],
-}
-
-VALID_VALUES_NOTES: dict[str, dict[str, str]] = {
-    "client": {
-        "client_type": "external, internal, personal",
-        "status": "listed, unlisted, removed",
-    },
-    "project": {
-        "status": "listed, unlisted, removed",
-    },
-}
 
 
 # ---------------------------------------------------------------------------
@@ -404,9 +298,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
     ),
 }
 
-#: All entity nouns accepted by export/template (clients, projects + data-source)
-ALL_EXPORT_NOUNS = ["clients", "projects"] + list(DATA_SOURCE_SPECS.keys())
-
 #: Entity nouns that support import (data-source only)
 IMPORT_NOUNS = list(DATA_SOURCE_SPECS.keys())
 
@@ -414,154 +305,6 @@ IMPORT_NOUNS = list(DATA_SOURCE_SPECS.keys())
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
-
-
-def _write_csv(columns: list[str], rows: list[dict], file_path: str | None) -> None:
-    """Write CSV to file or stdout."""
-    if file_path:
-        with open(file_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({k: v if (v := row.get(k)) is not None else "" for k in columns})
-    else:
-        writer = csv.DictWriter(sys.stdout, fieldnames=columns, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: v if (v := row.get(k)) is not None else "" for k in columns})
-
-
-def _handle_export(args) -> None:
-    """Handle ``fp data export <noun>``."""
-    noun = args.noun
-
-    # Data-source entities go through the registry
-    if noun in DATA_SOURCE_SPECS:
-        _handle_export_data_source(args)
-        return
-
-    # Existing client/project path
-    entity_type = "client" if noun == "clients" else "project"
-    columns = EXPORT_COLUMNS[entity_type]
-
-    status_filter = getattr(args, "status", None)
-    if status_filter:
-        valid = VALID_VALUES_NOTES.get(entity_type, {}).get("status", "")
-        valid_set = {v.strip() for v in valid.split(",")} if valid else set()
-        if valid_set and status_filter not in valid_set:
-            print(
-                f"Unknown status '{status_filter}'. Valid values: {', '.join(sorted(valid_set))}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-    sql, params = _export_query(entity_type, status_filter)
-
-    # Apply limit/offset if provided (OFFSET requires LIMIT in SQLite)
-    limit = getattr(args, "limit", None)
-    offset = getattr(args, "offset", None)
-    if limit is not None:
-        sql += " LIMIT ?"
-        params.append(limit)
-    elif offset is not None:
-        sql += " LIMIT -1"
-    if offset is not None:
-        sql += " OFFSET ?"
-        params.append(offset)
-
-    with open_db() as conn:
-        cur = conn.execute(sql, params)
-        rows = [dict(r) for r in cur.fetchall()]
-
-    _write_csv(columns, rows, getattr(args, "file", None))
-
-
-def _handle_export_data_source(args) -> None:
-    """Export a data-source entity via the registry."""
-    noun = args.noun
-    spec = DATA_SOURCE_SPECS[noun]
-    columns = spec.export_columns
-    status_filter = getattr(args, "status", None)
-
-    col_list = ", ".join(columns)
-    sql = f"SELECT {col_list} FROM {spec.table}"  # noqa: S608
-    params: list = []
-
-    # Validate status filter against known values
-    if status_filter and spec.has_status:
-        valid = spec.valid_values.get("status", "")
-        valid_set = {v.strip() for v in valid.split(",")} if valid else set()
-        if valid_set and status_filter not in valid_set:
-            print(
-                f"Unknown status '{status_filter}'. Valid values: {', '.join(sorted(valid_set))}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-    # Default: exclude removed rows (for entities with status)
-    if spec.has_status:
-        if status_filter:
-            sql += " WHERE status = ?"
-            params.append(status_filter)
-        else:
-            sql += " WHERE status = 'listed'"
-    elif status_filter:
-        print(
-            f"Entity '{noun}' does not have a status column.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    sql += f" ORDER BY {spec.order_by}"
-
-    # Apply limit/offset (OFFSET requires LIMIT in SQLite)
-    limit = getattr(args, "limit", None)
-    offset = getattr(args, "offset", None)
-    if limit is not None:
-        sql += " LIMIT ?"
-        params.append(limit)
-    elif offset is not None:
-        sql += " LIMIT -1"
-    if offset is not None:
-        sql += " OFFSET ?"
-        params.append(offset)
-
-    with open_db() as conn:
-        cur = conn.execute(sql, params)
-        rows = [dict(r) for r in cur.fetchall()]
-
-    _write_csv(columns, rows, getattr(args, "file", None))
-
-
-def _handle_template(args) -> None:
-    """Handle ``fp data template <noun>``."""
-    noun = args.noun
-
-    # Data-source entities go through the registry
-    if noun in DATA_SOURCE_SPECS:
-        spec = DATA_SOURCE_SPECS[noun]
-        template_columns = [c for c in spec.export_columns if c not in ("mcp_view", "mcp_read")]
-        _write_csv(template_columns, spec.template_rows, getattr(args, "file", None))
-        notes = spec.valid_values
-        if notes:
-            print("\nValid values:", file=sys.stderr)
-            for fld, values in notes.items():
-                print(f"  {fld}: {values}", file=sys.stderr)
-        return
-
-    # Existing client/project path
-    entity_type = "client" if noun == "clients" else "project"
-    columns = EXPORT_COLUMNS[entity_type]
-    rows = TEMPLATE_ROWS[entity_type]
-
-    _write_csv(columns, rows, getattr(args, "file", None))
-
-    # Print valid value notes to stderr
-    notes = VALID_VALUES_NOTES.get(entity_type, {})
-    if notes:
-        print("\nValid values:", file=sys.stderr)
-        for fld, values in notes.items():
-            print(f"  {fld}: {values}", file=sys.stderr)
 
 
 def _handle_import(args) -> None:
@@ -750,67 +493,14 @@ def _handle_import(args) -> None:
 
 
 def register(subparsers) -> None:
-    """Register ``fp data`` with ``export``, ``template``, and ``import`` subcommands."""
+    """Register ``fp data`` with the ``import`` subcommand."""
     data_parser = subparsers.add_parser(
         "data",
-        help="Export data, generate templates, or import metadata corrections",
+        help="Import metadata corrections from CSV",
         formatter_class=FORMATTER,
     )
     data_parser.set_defaults(func=lambda args: data_parser.print_help())
     data_sub = data_parser.add_subparsers(dest="data_action", metavar="ACTION")
-
-    # -- fp data export ---------------------------------------------------
-    export_parser = data_sub.add_parser(
-        "export",
-        help="Export entity data as CSV",
-        formatter_class=FORMATTER,
-    )
-    export_parser.add_argument(
-        "noun",
-        choices=ALL_EXPORT_NOUNS,
-        help="Entity type to export",
-    )
-    export_parser.add_argument(
-        "--file",
-        default=None,
-        help="Write output to file instead of stdout",
-    )
-    export_parser.add_argument(
-        "--status",
-        default=None,
-        help="Filter by status (e.g., active)",
-    )
-    export_parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum number of rows to export",
-    )
-    export_parser.add_argument(
-        "--offset",
-        type=int,
-        default=None,
-        help="Number of rows to skip before exporting",
-    )
-    export_parser.set_defaults(func=_handle_export)
-
-    # -- fp data template -------------------------------------------------
-    template_parser = data_sub.add_parser(
-        "template",
-        help="Generate an import-compatible CSV template",
-        formatter_class=FORMATTER,
-    )
-    template_parser.add_argument(
-        "noun",
-        choices=ALL_EXPORT_NOUNS,
-        help="Entity type for template",
-    )
-    template_parser.add_argument(
-        "--file",
-        default=None,
-        help="Write template to file instead of stdout",
-    )
-    template_parser.set_defaults(func=_handle_template)
 
     # -- fp data import ---------------------------------------------------
     import_parser = data_sub.add_parser(
