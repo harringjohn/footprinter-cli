@@ -25,14 +25,12 @@ def _seeded_format_db():
     assert conn is not None
 
     conn.execute(
-        "INSERT INTO clients (id, name, slug, client_type, path_pattern, status) "
-        "VALUES (1, 'Acme Corp', 'acme', 'external', '~/Work/acme/', 'listed')"
+        "INSERT INTO clients (id, name, slug, client_type, status) "
+        "VALUES (1, 'Acme Corp', 'acme', 'external', 'listed')"
     )
     conn.execute(
-        "INSERT INTO projects (id, project_name, root_path, project_type, "
-        "description, github_url, status, client_id) "
-        "VALUES (1, 'Alpha Project', '~/Work/alpha', 'python', "
-        "'A test project', 'https://github.com/test/alpha', 'listed', 1)"
+        "INSERT INTO projects (id, name, description, status, client_id) "
+        "VALUES (1, 'Alpha Project', 'A test project', 'listed', 1)"
     )
     conn.execute(
         "INSERT INTO files (id, name, path, source, status, content_type, "
@@ -88,7 +86,7 @@ class TestCsvExportColumns:
 
         assert code == 0
         header = _parse_csv_header(stdout)
-        expected = ["name", "client_type", "slug", "path_pattern", "status"]
+        expected = ["name", "client_type", "slug", "status"]
         assert header == expected
 
     def test_csv_projects_has_export_columns(self):
@@ -98,10 +96,7 @@ class TestCsvExportColumns:
 
         assert code == 0
         header = _parse_csv_header(stdout)
-        expected = [
-            "project_name", "root_path", "client", "project_type",
-            "description", "github_url", "status",
-        ]
+        expected = ["name", "client", "description", "status"]
         assert header == expected
 
 

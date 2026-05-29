@@ -117,8 +117,8 @@ ENTITY_COLUMNS: dict[str, list[_Col]] = {
 #: Full export column sets per entity type — used by --csv and --template.
 #: Migrated from data.py DATA_SOURCE_SPECS.export_columns and EXPORT_COLUMNS.
 EXPORT_COLUMNS: dict[str, list[str]] = {
-    "client": ["name", "client_type", "slug", "path_pattern", "status"],
-    "project": ["project_name", "root_path", "client", "project_type", "description", "github_url", "status"],
+    "client": ["name", "client_type", "slug", "status"],
+    "project": ["name", "client", "description", "status"],
     "file": [
         "id", "name", "path", "source", "status", "content_type",
         "size_bytes", "modified_at", "project_id", "client_id", "mcp_view", "mcp_read",
@@ -142,21 +142,19 @@ EXPORT_COLUMNS: dict[str, list[str]] = {
 }
 
 #: Service-layer dict key → export CSV column name (where they differ).
-EXPORT_KEY_MAP: dict[str, dict[str, str]] = {
-    "project": {"name": "project_name", "type": "project_type"},
-}
+EXPORT_KEY_MAP: dict[str, dict[str, str]] = {}
 
 #: Template example rows per entity type — used by --template.
 TEMPLATE_ROWS: dict[str, list[dict]] = {
     "client": [
-        {"name": "Acme Corp", "client_type": "external", "slug": "", "path_pattern": "~/Work/clients/acme/", "status": "listed"},
-        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "listed"},
-        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "listed"},
+        {"name": "Acme Corp", "client_type": "external", "slug": "", "status": "listed"},
+        {"name": "Internal Tools", "client_type": "internal", "slug": "", "status": "listed"},
+        {"name": "Side Project", "client_type": "personal", "slug": "", "status": "listed"},
     ],
     "project": [
-        {"project_name": "My Web App", "root_path": "~/Work/projects/my-app", "client": "Acme Corp", "project_type": "python", "description": "A web application", "github_url": "", "status": "listed"},
-        {"project_name": "Documentation", "root_path": "~/Work/docs", "client": "", "project_type": "docs", "description": "Internal documentation", "github_url": "", "status": "listed"},
-        {"project_name": "Mobile App", "root_path": "~/Work/mobile", "client": "Internal Tools", "project_type": "typescript", "description": "Mobile app", "github_url": "", "status": "listed"},
+        {"name": "My Web App", "client": "Acme Corp", "description": "A web application", "status": "listed"},
+        {"name": "Documentation", "client": "", "description": "Internal documentation", "status": "listed"},
+        {"name": "Mobile App", "client": "Internal Tools", "description": "Mobile app", "status": "listed"},
     ],
     "file": [
         {"id": "1", "name": "readme.md", "path": "/Users/me/Work/readme.md", "source": "local", "status": "listed", "content_type": "markdown", "size_bytes": "1024", "modified_at": "2026-01-15T10:00:00Z", "project_id": "1", "client_id": "1", "mcp_view": "visible", "mcp_read": "allow"},
