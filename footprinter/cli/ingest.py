@@ -79,11 +79,11 @@ def _build_parser(subparsers, name):
     # Sub-subparsers for ingest actions
     subs = parser.add_subparsers(dest="ingest_action", metavar="COMMAND", title="commands (one required)")
 
-    # status
+    # status (deprecated — use fp status)
     status_p = subs.add_parser(
         "status",
-        help="Show pipeline diagnostics",
-        description="Show data counts and pipeline health diagnostics.",
+        help="[deprecated] Use 'fp status' instead",
+        description="[DEPRECATED] Use 'fp status' instead.\n\nShow data counts and pipeline health diagnostics.",
         formatter_class=FORMATTER,
     )
     add_json_flag(status_p)
@@ -627,7 +627,14 @@ def _ingest_preview(args) -> None:
 
 
 def _ingest_status(args) -> None:
-    """Show pipeline diagnostics (data counts)."""
+    """Show pipeline diagnostics (data counts). DEPRECATED: use fp status."""
+    from rich.console import Console as _C
+
+    _C(stderr=True).print(
+        "[yellow]Warning:[/yellow] 'fp ingest status' is deprecated. "
+        "Use [bold]fp status[/bold] instead.",
+    )
+
     from footprinter.paths import get_db_path
 
     db_path = get_db_path()
