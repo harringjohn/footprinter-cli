@@ -137,7 +137,6 @@ def list_projects(
     include: Optional[str] = Query(None, description="Comma-separated includes"),
     status: Optional[str] = Query(None, description="Comma-separated status filter"),
     client: Optional[str] = None,
-    project_type: Optional[str] = None,
     limit: int = Query(50, ge=1, le=MAX_LIMIT),
     page: int = 1,
 ):
@@ -149,7 +148,6 @@ def list_projects(
         include=include_list,
         status=status_list,
         client=client,
-        project_type=project_type,
         limit=limit,
         page=page,
     )

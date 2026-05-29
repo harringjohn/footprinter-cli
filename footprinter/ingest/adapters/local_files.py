@@ -38,7 +38,6 @@ class LocalFilesAdapter:
             registry = SourceRegistry(db.conn)
             folder_path_map, folder_project_map = files_db.build_folder_maps(db.conn)
             relationship_maps = {
-                "project_prefix_map": files_db.build_project_prefix_map(db.conn),
                 "folder_path_map": folder_path_map,
                 "folder_project_map": folder_project_map,
                 "remote_source_names": frozenset(registry.remote_source_names()),

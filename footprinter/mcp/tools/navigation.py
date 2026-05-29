@@ -22,8 +22,6 @@ def footprinter_project(project_name: str) -> dict:
         if result.get("disambiguation"):
             return result
         # Shorten paths for MCP display
-        if "root_path" in result:
-            result["root_path"] = _shorten(result["root_path"])
         for f in result.get("folders", []):
             if "path" in f:
                 f["path"] = _shorten(f["path"])
@@ -37,12 +35,6 @@ def footprinter_client(client_name: str) -> dict:
         result = client_service.resolve_by_name(conn, client_name, role=Role.VIEWER)
         if result is None:
             return mcp_error("NOT_FOUND", internal_message=f"client search: {client_name}")
-        if result.get("disambiguation"):
-            return result
-        # Shorten paths for MCP display
-        for p in result.get("projects", []):
-            if "root_path" in p:
-                p["root_path"] = _shorten(p["root_path"])
         return result
 
 
