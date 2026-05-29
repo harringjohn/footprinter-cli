@@ -1,4 +1,4 @@
-"""Tests for fp setup --check dependency/feature reporting."""
+"""Tests for diagnostic feature reporting (formerly fp setup --check)."""
 
 from unittest.mock import patch
 
@@ -8,7 +8,7 @@ from unittest.mock import patch
 # ---------------------------------------------------------------------------
 def test_core_deps_not_in_optional_table():
     """Core packages (yaml, rich) must not appear in optional features."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {"semantic": {"file_vectorization": False}}
     features = check_optional_features(config)
@@ -23,14 +23,14 @@ def test_core_deps_not_in_optional_table():
 # ---------------------------------------------------------------------------
 def test_semantic_installed_not_enabled():
     """Semantic Search shows 'installed, not enabled' when packages present but config off."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {
         "semantic": {"file_vectorization": False, "chat_vectorization": False},
     }
 
     with patch(
-        "footprinter.cli.setup._is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime", "google.auth")
+        "footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime", "google.auth")
     ):
         features = check_optional_features(config)
 
@@ -44,13 +44,13 @@ def test_semantic_installed_not_enabled():
 # ---------------------------------------------------------------------------
 def test_semantic_installed_enabled():
     """Semantic Search shows enabled when packages present and config on."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {
         "semantic": {"file_vectorization": True},
     }
 
-    with patch("footprinter.cli.setup._is_importable", return_value=True):
+    with patch("footprinter.cli.diagnostics.is_importable", return_value=True):
         features = check_optional_features(config)
 
     semantic = next(f for f in features if f[0] == "Semantic Search")
@@ -63,7 +63,7 @@ def test_semantic_installed_enabled():
 # ---------------------------------------------------------------------------
 def test_semantic_not_installed():
     """Semantic Search shows not installed with inline hint when packages missing."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {"semantic": {"file_vectorization": True}}
 
@@ -72,7 +72,7 @@ def test_semantic_not_installed():
             return False
         return True
 
-    with patch("footprinter.cli.setup._is_importable", side_effect=importable):
+    with patch("footprinter.cli.diagnostics.is_importable", side_effect=importable):
         features = check_optional_features(config)
 
     semantic = next(f for f in features if f[0] == "Semantic Search")
@@ -86,7 +86,7 @@ def test_semantic_not_installed():
 def test_no_google_rows_without_connector():
     """check_optional_features() should NOT return Google Drive or Gmail rows
     when no connector is discovered — even if google.auth is importable."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {
         "google_drive": {"enabled": True},
@@ -94,7 +94,7 @@ def test_no_google_rows_without_connector():
         "semantic": {"file_vectorization": False},
     }
 
-    with patch("footprinter.cli.setup._is_importable", return_value=True):
+    with patch("footprinter.cli.diagnostics.is_importable", return_value=True):
         features = check_optional_features(config)
 
     feature_names = [f[0] for f in features]
@@ -106,7 +106,7 @@ def test_no_google_rows_without_connector():
 
 def test_connector_features_appear_when_discovered():
     """When a connector is discovered, its features appear in the table."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
     from footprinter.connectors import ConnectorSpec
 
     spec = ConnectorSpec(
@@ -131,7 +131,7 @@ def test_connector_features_appear_when_discovered():
     }
 
     with (
-        patch("footprinter.cli.setup._is_importable", return_value=True),
+        patch("footprinter.cli.diagnostics.is_importable", return_value=True),
         patch("footprinter.connectors.discover_connectors", return_value={"google": spec}),
     ):
         features = check_optional_features(config)
@@ -142,76 +142,16 @@ def test_connector_features_appear_when_discovered():
 
 
 # ---------------------------------------------------------------------------
-# 6. --check output excludes git hooks status
-# ---------------------------------------------------------------------------
-def test_check_output_excludes_git_hooks(tmp_path, monkeypatch):
-    """Git hooks status must not appear in --check output, even when hooks are available."""
-    from io import StringIO
-
-    from rich.console import Console
-
-    from footprinter.cli import setup as setup_mod
-
-    minimal_config = {
-        "sources": {"local_files": {"roots": [str(tmp_path)]}},
-        "semantic": {"file_vectorization": False},
-    }
-    monkeypatch.setattr(setup_mod, "get_config", lambda: minimal_config)
-    monkeypatch.setattr(setup_mod, "validate_config", lambda c: ([], []))
-    monkeypatch.setattr(setup_mod, "check_architecture", lambda: None)
-
-    buf = StringIO()
-    test_console = Console(file=buf, force_terminal=False, width=120)
-    monkeypatch.setattr(setup_mod, "console", test_console)
-
-    setup_mod.check_existing_config()
-    output = buf.getvalue()
-
-    assert "Git hooks" not in output, f"'Git hooks' should not appear in --check output. Got:\n{output}"
-
-
-# ---------------------------------------------------------------------------
-# 7. Table rendering has no "Install Hint" column
-# ---------------------------------------------------------------------------
-def test_no_install_hint_column(tmp_path, monkeypatch):
-    """The rendered table must not have an 'Install Hint' column header."""
-    from io import StringIO
-
-    from rich.console import Console
-
-    from footprinter.cli import setup as setup_mod
-
-    # Provide a minimal valid config so check_existing_config() proceeds
-    minimal_config = {
-        "sources": {"local_files": {"roots": [str(tmp_path)]}},
-        "semantic": {"file_vectorization": False},
-    }
-    monkeypatch.setattr(setup_mod, "get_config", lambda: minimal_config)
-    monkeypatch.setattr(setup_mod, "validate_config", lambda c: ([], []))
-    monkeypatch.setattr(setup_mod, "check_architecture", lambda: None)
-    monkeypatch.setattr(setup_mod, "_hooks_available", lambda: False)
-
-    buf = StringIO()
-    test_console = Console(file=buf, force_terminal=False, width=120)
-    monkeypatch.setattr(setup_mod, "console", test_console)
-
-    setup_mod.check_existing_config()
-    output = buf.getvalue()
-
-    assert "Install Hint" not in output, f"'Install Hint' column should be removed. Got:\n{output}"
-
-
-# ---------------------------------------------------------------------------
-# 8. Document Parsing — installed
+# 6. Document Parsing — installed
 # ---------------------------------------------------------------------------
 def test_doc_parsing_installed():
     """Document Parsing shows 'enabled' when all four parse deps are present."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     parse_mods = {"pypdf", "docx", "openpyxl", "pptx"}
 
     all_mods = parse_mods | {"chromadb", "onnxruntime"}
-    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in all_mods):
+    with patch("footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in all_mods):
         features = check_optional_features({})
 
     doc = next(f for f in features if f[0] == "Document Parsing")
@@ -221,16 +161,16 @@ def test_doc_parsing_installed():
 
 
 # ---------------------------------------------------------------------------
-# 9. Document Parsing — not installed
+# 7. Document Parsing — not installed
 # ---------------------------------------------------------------------------
 def test_doc_parsing_not_installed():
     """Document Parsing shows 'not installed' when parse deps are missing."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     def importable(mod):
         return mod in ("chromadb", "onnxruntime")
 
-    with patch("footprinter.cli.setup._is_importable", side_effect=importable):
+    with patch("footprinter.cli.diagnostics.is_importable", side_effect=importable):
         features = check_optional_features({"semantic": {"file_vectorization": False}})
 
     doc = next(f for f in features if f[0] == "Document Parsing")
@@ -239,15 +179,15 @@ def test_doc_parsing_not_installed():
 
 
 # ---------------------------------------------------------------------------
-# 10. Document Parsing — partial install still counts as not installed
+# 8. Document Parsing — partial install still counts as not installed
 # ---------------------------------------------------------------------------
 def test_doc_parsing_partial_install():
     """All four parse modules must be present; partial = not installed."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     partial = {"pypdf", "docx"}
 
-    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in partial):
+    with patch("footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in partial):
         features = check_optional_features({})
 
     doc = next(f for f in features if f[0] == "Document Parsing")
@@ -255,15 +195,15 @@ def test_doc_parsing_partial_install():
 
 
 # ---------------------------------------------------------------------------
-# 11. Adding Document Parsing doesn't change Semantic Search
+# 9. Adding Document Parsing doesn't change Semantic Search
 # ---------------------------------------------------------------------------
 def test_semantic_unchanged_with_parsing():
     """Semantic Search row is independent of Document Parsing state."""
-    from footprinter.cli.setup import check_optional_features
+    from footprinter.cli.diagnostics import check_optional_features
 
     config = {"semantic": {"file_vectorization": True}}
 
-    with patch("footprinter.cli.setup._is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime")):
+    with patch("footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime")):
         features = check_optional_features(config)
 
     semantic = next(f for f in features if f[0] == "Semantic Search")

@@ -115,20 +115,6 @@ class TestBackwardCompatibility:
             main()
             mock_wizard.assert_called_once()
 
-    def test_fp_setup_check_validates_config(self):
-        """fp setup --check → check_existing_config()."""
-        with (
-            patch("footprinter.cli.setup.check_existing_config", return_value=0) as mock_check,
-            patch("sys.argv", ["fp", "--check"]),
-        ):
-            from footprinter.cli.setup import main
-
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
-            mock_check.assert_called_once()
-
-
 class TestOfferSetupClaudeWiring:
     """offer_setup_claude() should be called during wizard flow."""
 
