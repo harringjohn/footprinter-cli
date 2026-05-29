@@ -1379,11 +1379,17 @@ class TestSyncVerifyChunkCounting:
 # ---------------------------------------------------------------------------
 
 
-def _make_preflight_db(files=None, messages=None, chats=None):
-    """Create an in-memory SQLite DB with real tables for preflight testing.
+def _vectorize_from_metadata(metadata_json):
+    """Derive vectorize column value from legacy JSON metadata."""
+    if metadata_json is None:
+        return 1
+    import json
+    meta = json.loads(metadata_json)
+    return meta.get("vectorize", 1)
 
-    Uses real SQLite so json_extract/COALESCE filters execute against actual data.
-    """
+
+def _make_preflight_db(files=None, messages=None, chats=None):
+    """Create an in-memory SQLite DB with real tables for preflight testing."""
     import sqlite3
 
     conn = sqlite3.connect(":memory:")
@@ -1391,22 +1397,27 @@ def _make_preflight_db(files=None, messages=None, chats=None):
     conn.execute(
         "CREATE TABLE files ("
         "  id INTEGER PRIMARY KEY, source TEXT, status TEXT,"
-        "  path TEXT, metadata TEXT, vectorized_at TEXT, modified_at TEXT"
+        "  path TEXT, metadata TEXT, vectorized_at TEXT, modified_at TEXT,"
+        "  vectorize INTEGER DEFAULT 1"
         ")"
     )
     conn.execute(
         "CREATE TABLE messages ("
         "  id INTEGER PRIMARY KEY, chat_id INTEGER, content TEXT,"
-        "  status TEXT, metadata TEXT, vectorized_at TEXT"
+        "  status TEXT, metadata TEXT, vectorized_at TEXT,"
+        "  vectorize INTEGER DEFAULT 1"
         ")"
     )
     conn.execute(
-        "CREATE TABLE chats (  id INTEGER PRIMARY KEY, status TEXT, metadata TEXT,  metadata_vectorized_at TEXT)"
+        "CREATE TABLE chats ("
+        "  id INTEGER PRIMARY KEY, status TEXT, metadata TEXT,"
+        "  metadata_vectorized_at TEXT, vectorize INTEGER DEFAULT 1"
+        ")"
     )
     for f in files or []:
         conn.execute(
-            "INSERT INTO files (id, source, status, path, metadata, vectorized_at, modified_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO files (id, source, status, path, metadata, vectorized_at, modified_at, vectorize)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 f["id"],
                 f.get("source", "local"),
@@ -1415,11 +1426,13 @@ def _make_preflight_db(files=None, messages=None, chats=None):
                 f.get("metadata"),
                 f.get("vectorized_at"),
                 f.get("modified_at"),
+                f.get("vectorize", _vectorize_from_metadata(f.get("metadata"))),
             ),
         )
     for m in messages or []:
         conn.execute(
-            "INSERT INTO messages (id, chat_id, content, status, metadata, vectorized_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO messages (id, chat_id, content, status, metadata, vectorized_at, vectorize)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 m["id"],
                 m.get("chat_id", 1),
@@ -1427,12 +1440,20 @@ def _make_preflight_db(files=None, messages=None, chats=None):
                 m.get("status", "listed"),
                 m.get("metadata"),
                 m.get("vectorized_at"),
+                m.get("vectorize", _vectorize_from_metadata(m.get("metadata"))),
             ),
         )
     for c in chats or []:
         conn.execute(
-            "INSERT INTO chats (id, status, metadata, metadata_vectorized_at) VALUES (?, ?, ?, ?)",
-            (c["id"], c.get("status", "listed"), c.get("metadata"), c.get("metadata_vectorized_at")),
+            "INSERT INTO chats (id, status, metadata, metadata_vectorized_at, vectorize)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                c["id"],
+                c.get("status", "listed"),
+                c.get("metadata"),
+                c.get("metadata_vectorized_at"),
+                c.get("vectorize", _vectorize_from_metadata(c.get("metadata"))),
+            ),
         )
     conn.commit()
     return conn

@@ -223,7 +223,7 @@ ALL_CLI_MODULES = [
     "footprinter.cli.setup",
     "footprinter.cli.search",
     "footprinter.cli.status",
-    "footprinter.cli.vectorize",
+    "footprinter.cli.update",
     "footprinter.cli.mcp_cmd",
     "footprinter.cli.uninstall",
     "footprinter.cli.permission_cmd",

@@ -1,16 +1,21 @@
 """fp update — update existing entity records.
 
 Modify super entities (client, project) by ID, assign data entity
-relationships, update file status, or bulk-update via CSV.
+relationships, update file status, toggle vectorization, or bulk-update
+via CSV.
 
 Single:      ``fp update client 5 --name "New Name"``
 Assign:      ``fp update file 42 --project-id 3``
 Status:      ``fp update file 42 --status unlisted``
+Vectorize:   ``fp update file 42 --vectorize false``
 Bulk assign: ``fp update files --folder /path --project-id 3``
 Bulk CSV:    ``fp update files corrections.csv``
+Review:      ``fp update review [files|messages|chats]``
+Import:      ``fp update import flags.json``
 """
 
 import csv
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -41,10 +46,20 @@ ENTITY_MAP: dict[str, tuple[str, str, str]] = {
     "chat": ("chat_service", "chat", "data_single"),
     "visit": ("visit_service", "visit", "data_single"),
     "folder": ("folder_service", "folder", "data_single"),
+    # message — vectorize only (no assign/status)
+    "message": ("message_service", "message", "data_single"),
     # plural data entities → bulk assign or CSV
     "files": ("file_service", "file", "bulk"),
     "folders": ("folder_service", "folder", "bulk_folder"),
 }
+
+# Entities that support per-record vectorize toggle
+VECTORIZE_ENTITIES: dict[str, str] = {"file": "files", "message": "messages", "chat": "chats"}
+
+# Entities for the review subcommand (plural keys for JSON import compat)
+REVIEW_ENTITIES: dict[str, str] = {"files": "files", "messages": "messages", "chats": "chats"}
+
+VALID_IMPORT_ACTIONS = frozenset({"exclude", "include"})
 
 # ---------------------------------------------------------------------------
 # Per-entity argument specs for single mode (all optional — update, not create)
@@ -170,7 +185,7 @@ def _handle_single(args) -> None:
 
 
 def _handle_data_single(args) -> None:
-    """Handle data entity update: assign, status, or both."""
+    """Handle data entity update: assign, status, vectorize, or combination."""
     from footprinter.services.roles import Role
 
     noun = args.noun
@@ -180,15 +195,17 @@ def _handle_data_single(args) -> None:
     project_id = getattr(args, "project_id", None)
     client_id = getattr(args, "client_id", None)
     status = getattr(args, "status", None)
+    vectorize_val = getattr(args, "vectorize", None)
 
     has_assign = project_id is not None or client_id is not None
     has_status = status is not None and entity_type == "file"
+    has_vectorize = vectorize_val is not None and noun in VECTORIZE_ENTITIES
 
-    if not has_assign and not has_status:
+    if not has_assign and not has_status and not has_vectorize:
         if getattr(args, "json", False):
-            output_json({"error": f"At least one of --project-id, --client-id, or --status is required"})
+            output_json({"error": "At least one of --project-id, --client-id, --status, or --vectorize is required"})
         else:
-            console.print("[red]At least one of --project-id, --client-id, or --status is required.[/red]")
+            console.print("[red]At least one of --project-id, --client-id, --status, or --vectorize is required.[/red]")
         sys.exit(1)
 
     with open_db() as conn:
@@ -233,6 +250,21 @@ def _handle_data_single(args) -> None:
                     console.print(f"[red]{entity_type.title()} {entity_id} not found.[/red]")
                 sys.exit(1)
 
+        if has_vectorize:
+            table_name = VECTORIZE_ENTITIES[noun]
+            vec_value = 1 if vectorize_val == "true" else 0
+            cursor = conn.execute(
+                f"UPDATE {table_name} SET vectorize = ? WHERE id = ? AND status = 'listed'",
+                (vec_value, entity_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                if getattr(args, "json", False):
+                    output_json({"error": f"No listed {entity_type} with id {entity_id}"})
+                else:
+                    console.print(f"[red]No listed {entity_type} with id {entity_id}.[/red]")
+                sys.exit(1)
+
     if getattr(args, "json", False):
         summary: dict = {"id": entity_id}
         if has_assign:
@@ -242,6 +274,8 @@ def _handle_data_single(args) -> None:
                 summary["client_id"] = client_id
         if has_status:
             summary["status"] = status
+        if has_vectorize:
+            summary["vectorize"] = vectorize_val == "true"
         output_json(summary)
     else:
         parts = []
@@ -254,7 +288,89 @@ def _handle_data_single(args) -> None:
             parts.append(f"assigned to {' and '.join(assign_parts)}")
         if has_status:
             parts.append(f"status set to {status}")
+        if has_vectorize:
+            label = "included in" if vectorize_val == "true" else "excluded from"
+            parts.append(f"{label} vectorization")
         console.print(f"[green]{entity_type.title()} {entity_id} {', '.join(parts)}.[/green]")
+
+
+# ---------------------------------------------------------------------------
+# Vectorize review and import handlers
+# ---------------------------------------------------------------------------
+
+
+def _handle_review(args) -> None:
+    """Show counts of excluded records per entity."""
+    entities = (
+        {args.entity: REVIEW_ENTITIES[args.entity]}
+        if args.entity and args.entity in REVIEW_ENTITIES
+        else REVIEW_ENTITIES
+    )
+
+    table = Table(title="Vectorization Exclusions")
+    table.add_column("Entity", style="bold")
+    table.add_column("Excluded", justify="right")
+    table.add_column("Total", justify="right")
+
+    with open_db() as conn:
+        for entity_name, table_name in entities.items():
+            excluded = conn.execute(
+                f"SELECT COUNT(*) as n FROM {table_name} "
+                f"WHERE vectorize = 0 AND status = 'listed'"
+            ).fetchone()["n"]
+            total = conn.execute(
+                f"SELECT COUNT(*) as n FROM {table_name} WHERE status = 'listed'"
+            ).fetchone()["n"]
+            table.add_row(entity_name, str(excluded), str(total))
+
+    console.print(table)
+
+
+def _handle_import(args) -> None:
+    """Apply vectorize flags from a JSON file."""
+    path = Path(args.path)
+    if not path.exists():
+        console.print(f"[red]File not found:[/red] {path}")
+        return
+
+    data = json.loads(path.read_text())
+
+    if isinstance(data, list):
+        entity = "files"
+        action = "exclude"
+        ids = [int(i) for i in data]
+    elif isinstance(data, dict):
+        entity = data.get("entity", "files")
+        action = data.get("action", "exclude")
+        ids = [int(i) for i in data.get("ids", [])]
+    else:
+        console.print("[red]Invalid JSON format.[/red] Expected a list or object.")
+        return
+
+    if action not in VALID_IMPORT_ACTIONS:
+        console.print(f"[red]Unknown action:[/red] {action}. Use one of: {', '.join(VALID_IMPORT_ACTIONS)}")
+        return
+
+    table_name = REVIEW_ENTITIES.get(entity)
+    if not table_name:
+        console.print(f"[red]Unknown entity:[/red] {entity}. Use one of: {', '.join(REVIEW_ENTITIES)}")
+        return
+
+    value = 0 if action == "exclude" else 1
+    if not ids:
+        console.print("No IDs to process.")
+        return
+
+    placeholders = ",".join("?" for _ in ids)
+    with open_db() as conn:
+        cursor = conn.execute(
+            f"UPDATE {table_name} SET vectorize = ? "
+            f"WHERE id IN ({placeholders}) AND status = 'listed'",
+            [value, *ids],
+        )
+        conn.commit()
+        verb = "Excluded" if action == "exclude" else "Included"
+        console.print(f"{verb} {cursor.rowcount} {entity} via import.")
 
 
 # ---------------------------------------------------------------------------
@@ -567,8 +683,10 @@ def register(subparsers) -> None:
             "Single:      fp update client 5 --name \"New Name\"\n"
             "Assign:      fp update file 42 --project-id 3\n"
             "Status:      fp update file 42 --status unlisted\n"
+            "Vectorize:   fp update file 42 --vectorize false\n"
             "Bulk assign: fp update files --folder /path --project-id 3\n"
-            "Bulk CSV:    fp update files corrections.csv"
+            "Bulk CSV:    fp update files corrections.csv\n"
+            "Review:      fp update review [files|messages|chats]"
         ),
         epilog=(
             "examples:\n"
@@ -576,12 +694,15 @@ def register(subparsers) -> None:
             "  fp update project 3 --status unlisted           Update project status\n"
             "  fp update file 42 --project-id 3                Assign file to project\n"
             "  fp update file 42 --status unlisted             Update file status\n"
+            "  fp update file 42 --vectorize false             Exclude file from vectorization\n"
             "  fp update files --folder ~/Work/acme --project-id 3  Assign files under folder\n"
             "  fp update files corrections.csv                 Bulk update from CSV\n"
+            "  fp update review                                Show vectorization exclusions\n"
+            "  fp update import flags.json                     Apply vectorize flags from JSON\n"
             "\n"
             "entity nouns:\n"
             "  field update: client, project\n"
-            "  assign:       file, email, chat, visit, folder\n"
+            "  assign:       file, email, chat, visit, folder, message\n"
             "  bulk:         files, folders\n"
             "\n"
             "tip: use 'fp update <noun> --help' for details on any noun."
@@ -610,22 +731,30 @@ def register(subparsers) -> None:
         add_json_flag(p)
         p.set_defaults(func=_handle_single)
 
-    # Data entity singular nouns — assign + status
-    for noun in ["file", "email", "chat", "visit", "folder"]:
+    # Data entity singular nouns — assign + status + vectorize
+    for noun in ["file", "email", "chat", "visit", "folder", "message"]:
         entity_type = ENTITY_MAP[noun][1]
         p = noun_subs.add_parser(
             noun,
-            help=f"Update a {entity_type} (assign or change status)",
-            description=f"Assign a {entity_type} to a project/client, or update its status.",
+            help=f"Update a {entity_type} (assign, status, or vectorize)",
+            description=f"Assign a {entity_type} to a project/client, update its status, or toggle vectorization.",
             formatter_class=FORMATTER,
         )
         p.add_argument("id", type=int, help=f"{entity_type.title()} ID")
-        p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
-        p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
+        if noun != "message":
+            p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
+            p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
         if entity_type == "file":
             p.add_argument("--status", default=None, help="File status (listed, unlisted, removed)")
+        if noun in VECTORIZE_ENTITIES:
+            p.add_argument(
+                "--vectorize",
+                choices=["true", "false"],
+                default=None,
+                help="Include (true) or exclude (false) from vectorization",
+            )
         add_json_flag(p)
-        p.set_defaults(func=_handle_data_single)
+        p.set_defaults(func=_handle_data_single, noun=noun)
 
     # files — bulk CSV or folder-path assignment
     p = noun_subs.add_parser(
@@ -665,3 +794,19 @@ def register(subparsers) -> None:
     p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
     add_json_flag(p)
     p.set_defaults(func=_handle_bulk_folder_assign, noun="folders")
+
+    # review — vectorization exclusion counts
+    rev = noun_subs.add_parser("review", help="Show vectorization exclusion counts")
+    rev.add_argument(
+        "entity",
+        nargs="?",
+        default=None,
+        choices=list(REVIEW_ENTITIES),
+        help="Filter to a specific entity type",
+    )
+    rev.set_defaults(func=lambda args: _handle_review(args))
+
+    # import — apply vectorize flags from JSON
+    imp = noun_subs.add_parser("import", help="Apply vectorize flags from a JSON file")
+    imp.add_argument("path", help="Path to JSON file")
+    imp.set_defaults(func=lambda args: _handle_import(args))

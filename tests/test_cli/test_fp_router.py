@@ -22,7 +22,7 @@ ALL_SUBCOMMANDS = [
     "upsert",
     "data",
     "delete",
-    "vectorize",
+    "update",
     "uninstall",
     "permission",
 ]
@@ -90,7 +90,7 @@ class TestStubSubcommands:
             "upsert": "upsert",
             "data": "data",
             "delete": "delete",
-            "vectorize": "vectorize",
+            "update": "update",
             "permission": "permission_cmd",
         }
         module_name = module_map.get(subcmd, subcmd)
