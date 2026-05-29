@@ -203,7 +203,7 @@ def has_footprinter_entry(config: dict) -> bool:
 def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bool:
     """Remove the footprinter entry from the Claude Desktop MCP config.
 
-    Mirrors :func:`write_config` — backs up the existing file before mutating.
+    Backs up the existing file before mutating.
     Idempotent: missing file or missing entry both return True without error.
 
     Args:

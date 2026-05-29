@@ -32,7 +32,6 @@ def _build_parser(subparsers, name):
             "  fp ingest refresh local                Re-scan local files (incremental)\n"
             "  fp ingest refresh all --full            Re-scan all sources (full)\n"
             "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
-            "  fp ingest                              Run file + metadata ingest\n"
             "  fp ingest status                       Show pipeline diagnostics\n"
             "  fp ingest import export.zip            Import a chat export"
         ),

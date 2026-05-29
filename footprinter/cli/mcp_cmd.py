@@ -414,5 +414,5 @@ def register(subparsers) -> None:
     )
     reset_parser.add_argument("scope", nargs="?", default=None, help="Scope to reset")
     reset_parser.add_argument("--all", action="store_true", help="Clear ALL policies and re-seed defaults")
-    reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt (--all only)")
     reset_parser.set_defaults(func=_reset)
