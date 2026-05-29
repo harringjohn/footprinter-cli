@@ -191,40 +191,19 @@ class TestUpsertFoldersCsv:
                 return_value={"id": 10, "project_id": 5},
             ) as mock_assign,
         ):
-            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+            _, _, code = run_fp("upsert", "folders", csv_path)
 
         assert code == 0
         mock_assign.assert_called_once()
         kwargs = mock_assign.call_args.kwargs
         assert kwargs["project_id"] == 5
 
-    @patch("footprinter.cli.upsert.open_db")
-    def test_csv_dry_run_default(self, mock_open_db, tmp_path):
-        _patched_open_db(mock_open_db)
-        csv_path = _write_csv(tmp_path, [
-            "folder_path,project_id",
-            "/tmp/docs,5",
-        ])
-        with (
-            patch(
-                "footprinter.db.folders.get_folder_by_path",
-                return_value={"id": 10, "project_id": None},
-            ),
-            patch(
-                "footprinter.services.folder_service.assign",
-            ) as mock_assign,
-        ):
-            _, _, code = run_fp("upsert", "folders", csv_path)
-
-        assert code == 0
-        mock_assign.assert_not_called()
-
     def test_csv_missing_folder_path_column(self, tmp_path):
         csv_path = _write_csv(tmp_path, [
             "path,project_id",
             "/tmp/docs,5",
         ])
-        _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+        _, _, code = run_fp("upsert", "folders", csv_path)
         assert code != 0
 
     @patch("footprinter.cli.upsert.open_db")
@@ -246,7 +225,7 @@ class TestUpsertFoldersCsv:
             ),
         ):
             stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--commit", "--json",
+                "upsert", "folders", csv_path, "--json",
             )
 
         assert code == 0
@@ -278,7 +257,7 @@ class TestUpsertFoldersCsv:
             ),
         ):
             stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--commit", "--json",
+                "upsert", "folders", csv_path, "--json",
             )
 
         assert code == 0
@@ -307,7 +286,7 @@ class TestUpsertFoldersCsv:
             ),
         ):
             stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--commit", "--json",
+                "upsert", "folders", csv_path, "--json",
             )
 
         assert code == 0
@@ -327,7 +306,7 @@ class TestUpsertFoldersCsv:
             return_value={"id": 10, "project_id": None},
         ):
             stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--commit", "--json",
+                "upsert", "folders", csv_path, "--json",
             )
 
         assert code == 0
@@ -359,69 +338,6 @@ class TestUpsertFoldersCsv:
         )
         assert code != 0
 
-    @patch("footprinter.cli.upsert.open_db")
-    def test_csv_dry_run_client_only_mismatch(self, mock_open_db, tmp_path):
-        _patched_open_db(mock_open_db)
-        csv_path = _write_csv(tmp_path, [
-            "folder_path,client_id",
-            "/tmp/docs,7",
-        ])
-        with patch(
-            "footprinter.db.folders.get_folder_by_path",
-            return_value={"id": 10, "project_id": None, "client_id": None},
-        ):
-            stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--json",
-            )
-
-        assert code == 0
-        import json
-        result = json.loads(stdout)
-        assert result["would_assign"] == 1
-        assert result["already_matched"] == 0
-
-    @patch("footprinter.cli.upsert.open_db")
-    def test_csv_dry_run_client_already_matched(self, mock_open_db, tmp_path):
-        _patched_open_db(mock_open_db)
-        csv_path = _write_csv(tmp_path, [
-            "folder_path,client_id",
-            "/tmp/docs,7",
-        ])
-        with patch(
-            "footprinter.db.folders.get_folder_by_path",
-            return_value={"id": 10, "project_id": None, "client_id": 7},
-        ):
-            stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--json",
-            )
-
-        assert code == 0
-        import json
-        result = json.loads(stdout)
-        assert result["already_matched"] == 1
-        assert result["would_assign"] == 0
-
-    @patch("footprinter.cli.upsert.open_db")
-    def test_csv_dry_run_mixed_project_match_client_mismatch(self, mock_open_db, tmp_path):
-        _patched_open_db(mock_open_db)
-        csv_path = _write_csv(tmp_path, [
-            "folder_path,project_id,client_id",
-            "/tmp/docs,5,7",
-        ])
-        with patch(
-            "footprinter.db.folders.get_folder_by_path",
-            return_value={"id": 10, "project_id": 5, "client_id": None},
-        ):
-            stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--json",
-            )
-
-        assert code == 0
-        import json
-        result = json.loads(stdout)
-        assert result["would_assign"] == 1
-        assert result["already_matched"] == 0
-
     # -- path resolution ----------------------------------------
 
     @patch("footprinter.cli.upsert.open_db")
@@ -446,7 +362,7 @@ class TestUpsertFoldersCsv:
                 return_value={"id": 10, "project_id": 5},
             ) as mock_assign,
         ):
-            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+            _, _, code = run_fp("upsert", "folders", csv_path)
 
         assert code == 0
         mock_assign.assert_called_once()
@@ -477,7 +393,7 @@ class TestUpsertFoldersCsv:
                 return_value={"id": 10, "project_id": 5},
             ),
         ):
-            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+            _, _, code = run_fp("upsert", "folders", csv_path)
 
         assert code == 0
         mock_rel.assert_not_called()
@@ -503,7 +419,7 @@ class TestUpsertFoldersCsv:
                 return_value={"id": 10, "project_id": 5},
             ),
         ):
-            _, _, code = run_fp("upsert", "folders", csv_path, "--commit")
+            _, _, code = run_fp("upsert", "folders", csv_path)
 
         assert code == 0
         mock_rel.assert_not_called()
@@ -527,7 +443,7 @@ class TestUpsertFoldersCsv:
             ),
         ):
             stdout, _, code = run_fp(
-                "upsert", "folders", csv_path, "--commit", "--json",
+                "upsert", "folders", csv_path, "--json",
             )
 
         assert code == 0
