@@ -324,33 +324,6 @@ def _reset(args) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bulk handler (both layers)
-# ---------------------------------------------------------------------------
-
-
-def _bulk(args) -> None:
-    conn = get_policy_db()
-    if conn is None:
-        console.print("[yellow]No database found.[/yellow]")
-        raise SystemExit(1)
-
-    try:
-        rc = bulk_apply(
-            conn,
-            folder=getattr(args, "folder", None),
-            project=getattr(args, "project", None),
-            permission=getattr(args, "permission", None),
-            visibility=getattr(args, "visibility", None),
-            dry_run=getattr(args, "dry_run", False),
-            yes=getattr(args, "yes", False),
-        )
-        if rc:
-            raise SystemExit(rc)
-    finally:
-        conn.close()
-
-
-# ---------------------------------------------------------------------------
 # Parser registration
 # ---------------------------------------------------------------------------
 
@@ -363,8 +336,7 @@ def register(subparsers) -> None:
         description=(
             "Start the MCP server or manage access control policies.\n\n"
             "With no subcommand, starts the MCP server for Claude Desktop.\n"
-            "Use check/set/reset to manage unified access policies,\n"
-            "or bulk for batch operations."
+            "Use check/set/reset to manage unified access policies."
         ),
         epilog=(
             "examples:\n"
@@ -372,8 +344,8 @@ def register(subparsers) -> None:
             "  fp mcp check                        Show all policies\n"
             "  fp mcp check ~/Work/file.py          Check combined resolution\n"
             "  fp mcp set global --visibility visible --permission allow\n"
+            "  fp mcp set folder:~/Work --visibility hidden --dry-run\n"
             "  fp mcp reset folder:~/Work           Remove folder policy\n"
-            "  fp mcp bulk --folder ~/Work --permission allow\n"
             "\n"
             "tip: use 'fp mcp <command> --help' for details on any command."
         ),
@@ -423,6 +395,7 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp mcp set global --visibility visible --permission allow\n"
             "  fp mcp set folder:~/Work --visibility hidden\n"
+            "  fp mcp set folder:~/Work --permission deny --dry-run\n"
             "  fp mcp set project:3 --permission deny\n"
             "  fp mcp set source:emails --visibility opaque --permission deny"
         ),
@@ -455,29 +428,3 @@ def register(subparsers) -> None:
     reset_parser.add_argument("--all", action="store_true", help="Clear ALL policies and re-seed defaults")
     reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     reset_parser.set_defaults(func=_reset)
-
-    # -- bulk --
-    bulk_parser = sub.add_parser(
-        "bulk",
-        help="Bulk policy changes",
-        description=(
-            "Apply permission and/or visibility policies in bulk.\n\n"
-            "Scope by --folder or --project. Set --permission and/or --visibility.\n"
-            "Use --dry-run to preview before applying."
-        ),
-        epilog=(
-            "examples:\n"
-            "  fp mcp bulk --folder ~/Work --permission allow\n"
-            "  fp mcp bulk --project 3 --visibility visible\n"
-            "  fp mcp bulk --folder ~/Work --permission allow --visibility visible\n"
-            "  fp mcp bulk --folder ~/Work --permission deny --dry-run"
-        ),
-        formatter_class=FORMATTER,
-    )
-    bulk_parser.add_argument("--folder", default=None, help="Folder scope (path)")
-    bulk_parser.add_argument("--project", type=int, default=None, help="Project ID scope")
-    bulk_parser.add_argument("--permission", default=None, help="Permission setting: allow or deny")
-    bulk_parser.add_argument("--visibility", default=None, help="Visibility setting: visible, opaque, or hidden")
-    bulk_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
-    bulk_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
-    bulk_parser.set_defaults(func=_bulk)
