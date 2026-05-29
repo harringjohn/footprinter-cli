@@ -1494,7 +1494,7 @@ class TestColumnRenames:
         db.close()
 
     def test_projects_no_code_columns(self, temp_db):
-        """Code-project fields are stripped from the package schema (→ fpr-dev)."""
+        """Code-project fields are stripped from the package schema (moved to app-scope)."""
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)

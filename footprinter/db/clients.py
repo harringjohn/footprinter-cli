@@ -128,6 +128,9 @@ def delete_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
 def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optional[bool]:
     """Update a client's fields.
 
+    Stamps ``updated_at`` on any change and ``status_changed_at`` on a status
+    change. Regenerates ``slug`` from ``name`` whenever the name changes.
+
     Returns True on success, None if client not found.
     Raises ValueError on invalid input.
     """
