@@ -3,7 +3,7 @@
 Validates:
   1. fp data --help exits 0 and lists import subcommand
   2. Bare fp data shows help
-  3. fp data import <noun> <file> validates input and runs in dry-run by default
+  3. fp data import <noun> <file> executes directly
   4. writable_columns exclude mcp_view/mcp_read (policy-only columns)
 
 Export and template functionality moved to fp view format flags (FPR-1863).
@@ -83,7 +83,7 @@ class TestDataBare:
 
 
 class TestDataImport:
-    """fp data import validates inputs and defaults to dry-run."""
+    """fp data import validates inputs and executes directly."""
 
     def test_import_missing_file_arg_exits_nonzero(self):
         _, _, code = run_fp("data", "import", "files")
@@ -93,28 +93,18 @@ class TestDataImport:
         _, _, code = run_fp("data", "import", "files", "/nonexistent/path.csv")
         assert code == 1
 
-    def test_import_dry_run_with_valid_csv(self, tmp_path):
+    def test_import_executes_with_valid_csv(self, tmp_path):
         csv_path = tmp_path / "files.csv"
-        csv_path.write_text("id,status\n1,hidden\n")
+        csv_path.write_text("id,status\n1,unlisted\n")
 
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        # Minimal table — _handle_import only needs SELECT id and UPDATE.
-        conn.execute(
-            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-            "project_id INTEGER, client_id INTEGER, mcp_view TEXT, mcp_read TEXT)"
-        )
-        conn.execute("INSERT INTO files (id, status) VALUES (1, 'listed')")
-        conn.commit()
+        conn = _seeded_inmemory_db()
 
         with patch("footprinter.cli.data.open_db", return_value=_open_db_stub(conn)):
             stdout, stderr, code = run_fp("data", "import", "files", str(csv_path))
 
         assert code == 0
-        # Default mode is dry-run — output mentions either "Would update" or
-        # "Dry run" or "--commit" hint.
-        output = stdout + stderr
-        assert "commit" in output.lower() or "ould" in output  # "Would update"
+        row = conn.execute("SELECT status FROM files WHERE id = 1").fetchone()
+        assert row["status"] == "unlisted"
 
 
 # ---------------------------------------------------------------------------
@@ -137,20 +127,14 @@ class TestWritableColumnsExcludeMcp:
 
     def test_import_ignores_mcp_columns_in_csv(self, tmp_path):
         csv_path = tmp_path / "files.csv"
-        csv_path.write_text("id,status,mcp_view,mcp_read\n1,hidden,visible,allow\n")
+        csv_path.write_text("id,status,mcp_view,mcp_read\n1,unlisted,visible,allow\n")
 
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-            "project_id INTEGER, client_id INTEGER, mcp_view TEXT, mcp_read TEXT)"
-        )
-        conn.execute("INSERT INTO files (id, status) VALUES (1, 'listed')")
-        conn.commit()
+        conn = _seeded_inmemory_db()
 
         with patch("footprinter.cli.data.open_db", return_value=_open_db_stub(conn)):
             stdout, stderr, code = run_fp("data", "import", "files", str(csv_path))
 
         assert code == 0
-        output = stdout + stderr
-        assert "commit" in output.lower() or "ould" in output
+        row = conn.execute("SELECT status, mcp_view FROM files WHERE id = 1").fetchone()
+        assert row["status"] == "unlisted"
+        assert row["mcp_view"] != "visible", "mcp_view should be ignored from CSV"
