@@ -6,9 +6,7 @@ MCP server snippet for this Footprinter installation, and optionally writes it.
 
 Usage:
     fp setup mcp             # Print MCP snippet to paste
-    fp setup mcp --check     # Check all MCP client configs for footprinter
     fp setup mcp --claude    # Write/merge snippet into Claude Desktop config (with backup)
-    fp setup mcp --dry-run   # Preview config write without changing anything
 """
 
 import json

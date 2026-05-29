@@ -547,7 +547,7 @@ def _offer_csv_import(conn) -> None:
     console.print("\n[bold]Import clients/projects from CSV[/bold]")
     console.print(
         "  If you have a spreadsheet of clients or projects, paste the file path.\n"
-        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv --commit[/dim]"
+        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv[/dim]"
     )
 
     while True:

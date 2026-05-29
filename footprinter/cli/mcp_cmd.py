@@ -334,7 +334,7 @@ def register(subparsers) -> None:
             "  fp mcp check                        Show all policies\n"
             "  fp mcp check ~/Work/file.py          Check combined resolution\n"
             "  fp mcp set global --visibility visible --permission allow\n"
-            "  fp mcp set folder:~/Work --visibility hidden --dry-run\n"
+            "  fp mcp set folder:~/Work --visibility hidden\n"
             "  fp mcp reset folder:~/Work           Remove folder policy\n"
             "\n"
             "tip: use 'fp mcp <command> --help' for details on any command."
