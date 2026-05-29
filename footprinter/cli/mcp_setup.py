@@ -6,9 +6,7 @@ MCP server snippet for this Footprinter installation, and optionally writes it.
 
 Usage:
     fp setup mcp             # Print MCP snippet to paste
-    fp setup mcp --check     # Check all MCP client configs for footprinter
     fp setup mcp --claude    # Write/merge snippet into Claude Desktop config (with backup)
-    fp setup mcp --dry-run   # Preview config write without changing anything
 """
 
 import json
@@ -131,95 +129,7 @@ def generate_snippet(project_root: Path = None) -> dict:
     return {"mcpServers": {"footprinter": server_config}}
 
 
-def _get_checkable_clients() -> list[tuple[str, Path]]:
-    """Resolve MCP clients with checkable config file paths.
-
-    Returns file-based clients from MCP_CLIENT_CONFIGS, skipping
-    command-based entries (Claude Code) and per-project paths (VS Code).
-    """
-    clients = []
-    for entry in MCP_CLIENT_CONFIGS:
-        if "path" not in entry:
-            continue
-        raw = entry["path"]
-        if "(" in raw:  # skip per-project paths like ".vscode/mcp.json (per-project)"
-            continue
-        name = entry["name"]
-        if name == "Claude Desktop":
-            path = detect_config_path()
-            if path:
-                clients.append((name, path))
-        else:
-            clients.append((name, Path(raw).expanduser()))
-    return clients
-
-
-def check_config(config_path: Path = None) -> int:
-    """Check MCP client configs for footprinter registration.
-
-    When config_path is provided, checks only that single path (backward
-    compat). Otherwise iterates all checkable clients.
-
-    Args:
-        config_path: Override config path (default: check all clients).
-
-    Returns:
-        0 if footprinter configured in at least one client,
-        1 if all configs missing/unreadable,
-        2 if configs exist but footprinter not in any.
-    """
-    if config_path is not None:
-        clients = [("Custom", config_path)]
-    else:
-        clients = _get_checkable_clients()
-
-    if not clients:
-        console.print("[red]No checkable MCP clients found for this platform.[/red]")
-        return 1
-
-    any_configured = False
-    any_exists = False
-
-    for name, path in clients:
-        if not path.exists():
-            console.print(f"  {name}: [yellow]config not found[/yellow] ({path})")
-            continue
-
-        try:
-            with open(path, "r") as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            console.print(f"  {name}: [red]cannot read config[/red] ({e})")
-            continue
-
-        any_exists = True
-        servers = config.get("mcpServers", {})
-
-        if "footprinter" in servers:
-            any_configured = True
-            server = servers["footprinter"]
-            console.print(f"  {name}: [green]configured[/green]")
-            console.print(f"    command: {server.get('command', '?')}")
-            if server.get("args"):
-                console.print(f"    args: {server['args']}")
-        else:
-            console.print(f"  {name}: [yellow]not configured[/yellow]")
-
-    # Report dependency status once at the end
-    if is_mcp_available():
-        console.print("  mcp package: [green]installed[/green]")
-    else:
-        console.print("  mcp package: [red]not installed[/red]")
-        console.print("  Reinstall with: pip install --force-reinstall footprinter-cli")
-
-    if any_configured:
-        return 0
-    if any_exists:
-        return 2
-    return 1
-
-
-def write_config(snippet: dict, config_path: Path = None, dry_run: bool = False) -> bool:
+def write_config(snippet: dict, config_path: Path = None) -> bool:
     """Write or merge the MCP snippet into Claude Desktop config.
 
     Creates a backup before modifying an existing file.
@@ -227,10 +137,9 @@ def write_config(snippet: dict, config_path: Path = None, dry_run: bool = False)
     Args:
         snippet: The snippet dict from generate_snippet().
         config_path: Override config path (default: auto-detected).
-        dry_run: If True, show what would happen without writing.
 
     Returns:
-        True if write succeeded (or would succeed in dry-run mode).
+        True if write succeeded.
     """
     path = config_path or detect_config_path()
 
@@ -252,11 +161,6 @@ def write_config(snippet: dict, config_path: Path = None, dry_run: bool = False)
     if "mcpServers" not in existing:
         existing["mcpServers"] = {}
     existing["mcpServers"]["footprinter"] = snippet["mcpServers"]["footprinter"]
-
-    if dry_run:
-        console.print(f"[dim]Would write to:[/dim] {path}")
-        console.print(json.dumps(existing, indent=2))
-        return True
 
     # Backup existing file
     if path.exists():
@@ -299,7 +203,7 @@ def has_footprinter_entry(config: dict) -> bool:
 def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bool:
     """Remove the footprinter entry from the Claude Desktop MCP config.
 
-    Mirrors :func:`write_config` — backs up the existing file before mutating.
+    Backs up the existing file before mutating.
     Idempotent: missing file or missing entry both return True without error.
 
     Args:

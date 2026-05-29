@@ -4,14 +4,12 @@ Interactive setup wizard for Footprinter.
 Guides new users through configuration in ~3 minutes.
 Usage:
     fp setup                  # Run interactive wizard
-    fp setup --hooks          # Install git hooks (sets core.hooksPath)
-    fp setup --reset          # Clear data and re-run wizard
+    fp setup mcp --claude     # Write MCP config to Claude Desktop
 """
 
 import argparse
 import logging
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -69,14 +67,6 @@ def _load_existing_config() -> dict | None:
 console = Console()
 
 
-def _repo_root() -> Path:
-    """Repo checkout root (dev-only: git hooks, subprocess cwd)."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def _hooks_available() -> bool:
-    """True when dev git hooks are present (private repo only)."""
-    return (_repo_root() / "scripts" / "hooks" / "post-merge").exists()
 
 
 # Common directories checked during quick start — only those that exist are included
@@ -195,18 +185,6 @@ def register(subparsers) -> None:
     )
     parser.set_defaults(func=_handle_setup)
 
-    if _hooks_available():
-        parser.add_argument(
-            "--hooks",
-            action="store_true",
-            help="Install git hooks (sets core.hooksPath to scripts/hooks)",
-        )
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Clear database and vector store, then re-run setup wizard",
-    )
-
     subs = parser.add_subparsers(dest="setup_action", metavar="COMMAND", title="commands (one required)")
 
     # mcp
@@ -255,57 +233,40 @@ def _handle_setup(args) -> None:
 
 
 def _add_mcp_parser(subparsers, *, formatter_class=None):
-    """Add the MCP subparser with --check, --claude, --dry-run flags."""
+    """Add the MCP subparser with --claude flag."""
     kwargs = {"help": "Configure MCP integration"}
     if formatter_class:
         kwargs.update(
             description=(
                 "Configure the MCP server snippet for AI clients.\n\n"
-                "Checks, previews, or writes the JSON config."
+                "Bare command prints the snippet. Use --claude to write it."
             ),
             epilog=(
                 "examples:\n"
-                "  fp setup mcp --check       Check if already configured\n"
-                "  fp setup mcp --dry-run     Preview config write without changing anything\n"
+                "  fp setup mcp               Print MCP snippet for manual config\n"
                 "  fp setup mcp --claude      Write to Claude Desktop config (creates backup)"
             ),
             formatter_class=formatter_class,
         )
     parser = subparsers.add_parser("mcp", **kwargs)
     parser.add_argument(
-        "--check",
-        action="store_true",
-        dest="mcp_check",
-        help="Check if footprinter is configured in any MCP client",
-    )
-    parser.add_argument(
         "--claude",
         action="store_true",
         help="Write/merge snippet into Claude Desktop config (creates backup)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview config write without changing anything",
     )
     return parser
 
 
 def _dispatch_mcp(args) -> None:
     """Shared MCP subcommand dispatch — used by both router and main()."""
-    # --check runs before the availability gate so it works without mcp extras
-    if getattr(args, "mcp_check", False):
-        sys.exit(mcp_setup.check_config())
-
-    # Gate write/print on mcp dependency (--check still works without it)
     if not mcp_setup.is_mcp_available():
         console.print("[red]MCP package not installed.[/red] Install with: pip install mcp")
         sys.exit(1)
 
     snippet = mcp_setup.generate_snippet()
 
-    if getattr(args, "claude", False) or getattr(args, "dry_run", False):
-        ok = mcp_setup.write_config(snippet, dry_run=args.dry_run)
+    if getattr(args, "claude", False):
+        ok = mcp_setup.write_config(snippet)
         sys.exit(0 if ok else 1)
 
     # Default: print snippet
@@ -330,37 +291,7 @@ def _handle_setup_inner(args) -> None:
             console.print("[yellow]Usage: fp setup folders add|remove[/yellow]")
         return
 
-    if getattr(args, "reset", False):
-        db_path = get_db_path()
-        chroma_path = get_chroma_path()
-
-        console.print(
-            "[bold yellow]This will delete all indexed data.[/bold yellow]\nConfig and credentials are preserved."
-        )
-
-        if not Confirm.ask("Continue?"):
-            console.print("[dim]Reset cancelled.[/dim]")
-            return
-
-        cleared = []
-        if db_path.exists():
-            db_path.unlink()
-            cleared.append(str(db_path))
-        if chroma_path.exists():
-            shutil.rmtree(chroma_path)
-            cleared.append(str(chroma_path))
-        if cleared:
-            console.print(f"[green]Cleared:[/green] {', '.join(cleared)}")
-        else:
-            console.print("[dim]Nothing to clear (no existing data found).[/dim]")
-
-        run_interactive_wizard()
-        return
-
-    if getattr(args, "hooks", False):
-        sys.exit(install_git_hooks())
-    else:
-        run_interactive_wizard()
+    run_interactive_wizard()
 
 
 # ---------------------------------------------------------------------------
@@ -374,13 +305,6 @@ def main():
         prog="fp setup",
         description="Interactive setup wizard for Footprinter",
     )
-    if _hooks_available():
-        parser.add_argument(
-            "--hooks",
-            action="store_true",
-            help="Install git hooks (sets core.hooksPath to scripts/hooks)",
-        )
-
     subparsers = parser.add_subparsers(dest="subcommand")
     _add_mcp_parser(subparsers)
 
@@ -415,56 +339,7 @@ def main():
             folders_parser.print_help()
             return
 
-    if getattr(args, "hooks", False):
-        sys.exit(install_git_hooks())
-    else:
-        run_interactive_wizard()
-
-
-def install_git_hooks() -> int:
-    """Set core.hooksPath to scripts/hooks.
-
-    Returns:
-        0 on success, 1 on failure.
-    """
-    root = _repo_root()
-    hooks_dir = root / "scripts" / "hooks"
-    post_merge = hooks_dir / "post-merge"
-
-    if not post_merge.exists():
-        console.print(f"[red]Hook script not found:[/red] {post_merge}")
-        return 1
-
-    # Check we're in a git repo
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            console.print("[red]Not a git repository.[/red]")
-            return 1
-    except FileNotFoundError:
-        console.print("[red]git not found.[/red]")
-        return 1
-
-    # Set core.hooksPath
-    result = subprocess.run(
-        ["git", "config", "--local", "core.hooksPath", "scripts/hooks"],
-        cwd=str(root),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        console.print(f"[red]Failed to set core.hooksPath:[/red] {result.stderr.strip()}")
-        return 1
-
-    console.print("[green]Git hooks installed.[/green]")
-    console.print("  core.hooksPath = [cyan]scripts/hooks[/cyan]")
-    console.print(f"  post-merge hook: [cyan]{post_merge.relative_to(root)}[/cyan]")
-    return 0
+    run_interactive_wizard()
 
 
 def _print_phase(step: int, total: int, name: str):
@@ -672,7 +547,7 @@ def _offer_csv_import(conn) -> None:
     console.print("\n[bold]Import clients/projects from CSV[/bold]")
     console.print(
         "  If you have a spreadsheet of clients or projects, paste the file path.\n"
-        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv --commit[/dim]"
+        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv[/dim]"
     )
 
     while True:

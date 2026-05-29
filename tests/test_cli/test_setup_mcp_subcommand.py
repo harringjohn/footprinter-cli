@@ -6,12 +6,11 @@ Covers:
 
 Verifies:
   1. fp setup mcp routes to mcp_setup functions
-  2. fp setup mcp --check / --claude / --dry-run flags work
+  2. fp setup mcp --claude flag works
   3. Bare fp setup still runs interactive wizard
-  4. fp setup --check / --hooks still work
-  5. offer_setup_claude() is wired into the wizard flow
-  6. User-facing strings reference 'fp setup mcp' not 'fp-setup-claude'
-  7. MCP subcommand gated on mcp dependency availability
+  4. offer_setup_claude() is wired into the wizard flow
+  5. User-facing strings reference 'fp setup mcp' not 'fp-setup-claude'
+  6. MCP subcommand gated on mcp dependency availability
 """
 
 import io
@@ -39,20 +38,6 @@ class TestMcpSubcommandRouting:
             mock_mcp.generate_snippet.assert_called_once()
             mock_mcp.print_snippet.assert_called_once()
 
-    def test_mcp_check_calls_check_config(self):
-        """fp setup mcp --check → mcp_setup.check_config()."""
-        with (
-            patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
-            patch("sys.argv", ["fp", "mcp", "--check"]),
-        ):
-            mock_mcp.check_config.return_value = 0
-            from footprinter.cli.setup import main
-
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
-            mock_mcp.check_config.assert_called_once()
-
     def test_mcp_claude_calls_write_config(self):
         """fp setup mcp --claude → generate_snippet() + write_config(snippet)."""
         with (
@@ -68,23 +53,7 @@ class TestMcpSubcommandRouting:
                 main()
             assert exc_info.value.code == 0
             mock_mcp.generate_snippet.assert_called_once()
-            mock_mcp.write_config.assert_called_once_with(mock_snippet, dry_run=False)
-
-    def test_mcp_dry_run_calls_write_config_dry(self):
-        """fp setup mcp --dry-run → generate_snippet() + write_config(snippet, dry_run=True)."""
-        with (
-            patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
-            patch("sys.argv", ["fp", "mcp", "--dry-run"]),
-        ):
-            mock_snippet = {"mcpServers": {"footprinter": {}}}
-            mock_mcp.generate_snippet.return_value = mock_snippet
-            mock_mcp.write_config.return_value = True
-            from footprinter.cli.setup import main
-
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
-            mock_mcp.write_config.assert_called_once_with(mock_snippet, dry_run=True)
+            mock_mcp.write_config.assert_called_once_with(mock_snippet)
 
     def test_mcp_claude_failure_exits_1(self):
         """fp setup mcp --claude → exit 1 when write_config returns False."""
@@ -220,27 +189,6 @@ class TestUserFacingStrings:
             if "fp-setup-claude" in line and "prog=" not in line and "deprecated" not in line
         ]
         assert lines_with_old_ref == [], f"Found non-prog fp-setup-claude references: {lines_with_old_ref}"
-
-    def test_check_help_in_shared_parser_no_claude_desktop(self):
-        """--check help string in _add_mcp_parser() should not reference 'Claude Desktop'."""
-        import re
-
-        setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "setup.py"
-        content = setup_path.read_text()
-
-        helper_match = re.search(r"^def _add_mcp_parser\b.*?(?=^def |\Z)", content, re.MULTILINE | re.DOTALL)
-        assert helper_match, "Could not find _add_mcp_parser() function"
-        helper_body = helper_match.group()
-
-        check_help = re.search(
-            r'add_argument\(\s*"--check".*?dest="mcp_check".*?help="([^"]*)"',
-            helper_body,
-            re.DOTALL,
-        )
-        assert check_help, "Could not find MCP --check help in _add_mcp_parser()"
-        assert "Claude Desktop" not in check_help.group(1), (
-            f"MCP --check help in _add_mcp_parser() still references 'Claude Desktop': {check_help.group(1)}"
-        )
 
     def test_mcp_setup_docstring_no_claude_desktop(self):
         """mcp_setup.py module docstring description should not reference 'Claude Desktop'."""
@@ -390,59 +338,6 @@ class TestMcpDependencyGating:
         output = buf.getvalue()
         assert "pip install mcp" in output
 
-    def test_mcp_check_reports_dependency_missing(self):
-        """check_config() reports mcp package not installed when missing."""
-        buf = io.StringIO()
-        test_console = Console(file=buf, force_terminal=False)
-        with (
-            patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=False),
-            patch("footprinter.cli.mcp_setup.console", test_console),
-        ):
-            import json
-            import tempfile
-            from pathlib import Path
-
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                json.dump({"mcpServers": {"footprinter": {"command": "fp-mcp"}}}, f)
-                tmp_path = Path(f.name)
-
-            try:
-                from footprinter.cli.mcp_setup import check_config
-
-                check_config(config_path=tmp_path)
-            finally:
-                tmp_path.unlink()
-
-        output = buf.getvalue()
-        assert "mcp package: not installed" in output
-
-    def test_mcp_check_reports_dependency_installed(self):
-        """fp setup mcp --check reports mcp package installed."""
-        buf = io.StringIO()
-        test_console = Console(file=buf, force_terminal=False)
-        with (
-            patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True),
-            patch("footprinter.cli.mcp_setup.console", test_console),
-            patch("footprinter.cli.mcp_setup.detect_config_path") as mock_detect,  # noqa: F841
-        ):
-            import json
-            import tempfile
-            from pathlib import Path
-
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                json.dump({"mcpServers": {"footprinter": {"command": "fp-mcp"}}}, f)
-                tmp_path = Path(f.name)
-
-            try:
-                from footprinter.cli.mcp_setup import check_config
-
-                check_config(config_path=tmp_path)
-            finally:
-                tmp_path.unlink()
-
-        output = buf.getvalue()
-        assert "mcp package: installed" in output
-
     def test_offer_setup_claude_skips_when_mcp_missing(self):
         """offer_setup_claude() skips MCP config when mcp package missing."""
         buf = io.StringIO()
@@ -467,19 +362,6 @@ class TestMcpDependencyGating:
 class TestDispatchMcp:
     """_dispatch_mcp() should be used by both entry points."""
 
-    def test_dispatch_mcp_routes_check(self):
-        """_dispatch_mcp(args) with mcp_check=True → mcp_setup.check_config()."""
-        from types import SimpleNamespace
-
-        with patch("footprinter.cli.setup.mcp_setup") as mock_mcp:
-            mock_mcp.check_config.return_value = 0
-            from footprinter.cli.setup import _dispatch_mcp
-
-            with pytest.raises(SystemExit) as exc_info:
-                _dispatch_mcp(SimpleNamespace(mcp_check=True, claude=False, dry_run=False))
-            assert exc_info.value.code == 0
-            mock_mcp.check_config.assert_called_once()
-
     def test_dispatch_mcp_routes_bare_to_print_snippet(self):
         """_dispatch_mcp(args) with no flags → generate_snippet() + print_snippet()."""
         from types import SimpleNamespace
@@ -489,12 +371,12 @@ class TestDispatchMcp:
             mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
             from footprinter.cli.setup import _dispatch_mcp
 
-            _dispatch_mcp(SimpleNamespace(mcp_check=False, claude=False, dry_run=False))
+            _dispatch_mcp(SimpleNamespace(claude=False))
             mock_mcp.generate_snippet.assert_called_once()
             mock_mcp.print_snippet.assert_called_once()
 
     def test_dispatch_mcp_routes_claude_to_write_config(self):
-        """_dispatch_mcp(args) with claude=True → write_config(snippet, dry_run=False)."""
+        """_dispatch_mcp(args) with claude=True → write_config(snippet)."""
         from types import SimpleNamespace
 
         with patch("footprinter.cli.setup.mcp_setup") as mock_mcp:
@@ -505,9 +387,9 @@ class TestDispatchMcp:
             from footprinter.cli.setup import _dispatch_mcp
 
             with pytest.raises(SystemExit) as exc_info:
-                _dispatch_mcp(SimpleNamespace(mcp_check=False, claude=True, dry_run=False))
+                _dispatch_mcp(SimpleNamespace(claude=True))
             assert exc_info.value.code == 0
-            mock_mcp.write_config.assert_called_once_with(mock_snippet, dry_run=False)
+            mock_mcp.write_config.assert_called_once_with(mock_snippet)
 
     def test_dispatch_mcp_exits_when_mcp_unavailable(self):
         """_dispatch_mcp(args) exits 1 when MCP package is not installed."""
@@ -521,7 +403,7 @@ class TestDispatchMcp:
             from footprinter.cli.setup import _dispatch_mcp
 
             with pytest.raises(SystemExit) as exc_info:
-                _dispatch_mcp(SimpleNamespace(mcp_check=False, claude=True, dry_run=False))
+                _dispatch_mcp(SimpleNamespace(claude=True))
             assert exc_info.value.code == 1
             mock_mcp.write_config.assert_not_called()
 
@@ -554,7 +436,7 @@ class TestSharedMcpParser:
     """_add_mcp_parser() is the single source of truth for MCP subparser flags."""
 
     def test_add_mcp_parser_creates_expected_flags(self):
-        """_add_mcp_parser() produces a parser with --check, --claude, --dry-run."""
+        """_add_mcp_parser() produces a parser with --claude."""
         import argparse
 
         from footprinter.cli.setup import _add_mcp_parser
@@ -563,17 +445,11 @@ class TestSharedMcpParser:
         subs = parent.add_subparsers(dest="sub")
         _add_mcp_parser(subs)
 
-        args = parent.parse_args(["mcp", "--check"])
-        assert args.mcp_check is True
-
         args = parent.parse_args(["mcp", "--claude"])
         assert args.claude is True
 
-        args = parent.parse_args(["mcp", "--dry-run"])
-        assert args.dry_run is True
-
     def test_add_mcp_parser_defaults_all_false(self):
-        """Bare 'mcp' (no flags) defaults all three flags to False."""
+        """Bare 'mcp' (no flags) defaults claude to False."""
         import argparse
 
         from footprinter.cli.setup import _add_mcp_parser
@@ -583,9 +459,7 @@ class TestSharedMcpParser:
         _add_mcp_parser(subs)
 
         args = parent.parse_args(["mcp"])
-        assert args.mcp_check is False
         assert args.claude is False
-        assert args.dry_run is False
 
     def test_register_and_main_use_shared_parser(self):
         """Both register() and main() call _add_mcp_parser — source has no inline MCP add_argument calls."""
