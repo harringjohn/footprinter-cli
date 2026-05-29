@@ -32,7 +32,7 @@ def _build_parser(subparsers, name):
             "  fp ingest refresh local                Re-scan local files (incremental)\n"
             "  fp ingest refresh all --full            Re-scan all sources (full)\n"
             "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
-            "  fp ingest --preview                    Pre-scan summary (no ingest)\n"
+            "  fp ingest                              Run file + metadata ingest\n"
             "  fp ingest status                       Show pipeline diagnostics\n"
             "  fp ingest import export.zip            Import a chat export"
         ),
@@ -58,16 +58,6 @@ def _build_parser(subparsers, name):
         "-q",
         action="store_true",
         help="Suppress Rich output (for scripts and cron)",
-    )
-    parser.add_argument(
-        "--preview",
-        action="store_true",
-        help=(
-            "Pre-scan configured directories and print a summary "
-            "(file counts by extension, top-N largest files/directories, "
-            "outliers above size threshold) without ingesting or vectorizing. "
-            "In a TTY, prompts to proceed with the real ingest."
-        ),
     )
     parser.add_argument(
         "--verbose",
@@ -147,10 +137,6 @@ def register(subparsers) -> None:
 
 def _handle_ingest(args) -> None:
     """Route to the correct handler based on args."""
-    if getattr(args, "preview", False):
-        _ingest_preview(args)
-        return
-
     action = getattr(args, "ingest_action", None)
 
     if action is None:
@@ -470,160 +456,6 @@ def _ingest_pipeline(args) -> None:
 
         file_ids = _extract_touched_file_ids(results) if pipes is not None else None
         run_vectorization_stage(quiet=quiet, file_ids=file_ids)
-
-
-# Defaults for the preview render. Configurable via the indexing.preview_*
-# config keys; tests pass plain configs without those keys.
-_PREVIEW_TOP_N_DEFAULT = 10
-_PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT = 50
-
-
-def _stdout_is_tty() -> bool:
-    """Patch point for the preview prompt: True iff the user is at a terminal.
-
-    Wraps ``sys.stdout.isatty()`` so tests can override the result without
-    having to dodge ``run_fp``'s in-test stdout swap (which would otherwise
-    re-route the patch to the wrong StringIO).
-    """
-    return sys.stdout.isatty()
-
-
-def _format_bytes(n: int) -> str:
-    """Human-readable byte size (binary units)."""
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    size = float(n)
-    for unit in units:
-        if size < 1024 or unit == units[-1]:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{n} B"
-
-
-def _render_preview_plain(summary, *, threshold_bytes: int) -> str:
-    """Render a one-line, machine-friendly preview (used in --quiet mode)."""
-    by_ext = summary.by_extension()
-    ext_part = ", ".join(f"{ext}={n}" for ext, n in sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True))
-    return (
-        f"preview: files={summary.total_files} bytes={summary.total_bytes} "
-        f"outliers={len(summary.outliers())} threshold={threshold_bytes} {ext_part}"
-    )
-
-
-def _render_preview(summary, *, threshold_bytes: int, console_):
-    """Render a ScanSummary to the Rich console."""
-    from rich.table import Table
-
-    console_.print()
-    console_.print(
-        f"[bold]Preview[/bold]  [dim]({summary.total_files} files, "
-        f"{_format_bytes(summary.total_bytes)} total)[/dim]"
-    )
-    console_.print()
-
-    by_ext = summary.by_extension()
-    if by_ext:
-        ext_table = Table(title="Files by extension", show_edge=False)
-        ext_table.add_column("Extension")
-        ext_table.add_column("Count", justify="right")
-        for ext, count in sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True):
-            ext_table.add_row(ext, str(count))
-        console_.print(ext_table)
-        console_.print()
-
-    top_files = summary.top_files()
-    if top_files:
-        files_table = Table(title=f"Top {len(top_files)} largest files", show_edge=False)
-        files_table.add_column("Size", justify="right")
-        files_table.add_column("Path")
-        for entry in top_files:
-            files_table.add_row(_format_bytes(int(entry.get("file_size") or 0)), entry["file_path"])
-        console_.print(files_table)
-        console_.print()
-
-    top_dirs = summary.top_directories()
-    if top_dirs:
-        dirs_table = Table(title=f"Top {len(top_dirs)} largest directories", show_edge=False)
-        dirs_table.add_column("Size", justify="right")
-        dirs_table.add_column("Directory")
-        for path, total in top_dirs:
-            dirs_table.add_row(_format_bytes(total), path)
-        console_.print(dirs_table)
-        console_.print()
-
-    outliers = summary.outliers()
-    if outliers:
-        out_table = Table(
-            title=f"Outliers ≥ {_format_bytes(threshold_bytes)}",
-            show_edge=False,
-        )
-        out_table.add_column("Size", justify="right")
-        out_table.add_column("Path")
-        for entry in outliers:
-            out_table.add_row(_format_bytes(int(entry.get("file_size") or 0)), entry["file_path"])
-        console_.print(out_table)
-        console_.print()
-
-
-def _ingest_preview(args) -> None:
-    """Pre-scan configured directories and print a summary.
-
-    No DB writes, no vectorization. Always prints a summary so ``--preview``
-    is meaningful even in scripts: ``--quiet`` switches to a single-line
-    plain-text summary, and the interactive prompt is shown only when
-    ``stdout`` is a TTY and ``--quiet`` is not set.
-
-    Acquires the same exclusive run lock as ``fp ingest`` so a preview cannot
-    race a real ingest scan over the same directories.
-    """
-    import fcntl
-
-    from footprinter.ingest.file_scanner import FileScanner
-    from footprinter.ingest.scan_summary import ScanSummary
-    from footprinter.paths import get_run_lock_path
-    from footprinter.source_registry import ConfigError, get_config
-
-    quiet = getattr(args, "quiet", False)
-
-    try:
-        config = get_config()
-    except ConfigError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        sys.exit(1)
-
-    indexing = config.get("indexing", {}) or {}
-    top_n = int(indexing.get("preview_top_n") or _PREVIEW_TOP_N_DEFAULT)
-    threshold_mb = indexing.get("preview_size_threshold_mb")
-    if threshold_mb is None:
-        threshold_mb = _PREVIEW_OUTLIER_THRESHOLD_MB_DEFAULT
-    threshold_bytes = int(threshold_mb) * 1024 * 1024
-
-    lock_path = get_run_lock_path()
-    lock_fd = open(lock_path, "w")
-    try:
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            console.print("[red]Error:[/red] Another fp ingest is already in progress.")
-            sys.exit(1)
-
-        scanner = FileScanner(config)
-        summary = ScanSummary(top_n=top_n, outlier_threshold_bytes=threshold_bytes)
-        for entry in scanner.scan_all_directories(skip_hashing=True):
-            summary.add(entry)
-    finally:
-        lock_fd.close()
-
-    if quiet:
-        print(_render_preview_plain(summary, threshold_bytes=threshold_bytes))
-    else:
-        _render_preview(summary, threshold_bytes=threshold_bytes, console_=console)
-
-    if quiet or not _stdout_is_tty():
-        return
-
-    answer = input("Proceed with ingest? [y/N] ").strip().lower()
-    if answer == "y":
-        _ingest_pipeline(args)
 
 
 def _ingest_status(args) -> None:
