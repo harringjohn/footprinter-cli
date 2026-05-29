@@ -405,7 +405,7 @@ def register(subparsers) -> None:
     set_parser.add_argument("--visibility", default=None, help="Visibility: visible, opaque, or hidden")
     set_parser.add_argument("--permission", default=None, help="Permission: allow or deny")
     set_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
-    set_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    set_parser.add_argument("--yes", "-y", action="store_true", help="Accepted for compatibility (no-op; set never prompts)")
     set_parser.set_defaults(func=_set)
 
     # -- reset (unified delete / reseed) --

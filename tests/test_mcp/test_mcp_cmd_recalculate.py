@@ -180,38 +180,22 @@ class TestPrintRecalcStatsPluralization:
 
 
 # ---------------------------------------------------------------------------
-# Confirmation UX for unified set
+# Set never prompts (recalculation is non-destructive)
 # ---------------------------------------------------------------------------
 
 
-class TestSetConfirmation:
-    @patch("footprinter.cli._policy_helpers.Confirm.ask")
-    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_SMALL_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_small_scope_skips_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="file:42", visibility="hidden", permission=None, yes=False, dry_run=False)
-        _set(args)
-
-        mock_confirm.assert_not_called()
-        mock_recalc.assert_called_once()
-
+class TestSetNeverPrompts:
     @patch("footprinter.cli._policy_helpers.Confirm.ask")
     @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_yes_flag_skips_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
+    def test_large_scope_without_yes_never_prompts(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
         from footprinter.cli.mcp_cmd import _set
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=True, dry_run=False)
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
         _set(args)
 
         mock_confirm.assert_not_called()
