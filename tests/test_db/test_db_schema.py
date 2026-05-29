@@ -52,6 +52,7 @@ EXPECTED_COLUMNS = {
         "mcp_read_source",
         "mcp_view_source",
         "display_name",
+        "vectorize",
     },
     "projects": {
         "id",
@@ -137,6 +138,7 @@ EXPECTED_COLUMNS = {
         "status",
         "merged_into_id",
         "display_name",
+        "vectorize",
     },
     "messages": {
         "id",
@@ -156,6 +158,7 @@ EXPECTED_COLUMNS = {
         "mcp_view_source",
         "status",
         "display_name",
+        "vectorize",
     },
     "emails": {
         "id",
@@ -272,6 +275,64 @@ class TestSchemaIdempotency:
         cursor.execute("SELECT COUNT(*) FROM files WHERE path = '/tmp/test.txt'")
         assert cursor.fetchone()[0] == 1
         db.close()
+
+
+class TestVectorizeColumnMigration:
+    """Verify _ensure_vectorize_column() backfills from JSON metadata."""
+
+    def test_backfill_copies_json_flag_to_column(self, temp_db):
+        """Simulate old DB without vectorize column, then let init_db() migrate."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.execute("ALTER TABLE files DROP COLUMN vectorize")
+        db.conn.execute("ALTER TABLE chats DROP COLUMN vectorize")
+        db.conn.execute("ALTER TABLE messages DROP COLUMN vectorize")
+        db.conn.execute(
+            "INSERT INTO files (source, name, metadata) "
+            "VALUES ('local', 'a.txt', '{\"vectorize\": 0}')"
+        )
+        db.conn.execute(
+            "INSERT INTO files (source, name, metadata) "
+            "VALUES ('local', 'b.txt', '{\"vectorize\": 1}')"
+        )
+        db.conn.execute(
+            "INSERT INTO files (source, name) VALUES ('local', 'c.txt')"
+        )
+        db.conn.execute(
+            "INSERT INTO chats (external_id, account, metadata) "
+            "VALUES ('ch1', 'test', '{\"vectorize\": 0}')"
+        )
+        db.conn.execute(
+            "INSERT INTO messages (chat_id, role, metadata) "
+            "VALUES (1, 'user', '{\"vectorize\": 0}')"
+        )
+        db.conn.commit()
+        db.close()
+
+        db2 = Database(temp_db)
+        row_a = db2.conn.execute(
+            "SELECT vectorize FROM files WHERE name = 'a.txt'"
+        ).fetchone()
+        row_b = db2.conn.execute(
+            "SELECT vectorize FROM files WHERE name = 'b.txt'"
+        ).fetchone()
+        row_c = db2.conn.execute(
+            "SELECT vectorize FROM files WHERE name = 'c.txt'"
+        ).fetchone()
+        chat_row = db2.conn.execute(
+            "SELECT vectorize FROM chats WHERE external_id = 'ch1'"
+        ).fetchone()
+        msg_row = db2.conn.execute(
+            "SELECT vectorize FROM messages WHERE role = 'user'"
+        ).fetchone()
+        db2.close()
+
+        assert row_a[0] == 0, "vectorize=0 should be backfilled from JSON"
+        assert row_b[0] == 1, "vectorize=1 should remain default"
+        assert row_c[0] == 1, "no metadata → default 1"
+        assert chat_row[0] == 0, "chat vectorize=0 backfilled"
+        assert msg_row[0] == 0, "message vectorize=0 backfilled"
 
 
 class TestCompleteColumnSets:

@@ -168,7 +168,10 @@ class SchemaMixin:
                 mcp_view_source TEXT,
 
                 -- Display
-                display_name TEXT
+                display_name TEXT,
+
+                -- Vectorization control
+                vectorize INTEGER DEFAULT 1
             )
         """
         )
@@ -413,7 +416,10 @@ class SchemaMixin:
                 merged_into_id INTEGER REFERENCES chats(id),
 
                 -- Display
-                display_name TEXT
+                display_name TEXT,
+
+                -- Vectorization control
+                vectorize INTEGER DEFAULT 1
             )
         """
         )
@@ -459,6 +465,9 @@ class SchemaMixin:
 
                 -- Display
                 display_name TEXT,
+
+                -- Vectorization control
+                vectorize INTEGER DEFAULT 1,
 
                 FOREIGN KEY (chat_id) REFERENCES chats(id)
             )
@@ -744,6 +753,7 @@ class SchemaMixin:
             """)
 
         self._ensure_source_columns()
+        self._ensure_vectorize_column()
         self.conn.commit()
 
         # Seed the sources registry from config
@@ -764,6 +774,24 @@ class SchemaMixin:
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
+
+    _VECTORIZE_TABLES = ("files", "messages", "chats")
+
+    def _ensure_vectorize_column(self):
+        """Add vectorize column and backfill from JSON metadata (idempotent)."""
+        for table in self._VECTORIZE_TABLES:
+            try:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN vectorize INTEGER DEFAULT 1"
+                )
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+                continue
+            self.conn.execute(
+                f"UPDATE {table} SET vectorize = 0 "
+                f"WHERE json_extract(metadata, '$.vectorize') = 0"
+            )
 
     # ========================================
     # FTS Trigger Management
