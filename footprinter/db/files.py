@@ -51,7 +51,8 @@ def list_files(
     """
     base = """
         SELECT file.id, file.name, file.path, file.source, file.status, file.content_type,
-               file.size_bytes, file.modified_at, project.project_name,
+               file.size_bytes, file.modified_at, file.project_id, file.client_id,
+               project.project_name,
                file.mcp_view, file.mcp_read,
                file.mcp_view_source, file.mcp_read_source
         FROM files file
@@ -99,6 +100,8 @@ def list_files(
             "content_type": r["content_type"] or "",
             "size_bytes": r["size_bytes"],
             "modified_at": r["modified_at"],
+            "project_id": r["project_id"],
+            "client_id": r["client_id"],
             "project_name": r["project_name"] or "",
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],

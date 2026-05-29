@@ -110,7 +110,7 @@ All commands use the `fp` entry point.
 | `fp api` | Start the HTTP API server |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
 | `fp upsert` | Create/update records, assign relationships, or soft-delete via `--status removed` |
-| `fp data` | Export data, generate templates, or import metadata corrections |
+| `fp data` | Import metadata corrections from CSV |
 | `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp vectorize` | Manage per-record vectorization control |
 | `fp doctor` | Post-install health check (Python version, install location, FDA, MCP wiring) |

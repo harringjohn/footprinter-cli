@@ -17,6 +17,8 @@ def list_chats(
     *,
     account: Optional[str] = None,
     query: Optional[str] = None,
+    project_id: Optional[int] = None,
+    client_id: Optional[int] = None,
     sort_by: str = "modified_at",
     order: str = "desc",
     limit: int = 50,
@@ -67,12 +69,22 @@ def list_chats(
         conditions.append("chat.title LIKE ?")
         params.append(f"%{query}%")
 
+    if project_id is not None:
+        conditions.append("chat.project_id = ?")
+        params.append(project_id)
+
+    if client_id is not None:
+        conditions.append("chat.client_id = ?")
+        params.append(client_id)
+
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     count_sql = f"SELECT COUNT(*) FROM chats chat {where}"
     fetch_sql = f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title, chat.message_count,
-               chat.created_at, chat.modified_at, chat.status, chat.merged_into_id,
+               chat.created_at, chat.modified_at, chat.updated_at,
+               chat.status, chat.merged_into_id,
+               chat.project_id, chat.client_id,
                chat.mcp_view, chat.mcp_read,
                chat.mcp_view_source, chat.mcp_read_source
         FROM chats chat
@@ -91,8 +103,11 @@ def list_chats(
             "message_count": r["message_count"],
             "created_at": r["created_at"],
             "modified_at": r["modified_at"],
+            "updated_at": r["updated_at"],
             "status": r["status"],
             "merged_into_id": r["merged_into_id"],
+            "project_id": r["project_id"],
+            "client_id": r["client_id"],
             "mcp_view": r["mcp_view"],
             "mcp_read": r["mcp_read"],
             "mcp_view_source": r["mcp_view_source"],

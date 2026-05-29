@@ -12,6 +12,8 @@ from footprinter.db.sql_utils import build_status_filter, paginate, paginated_re
 def list_visits(
     conn: sqlite3.Connection,
     *,
+    project_id: Optional[int] = None,
+    client_id: Optional[int] = None,
     limit: int = 50,
     page: int = 1,
     status: Optional[str | list[str]] = None,
@@ -39,14 +41,25 @@ def list_visits(
     status_conds, status_params = build_status_filter(
         status, column="bv.status", default_exclude=["removed"]
     )
-    where_clause = "WHERE " + " AND ".join(status_conds) if status_conds else ""
+    conditions = list(status_conds)
+    params = list(status_params)
+
+    if project_id is not None:
+        conditions.append("bv.project_id = ?")
+        params.append(project_id)
+
+    if client_id is not None:
+        conditions.append("bv.client_id = ?")
+        params.append(client_id)
+
+    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     rows, pagination = paginate(
         conn,
         f"SELECT COUNT(*) FROM visits bv {where_clause}",
         f"""
-        SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
-               bv.client_id, bv.project_id,
+        SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.status,
+               bv.visit_count, bv.client_id, bv.project_id,
                client.name AS client_name, project.project_name,
                bv.mcp_view, bv.mcp_read,
                bv.mcp_view_source, bv.mcp_read_source
@@ -57,7 +70,7 @@ def list_visits(
         ORDER BY bv.visit_time DESC
         LIMIT ? OFFSET ?
         """,
-        list(status_params),
+        params,
         page=page,
         limit=limit,
     )
@@ -68,6 +81,7 @@ def list_visits(
             "title": r["title"],
             "visit_time": r["visit_time"],
             "browser": r["browser"],
+            "status": r["status"] or "listed",
             "visit_count": r["visit_count"],
             "client_id": r["client_id"],
             "project_id": r["project_id"],

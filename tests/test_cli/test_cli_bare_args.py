@@ -102,8 +102,6 @@ class TestBareDataCommand:
         stdout, stderr, code = run_fp("data")
         output = stdout + stderr
         assert code == 0
-        assert "export" in output.lower()
-        assert "template" in output.lower()
         assert "import" in output.lower()
         assert _RAW_ERROR not in output
 

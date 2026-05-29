@@ -157,6 +157,16 @@ def add_csv_flag(parser) -> None:
     )
 
 
+def add_template_flag(parser) -> None:
+    """Add a ``--template`` flag to an argparse parser."""
+    parser.add_argument(
+        "--template",
+        action="store_true",
+        default=False,
+        help="Output an import-compatible CSV template with example data",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------

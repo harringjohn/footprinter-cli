@@ -122,7 +122,8 @@ def list_folders(
     fetch_sql = f"""
         WITH folder_cte AS (
             SELECT folder.id, folder.path, folder.relative_path, folder.name, folder.source,
-                   folder.project_id, folder.mcp_view, folder.mcp_read,
+                   folder.status, folder.project_id, folder.client_id,
+                   folder.mcp_view, folder.mcp_read,
                    folder.mcp_view_source, folder.mcp_read_source,
                    folder.direct_file_count, folder.total_size_bytes
             FROM folders folder
@@ -147,6 +148,8 @@ def list_folders(
             "relative_path": row["relative_path"],
             "name": row["name"],
             "source": row["source"] or "local",
+            "status": row["status"] or "listed",
+            "client_id": row["client_id"],
             "direct_files": row["live_file_count"],
             "total_size_bytes": row["live_size_bytes"],
             "project_id": row["project_id"],
