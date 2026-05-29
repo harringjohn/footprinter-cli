@@ -324,9 +324,7 @@ def project_conn():
     conn.execute(
         """CREATE TABLE projects (
             id INTEGER PRIMARY KEY,
-            project_name TEXT,
-            project_type TEXT,
-            root_path TEXT,
+            name TEXT,
             status TEXT,
             description TEXT,
             client TEXT
@@ -348,8 +346,8 @@ def project_conn():
         )"""
     )
     conn.execute(
-        "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-        "VALUES (1, 'EmptyProj', 'python', '/tmp/empty', 'listed')"
+        "INSERT INTO projects (id, name, status) "
+        "VALUES (1, 'EmptyProj', 'listed')"
     )
     conn.commit()
     return conn

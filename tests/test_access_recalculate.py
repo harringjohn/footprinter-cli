@@ -20,7 +20,7 @@ def _seed_entities(conn):
 
     # Projects
     cur.execute(
-        "INSERT INTO projects (id, project_name, root_path, client_id) VALUES (3, 'Widget', '/Users/me/Work/widget', 5)"
+        "INSERT INTO projects (id, name, client_id) VALUES (3, 'Widget', 5)"
     )
 
     # Files
@@ -478,8 +478,8 @@ class TestRecalculateClientDirectAssignment:
         _seed_entities(conn)
         conn.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (6, 'Other', 'other', 'external')")
         conn.execute(
-            "INSERT INTO projects (id, project_name, root_path, client_id) "
-            "VALUES (4, 'OtherProj', '/Users/me/Work/other', 6)"
+            "INSERT INTO projects (id, name, client_id) "
+            "VALUES (4, 'OtherProj', 6)"
         )
         conn.execute(
             "INSERT INTO files (id, source, name, path, account, project_id, client_id) "
@@ -543,8 +543,8 @@ class TestRecalculateClientDirectAssignment:
         _seed_entities(conn)
         conn.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (7, 'Cross', 'cross', 'external')")
         conn.execute(
-            "INSERT INTO projects (id, project_name, root_path, client_id) "
-            "VALUES (8, 'CrossProj', '/Users/me/Work/cross', 7)"
+            "INSERT INTO projects (id, name, client_id) "
+            "VALUES (8, 'CrossProj', 7)"
         )
         conn.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, received_at, project_id, client_id) "

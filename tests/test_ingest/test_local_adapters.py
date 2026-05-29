@@ -23,8 +23,7 @@ def mock_db():
     db.db_path = "/tmp/test.db"
     cursor = MagicMock()
     db.conn.cursor.return_value = cursor
-    # Prefix map builders return proper empty structures
-    db.build_project_prefix_map.return_value = []
+    # Folder map builder returns proper empty structures
     db.build_folder_maps.return_value = ({}, {})
     return db
 

@@ -17,7 +17,7 @@ def _seed_entities(conn):
     cur = conn.cursor()
     cur.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (5, 'Acme', 'acme', 'external')")
     cur.execute(
-        "INSERT INTO projects (id, project_name, root_path, client_id) VALUES (3, 'Widget', '/Users/me/Work/widget', 5)"
+        "INSERT INTO projects (id, name, client_id) VALUES (3, 'Widget', 5)"
     )
     cur.execute(
         "INSERT INTO files (id, source, name, path, account, project_id) "

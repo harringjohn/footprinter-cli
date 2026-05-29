@@ -93,7 +93,7 @@ class TestDataTemplate:
     def test_template_projects_writes_header(self):
         stdout, _, code = run_fp("data", "template", "projects")
         assert code == 0
-        assert "project_name" in stdout
+        assert "name" in stdout
 
     def test_template_files_writes_header(self):
         # Data-source noun routes through DATA_SOURCE_SPECS, not the legacy path.

@@ -603,8 +603,8 @@ class TestBatchPermissionResolution:
         """Batch resolve permissions for projects."""
         cursor = batch_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (10, 'FK Client', 'fk', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, client_id) VALUES (1, 'Test Project', 10)")
-        cursor.execute("INSERT INTO projects (id, project_name, client_id) VALUES (2, 'Test Project 2', NULL)")
+        cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (1, 'Test Project', 10)")
+        cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (2, 'Test Project 2', NULL)")
         cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('project:1', 'allow')")
         batch_db.commit()
 
@@ -682,7 +682,7 @@ class TestBatchVisibilityResolution:
     def test_batch_visibility_most_restrictive_wins(self, batch_db):
         """Most restrictive visibility wins (hidden > opaque > visible)."""
         cursor = batch_db.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, client_id) VALUES (1, 'Test Project', NULL)")
+        cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (1, 'Test Project', NULL)")
         cursor.execute(
             "INSERT INTO files (id, name, path, project_id, source)"
             " VALUES (1, 'file.txt', '/test/file.txt', 1, 'local')"
@@ -701,8 +701,8 @@ class TestBatchVisibilityResolution:
     def test_batch_visibility_projects(self, batch_db):
         """Batch resolve visibility for projects."""
         cursor = batch_db.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, client_id) VALUES (1, 'Test Project', NULL)")
-        cursor.execute("INSERT INTO projects (id, project_name, client_id) VALUES (2, 'Test Project 2', NULL)")
+        cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (1, 'Test Project', NULL)")
+        cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (2, 'Test Project 2', NULL)")
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'visible')")
         batch_db.commit()
 
@@ -980,8 +980,8 @@ class TestDirectClientPermissions:
             "(2, 'DeniedClient', 'denied', 'external')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, client_id) "
-            "VALUES (1, 'AllowedProj', '/test/allowed', 1)"
+            "INSERT INTO projects (id, name, client_id) "
+            "VALUES (1, 'AllowedProj', 1)"
         )
         cursor.execute(
             "INSERT INTO permission_policies (scope, setting) VALUES "

@@ -215,8 +215,8 @@ class TestGetChatDetail:
                VALUES (1, 'Acme Corp', 'acme', 'external', 'listed')"""
         )
         chat_conn.execute(
-            """INSERT INTO projects (id, project_name, project_type, status, client_id)
-               VALUES (1, 'Alpha', 'python', 'listed', 1)"""
+            """INSERT INTO projects (id, name, status, client_id)
+               VALUES (1, 'Alpha', 'listed', 1)"""
         )
         chat_conn.execute(
             """INSERT INTO chats

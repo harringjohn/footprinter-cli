@@ -220,8 +220,8 @@ def test_entity_status_breakdown_basic():
         "VALUES ('Acme', 'acme', 'external', 'listed')"
     )
     conn.execute(
-        "INSERT INTO projects (project_name, project_type, root_path, status) "
-        "VALUES ('Alpha', 'python', '/tmp/alpha', 'listed')"
+        "INSERT INTO projects (name, status) "
+        "VALUES ('Alpha', 'listed')"
     )
     conn.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "

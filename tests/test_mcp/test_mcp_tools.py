@@ -668,7 +668,7 @@ class TestContexterSearch:
     def test_search_emails_include_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject,"
             " from_address, received_at, client_id, project_id) "
@@ -714,7 +714,7 @@ class TestContexterSearch:
     def test_search_chats_include_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO chats (id, external_id, account, title, created_at, client_id, project_id) "
             "VALUES (1, 'conv-1', 'claude', 'Acme discussion', '2024-01-01', 1, 1)"
@@ -736,8 +736,8 @@ class TestContexterSearch:
 
     def test_search_emails_filter_by_project(self, mcp_db):
         cursor = mcp_db.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'Alpha', '/test/alpha')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (2, 'Beta', '/test/beta')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'Alpha')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (2, 'Beta')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, received_at, project_id) "
             "VALUES (1, 'msg-1', 'thread-1', 'work', 'Update report', 'a@b.com', '2024-01-01', 1)"
@@ -788,7 +788,7 @@ class TestContexterSearch:
 
     def test_search_chats_filter_by_project(self, mcp_db):
         cursor = mcp_db.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'Alpha', '/test/alpha')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'Alpha')")
         cursor.execute(
             "INSERT INTO chats (id, external_id, account, title, created_at, project_id) "
             "VALUES (1, 'conv-1', 'claude', 'Alpha chat', '2024-01-01', 1)"
@@ -1731,8 +1731,8 @@ class TestContexterProject:
     def test_project_found(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'Footprinter', 'python', '/test/footprinter', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'Footprinter', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
@@ -1749,7 +1749,7 @@ class TestContexterProject:
 
             result = footprinter_project("Footprinter")
 
-        assert result["project_name"] == "Footprinter"
+        assert result["name"] == "Footprinter"
         assert result["file_count"] == 1
 
     def test_project_not_found(self, mcp_db):
@@ -1766,8 +1766,8 @@ class TestContexterProject:
     def test_project_artifact_stats(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'TestProject', '/test/project', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'TestProject', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
@@ -1800,8 +1800,8 @@ class TestContexterProject:
     def test_project_case_insensitive(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'MyProject', '/test/myproject', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'MyProject', 'listed', 'visible')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'visible')")
         mcp_db.commit()
@@ -1814,17 +1814,17 @@ class TestContexterProject:
 
             result = footprinter_project("myproject")
 
-        assert result["project_name"] == "MyProject"
+        assert result["name"] == "MyProject"
 
     def test_project_multiple_matches_disambiguation(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'AppExchange', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (2, 'MyApp', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -1844,12 +1844,12 @@ class TestContexterProject:
     def test_project_disambiguation_opaque_match(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'AppExchange', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'MyApp', 'python', '/test/myapp', 'listed', 'opaque')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (2, 'MyApp', 'listed', 'opaque')"
         )
         mcp_db.commit()
 
@@ -1875,12 +1875,12 @@ class TestContexterProject:
     def test_project_exact_match_over_fuzzy(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (1, 'App', 'python', '/test/app', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'App', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status, mcp_view) "
-            "VALUES (2, 'AppExchange', 'python', '/test/appexchange', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (2, 'AppExchange', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
@@ -1896,14 +1896,14 @@ class TestContexterProject:
 
             result = footprinter_project("App")
 
-        assert result["project_name"] == "App"
+        assert result["name"] == "App"
         assert "disambiguation" not in result
 
     def test_project_stats_exclude_hidden_files(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'HiddenTest', '/test/hidden', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'HiddenTest', 'listed', 'visible')"
         )
         # Visible local file
         cursor.execute(
@@ -1941,8 +1941,8 @@ class TestContexterProject:
     def test_project_returns_folder_children(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'NavProject', '/test/nav', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'NavProject', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO folders (id, name, path, relative_path, source, direct_file_count, "
@@ -1974,8 +1974,8 @@ class TestContexterProject:
     def test_project_returns_entity_counts(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'EntityProject', '/test/entity', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'EntityProject', 'listed', 'visible')"
         )
         # 3 emails
         for i in range(1, 4):
@@ -2008,8 +2008,8 @@ class TestContexterProject:
     def test_project_entity_counts_zero_when_none(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'EmptyProject', '/test/empty', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'EmptyProject', 'listed', 'visible')"
         )
         mcp_db.commit()
 
@@ -2026,8 +2026,8 @@ class TestContexterProject:
     def test_project_entity_counts_exclude_hidden(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'VisProject', '/test/vis', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'VisProject', 'listed', 'visible')"
         )
         # 2 visible emails + 1 hidden
         for i in range(1, 3):
@@ -2073,8 +2073,8 @@ class TestContexterProject:
     def test_project_folder_children_exclude_hidden(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, mcp_view) "
-            "VALUES (1, 'HiddenFolderProject', '/test/hfp', 'listed', 'visible')"
+            "INSERT INTO projects (id, name, status, mcp_view) "
+            "VALUES (1, 'HiddenFolderProject', 'listed', 'visible')"
         )
         cursor.execute(
             "INSERT INTO folders (id, name, path, relative_path, source, direct_file_count, "
@@ -2113,8 +2113,8 @@ class TestContexterClient:
             "VALUES (1, 'Acme Corp', 'acme', 'company', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'AcmeWeb', '/test/acmeweb', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'AcmeWeb', 'listed', 1, 'visible')"
         )
         cursor.execute(
             "INSERT INTO files (id, source, name, status, size_bytes, project_id) "
@@ -2254,8 +2254,8 @@ class TestContexterClient:
             "VALUES (1, 'SecretCorp', 'secret', 'company', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'SecretWeb', '/test/secretweb', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'SecretWeb', 'listed', 1, 'visible')"
         )
         # Visible file
         cursor.execute(
@@ -2289,18 +2289,18 @@ class TestContexterClient:
         )
         # Project A: visible — full details expected
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (1, 'PublicWeb', '/test/publicweb', 'listed', 1, 'visible', 'web')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'PublicWeb', 'listed', 1, 'visible')"
         )
         # Project B: opaque — minimal metadata only
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (2, 'InternalTool', '/test/internal', 'listed', 1, 'opaque', 'tool')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (2, 'InternalTool', 'listed', 1, 'opaque')"
         )
         # Project C: hidden — excluded entirely
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view, project_type) "
-            "VALUES (3, 'SecretProject', '/test/secret', 'listed', 1, 'hidden', 'api')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (3, 'SecretProject', 'listed', 1, 'hidden')"
         )
         mcp_db.commit()
 
@@ -2315,21 +2315,18 @@ class TestContexterClient:
         # Hidden project excluded, visible + opaque remain
         assert len(result["projects"]) == 2
 
-        # Find visible and opaque projects in result
-        projects_by_type = {p.get("type", p.get("project_type")): p for p in result["projects"]}
+        # Find visible and opaque projects in result by id
+        projects_by_id = {p["id"]: p for p in result["projects"]}
 
         # Visible project has full details
-        visible = projects_by_type["web"]
-        assert "name" in visible
-        assert "root_path" in visible
+        visible = projects_by_id[1]
+        assert visible["name"] == "PublicWeb"
 
-        # Opaque project has only minimal fields (id, type/project_type, status)
-        opaque = projects_by_type["tool"]
+        # Opaque project has only minimal fields (id, status, client_id)
+        opaque = projects_by_id[2]
         assert opaque["id"] == 2
-        assert opaque.get("type") == "tool" or opaque.get("project_type") == "tool"
         assert opaque["status"] == "listed"
         assert "name" not in opaque
-        assert "root_path" not in opaque
 
     def test_client_returns_total_folders(self, mcp_db):
         cursor = mcp_db.cursor()
@@ -2338,12 +2335,12 @@ class TestContexterClient:
             "VALUES (1, 'FolderCorp', 'foldercorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'ProjA', '/test/a', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'ProjA', 'listed', 1, 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (2, 'ProjB', '/test/b', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (2, 'ProjB', 'listed', 1, 'visible')"
         )
         # 2 folders in ProjA
         cursor.execute(
@@ -2382,8 +2379,8 @@ class TestContexterClient:
             "VALUES (1, 'EntityCorp', 'entitycorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'Proj1', '/test/proj1', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'Proj1', 'listed', 1, 'visible')"
         )
         # 5 emails
         for i in range(1, 6):
@@ -2437,8 +2434,8 @@ class TestContexterClient:
             "VALUES (1, 'HiddenCorp', 'hiddencorp', 'company', 'listed', 'visible')"
         )
         cursor.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id, mcp_view) "
-            "VALUES (1, 'CorpProj', '/test/corp', 'listed', 1, 'visible')"
+            "INSERT INTO projects (id, name, status, client_id, mcp_view) "
+            "VALUES (1, 'CorpProj', 'listed', 1, 'visible')"
         )
         # 3 visible emails + 2 hidden
         for i in range(1, 4):
@@ -4042,7 +4039,7 @@ class TestContexterRead:
     def test_read_email_includes_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, from_name, "
             "to_addresses, received_at, body_preview, client_id, project_id, mcp_view) "
@@ -4092,7 +4089,7 @@ class TestContexterRead:
     def test_read_chat_includes_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO chats "
             "(id, external_id, account, title, created_at, message_count, client_id, project_id, mcp_view) "
@@ -4121,7 +4118,7 @@ class TestContexterRead:
     def test_read_email_denied_metadata_excludes_sensitive_fields(self, mcp_db):
         cursor = mcp_db.cursor()
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account,"
             " subject, from_address, received_at, body_preview,"
@@ -4192,7 +4189,7 @@ class TestContexterRead:
         )
         # Email with sensitive fields
         cursor.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Acme Corp', 'acme', 'external')")
-        cursor.execute("INSERT INTO projects (id, project_name, root_path) VALUES (1, 'AcmeWeb', '/test/acme')")
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account,"
             " subject, from_address, received_at, body_preview,"

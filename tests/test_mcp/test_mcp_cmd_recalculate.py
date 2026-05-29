@@ -244,8 +244,8 @@ class TestBulkPerTypeDisplay:
         from footprinter.cli._policy_helpers import bulk_apply
 
         tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'TestProj', 'python', '/Users/me/Work/test', 'listed')"
+            "INSERT INTO projects (id, name, status) "
+            "VALUES (1, 'TestProj', 'listed')"
         )
         tool_db.commit()
 
@@ -275,8 +275,8 @@ class TestBulkThresholdConfirmation:
         from footprinter.cli._policy_helpers import bulk_apply
 
         tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'SmallProj', 'python', '/Users/me/Work/small', 'listed')"
+            "INSERT INTO projects (id, name, status) "
+            "VALUES (1, 'SmallProj', 'listed')"
         )
         tool_db.commit()
 
@@ -302,8 +302,8 @@ class TestBulkThresholdConfirmation:
         from footprinter.cli._policy_helpers import bulk_apply
 
         tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'BigProj', 'python', '/Users/me/Work/big', 'listed')"
+            "INSERT INTO projects (id, name, status) "
+            "VALUES (1, 'BigProj', 'listed')"
         )
         tool_db.commit()
 

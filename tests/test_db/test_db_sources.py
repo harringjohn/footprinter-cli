@@ -844,7 +844,7 @@ class TestInsertEmail:
 
         # Create referenced records for FK columns
         db.conn.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'Test', 'test', 'external')")
-        db.conn.execute("INSERT INTO projects (id, project_name, status) VALUES (2, 'TestProj', 'listed')")
+        db.conn.execute("INSERT INTO projects (id, name, status) VALUES (2, 'TestProj', 'listed')")
 
         # Simulate enrichment: set access-control and AI columns
         db.conn.execute("""

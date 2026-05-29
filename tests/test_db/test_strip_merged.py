@@ -36,7 +36,7 @@ def fresh_db(tmp_path):
 def test_projects_check_constraint_rejects_merged(fresh_db):
     with pytest.raises(sqlite3.IntegrityError):
         fresh_db.execute(
-            "INSERT INTO projects (project_name, status) VALUES (?, ?)",
+            "INSERT INTO projects (name, status) VALUES (?, ?)",
             ("merge-test", "merged"),
         )
 

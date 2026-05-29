@@ -6,13 +6,13 @@ Pins that inline COUNT subqueries inside ``list_projects`` and
 counted, only removed are excluded.
 """
 
-from footprinter.db.projects import get_project_detail, list_projects
+from footprinter.db.projects import create_project, get_project_detail, list_projects, update_project
 
 
 def _seed_project_with_mixed_status_files(conn):
     conn.execute(
-        "INSERT INTO projects (id, project_name, root_path, status) "
-        "VALUES (1, 'Alpha', '/p/alpha', 'listed')"
+        "INSERT INTO projects (id, name, status) "
+        "VALUES (1, 'Alpha', 'listed')"
     )
     conn.execute(
         """INSERT INTO files (id, name, path, source, status, content_type, size_bytes, project_id)
@@ -45,3 +45,28 @@ class TestGetProjectDetailAlignment:
         assert detail is not None
         assert detail["file_count"] == 2
         assert detail["total_size"] == 300
+
+
+class TestCreateProjectSlug:
+    """create_project derives a (non-unique) slug from the name."""
+
+    def test_create_populates_slug_from_name(self, tool_db):
+        row = create_project(tool_db, name="My Web App")
+        assert row["name"] == "My Web App"
+        assert row["slug"] == "my-web-app"
+
+    def test_names_are_not_unique_slug_repeats(self, tool_db):
+        a = create_project(tool_db, name="Duplicate")
+        b = create_project(tool_db, name="Duplicate")
+        assert a["id"] != b["id"]
+        assert a["slug"] == b["slug"] == "duplicate"
+
+    def test_update_regenerates_slug_on_rename(self, tool_db):
+        row = create_project(tool_db, name="Before")
+        update_project(tool_db, row["id"], name="After Rename")
+        renamed = get_project_detail(tool_db, row["id"])
+        assert renamed["name"] == "After Rename"
+        stored_slug = tool_db.execute(
+            "SELECT slug FROM projects WHERE id = ?", (row["id"],)
+        ).fetchone()["slug"]
+        assert stored_slug == "after-rename"

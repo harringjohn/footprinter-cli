@@ -30,10 +30,10 @@ def _seed(conn):
 
     # Projects
     cur.execute(
-        "INSERT INTO projects (id, project_name, root_path, client_id) VALUES (3, 'Widget', '/Users/me/Work/widget', 5)"
+        "INSERT INTO projects (id, name, client_id) VALUES (3, 'Widget', 5)"
     )
     cur.execute(
-        "INSERT INTO projects (id, project_name, root_path, client_id) VALUES (4, 'Gadget', '/Users/me/Work/gadget', 6)"
+        "INSERT INTO projects (id, name, client_id) VALUES (4, 'Gadget', 6)"
     )
 
     # Files

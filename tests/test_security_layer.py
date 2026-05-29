@@ -67,13 +67,13 @@ def security_db(tool_db):
     # Insert test projects (no item-level columns used - use policies instead)
     cursor.execute(
         """
-        INSERT INTO projects (id, project_name, root_path, client_id)
+        INSERT INTO projects (id, name, client_id)
         VALUES
-            (1, 'Test Project', '/test/project', 1),
-            (2, 'Denied Project', '/test/denied', 1),
-            (3, 'Hidden Project', '/test/hidden', 2),
-            (4, 'Opaque Project', '/test/opaque', 3),
-            (5, 'Allowed Project', '/test/allowed', 1)
+            (1, 'Test Project', 1),
+            (2, 'Denied Project', 1),
+            (3, 'Hidden Project', 2),
+            (4, 'Opaque Project', 3),
+            (5, 'Allowed Project', 1)
     """
     )
 
@@ -819,7 +819,7 @@ class TestOpaqueFieldSets:
         assert OPAQUE_FOLDER_FIELDS == {"id", "direct_files", "direct_file_count", "source", "project_id"}
 
     def test_project_fields(self):
-        assert OPAQUE_PROJECT_FIELDS == {"id", "type", "project_type", "status", "client_id"}
+        assert OPAQUE_PROJECT_FIELDS == {"id", "status", "client_id"}
 
 
 # ==============================================================================

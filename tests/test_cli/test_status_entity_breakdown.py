@@ -158,8 +158,8 @@ def _seed_populated_db(db_path: Path) -> None:
         "VALUES ('Acme', 'acme', 'external', 'listed')"
     )
     conn.execute(
-        "INSERT INTO projects (project_name, project_type, root_path, status) "
-        "VALUES ('Alpha', 'python', '/tmp/alpha', 'listed')"
+        "INSERT INTO projects (name, status) "
+        "VALUES ('Alpha', 'listed')"
     )
     conn.execute(
         "INSERT INTO folders (path, relative_path, name, source, status) "
