@@ -453,53 +453,79 @@ def _handle_bulk_csv(args) -> None:
     error_details: list[dict] = []
 
     with open_db() as conn:
-        for i, row in enumerate(rows, 1):
-            row_id = row.get("id", "").strip()
-            if not row_id:
-                errors += 1
-                error_details.append({"row": i, "error": "Missing id value"})
-                continue
+        from footprinter.services.ingest_service import IngestService
 
-            try:
-                row_id_int = int(row_id)
-            except ValueError:
-                errors += 1
-                error_details.append({"row": i, "error": f"Invalid id: {row_id!r}"})
-                continue
+        ingest_svc = IngestService(conn)
+        ingest_id = ingest_svc.begin(
+            f"update_{noun}",
+            mode="bulk",
+            trigger="cli:update",
+        )
 
-            existing = conn.execute(
-                f"SELECT id FROM {spec.table} WHERE id = ?",  # noqa: S608
-                (row_id_int,),
-            ).fetchone()
-            if existing is None:
-                errors += 1
-                error_details.append({"row": i, "error": f"ID {row_id_int} not found"})
-                continue
-
-            set_parts: list[str] = []
-            set_params: list = []
-            for col in csv_writable:
-                val = row.get(col, "")
-                if val == "":
+        try:
+            for i, row in enumerate(rows, 1):
+                row_id = row.get("id", "").strip()
+                if not row_id:
+                    errors += 1
+                    error_details.append({"row": i, "error": "Missing id value"})
                     continue
-                if col in ("project_id", "client_id") and val == "0":
-                    set_parts.append(f"{col} = ?")
-                    set_params.append(None)
-                else:
-                    set_parts.append(f"{col} = ?")
-                    set_params.append(val)
 
-            if not set_parts:
-                skipped += 1
-                continue
+                try:
+                    row_id_int = int(row_id)
+                except ValueError:
+                    errors += 1
+                    error_details.append({"row": i, "error": f"Invalid id: {row_id!r}"})
+                    continue
 
-            update_sql = (
-                f"UPDATE {spec.table} SET {', '.join(set_parts)} "  # noqa: S608
-                f"WHERE id = ?"
+                existing = conn.execute(
+                    f"SELECT id FROM {spec.table} WHERE id = ?",  # noqa: S608
+                    (row_id_int,),
+                ).fetchone()
+                if existing is None:
+                    errors += 1
+                    error_details.append({"row": i, "error": f"ID {row_id_int} not found"})
+                    continue
+
+                set_parts: list[str] = []
+                set_params: list = []
+                for col in csv_writable:
+                    val = row.get(col, "")
+                    if val == "":
+                        continue
+                    if col in ("project_id", "client_id") and val == "0":
+                        set_parts.append(f"{col} = ?")
+                        set_params.append(None)
+                    else:
+                        set_parts.append(f"{col} = ?")
+                        set_params.append(val)
+
+                if not set_parts:
+                    skipped += 1
+                    continue
+
+                update_sql = (
+                    f"UPDATE {spec.table} SET {', '.join(set_parts)} "  # noqa: S608
+                    f"WHERE id = ?"
+                )
+                set_params.append(row_id_int)
+                conn.execute(update_sql, set_params)
+                updated += 1
+
+            ingest_svc.complete(
+                ingest_id,
+                result={
+                    "items_processed": updated + skipped + errors,
+                    "items_updated": updated,
+                    "items_skipped": skipped,
+                    "errors": errors,
+                },
+                metadata={"error_details": error_details} if error_details else None,
             )
-            set_params.append(row_id_int)
-            conn.execute(update_sql, set_params)
-            updated += 1
+
+        except Exception as e:
+            ingest_svc.fail(ingest_id, error=str(e))
+            console.print(f"[red]Bulk update failed: {e}[/red]")
+            sys.exit(1)
 
     summary: dict = {
         "total": updated + skipped + errors,

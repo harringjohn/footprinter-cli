@@ -17,6 +17,7 @@ Validates:
 """
 
 import json
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from conftest import run_fp
@@ -35,6 +36,38 @@ def _write_csv(tmp_path, lines: list[str]) -> str:
     csv_file = tmp_path / "test.csv"
     csv_file.write_text("\n".join(lines))
     return str(csv_file)
+
+
+def _csv_test_db():
+    """Build a minimal in-memory DB for CSV bulk-update tests."""
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
+        "project_id INTEGER, client_id INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE ingests ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "pipe TEXT NOT NULL, started_at DATETIME NOT NULL, "
+        "completed_at DATETIME, status TEXT NOT NULL DEFAULT 'running', "
+        "mode TEXT, trigger TEXT, items_processed INTEGER DEFAULT 0, "
+        "items_new INTEGER DEFAULT 0, items_updated INTEGER DEFAULT 0, "
+        "items_skipped INTEGER DEFAULT 0, errors INTEGER DEFAULT 0, "
+        "elapsed_seconds REAL, metadata TEXT)"
+    )
+    return conn
+
+
+@contextmanager
+def _open_db_stub(conn):
+    """Mimic open_db()'s context-manager contract over a pre-built connection."""
+    try:
+        yield conn
+    finally:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -405,22 +438,11 @@ class TestUpdateBulkPathAssign:
 class TestUpdateBulkCsv:
     """fp update files corrections.csv applies bulk CSV updates."""
 
-    @patch("footprinter.cli.update.open_db")
-    def test_bulk_csv_updates_rows(self, mock_open_db, tmp_path):
-        import sqlite3
-
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-            "project_id INTEGER, client_id INTEGER)"
-        )
+    def test_bulk_csv_updates_rows(self, tmp_path):
+        conn = _csv_test_db()
         conn.execute("INSERT INTO files VALUES (1, 'listed', NULL, NULL)")
         conn.execute("INSERT INTO files VALUES (2, 'listed', NULL, NULL)")
         conn.commit()
-
-        mock_open_db.return_value.__enter__.return_value = conn
-        mock_open_db.return_value.__exit__.return_value = False
 
         csv_path = _write_csv(tmp_path, [
             "id,status,project_id",
@@ -428,7 +450,8 @@ class TestUpdateBulkCsv:
             "2,removed,",
         ])
 
-        stdout, stderr, code = run_fp("update", "files", csv_path)
+        with patch("footprinter.cli.update.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("update", "files", csv_path)
 
         assert code == 0
         row1 = conn.execute("SELECT status, project_id FROM files WHERE id = 1").fetchone()
@@ -449,24 +472,13 @@ class TestUpdateBulkCsv:
         output = stdout + stderr
         assert "id" in output.lower()
 
-    @patch("footprinter.cli.update.open_db")
-    def test_bulk_csv_nonexistent_ids(self, mock_open_db, tmp_path):
-        import sqlite3
-
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-            "project_id INTEGER, client_id INTEGER)"
-        )
-        conn.commit()
-
-        mock_open_db.return_value.__enter__.return_value = conn
-        mock_open_db.return_value.__exit__.return_value = False
+    def test_bulk_csv_nonexistent_ids(self, tmp_path):
+        conn = _csv_test_db()
 
         csv_path = _write_csv(tmp_path, ["id,status", "999,unlisted"])
 
-        stdout, stderr, code = run_fp("update", "files", csv_path, "--json")
+        with patch("footprinter.cli.update.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("update", "files", csv_path, "--json")
 
         assert code == 0
         result = json.loads(stdout)
@@ -484,26 +496,16 @@ class TestUpdateBulkCsv:
         output = stdout + stderr
         assert "nothing" in output.lower()
 
-    @patch("footprinter.cli.update.open_db")
-    def test_bulk_csv_zero_clears_fk(self, mock_open_db, tmp_path):
+    def test_bulk_csv_zero_clears_fk(self, tmp_path):
         """Sentinel value '0' for project_id/client_id clears to NULL."""
-        import sqlite3
-
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-            "project_id INTEGER, client_id INTEGER)"
-        )
+        conn = _csv_test_db()
         conn.execute("INSERT INTO files VALUES (1, 'listed', 5, 2)")
         conn.commit()
 
-        mock_open_db.return_value.__enter__.return_value = conn
-        mock_open_db.return_value.__exit__.return_value = False
-
         csv_path = _write_csv(tmp_path, ["id,project_id", "1,0"])
 
-        _, _, code = run_fp("update", "files", csv_path)
+        with patch("footprinter.cli.update.open_db", return_value=_open_db_stub(conn)):
+            _, _, code = run_fp("update", "files", csv_path)
 
         assert code == 0
         row = conn.execute("SELECT project_id FROM files WHERE id = 1").fetchone()
