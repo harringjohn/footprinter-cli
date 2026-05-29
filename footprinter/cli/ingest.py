@@ -32,8 +32,6 @@ def _build_parser(subparsers, name):
             "  fp ingest refresh local                Re-scan local files (incremental)\n"
             "  fp ingest refresh all --full            Re-scan all sources (full)\n"
             "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
-            "  fp ingest --rebuild-vectors            Rebuild vectors (incremental)\n"
-            "  fp ingest --rebuild-vectors full       Rebuild vectors (full reset)\n"
             "  fp ingest --preview                    Pre-scan summary (no ingest)\n"
             "  fp ingest status                       Show pipeline diagnostics\n"
             "  fp ingest import export.zip            Import a chat export"
@@ -62,31 +60,6 @@ def _build_parser(subparsers, name):
         help="Suppress Rich output (for scripts and cron)",
     )
     parser.add_argument(
-        "--rebuild-vectors",
-        nargs="?",
-        const="incremental",
-        default=None,
-        choices=["incremental", "sync", "full"],
-        metavar="MODE",
-        help=(
-            "Rebuild the vector store. Modes: incremental (default, "
-            "process new/modified/removed only), sync (incremental + "
-            "verify counts), full (delete and rebuild everything)"
-        ),
-    )
-    parser.add_argument(
-        "--vector-source",
-        choices=["files", "chats", "all"],
-        default="all",
-        help="Which vectors to rebuild (default: all). Only used with --rebuild-vectors",
-    )
-    parser.add_argument(
-        "--phase",
-        choices=["files", "messages", "chat_info"],
-        default=None,
-        help="Run a single rebuild phase (default: all). Only used with --rebuild-vectors",
-    )
-    parser.add_argument(
         "--preview",
         action="store_true",
         help=(
@@ -95,11 +68,6 @@ def _build_parser(subparsers, name):
             "outliers above size threshold) without ingesting or vectorizing. "
             "In a TTY, prompts to proceed with the real ingest."
         ),
-    )
-    parser.add_argument(
-        "--repair-fts",
-        action="store_true",
-        help="Drop and rebuild FTS search indexes",
     )
     parser.add_argument(
         "--verbose",
@@ -179,25 +147,6 @@ def register(subparsers) -> None:
 
 def _handle_ingest(args) -> None:
     """Route to the correct handler based on args."""
-    # --repair-fts and --rebuild-vectors take precedence over everything
-    if getattr(args, "repair_fts", False):
-        from footprinter.ingest.vector_ops import _repair_fts
-
-        _repair_fts(quiet=getattr(args, "quiet", False))
-        return
-
-    rebuild_mode = getattr(args, "rebuild_vectors", None)
-    if rebuild_mode:
-        from footprinter.ingest.vector_ops import _rebuild_vectors
-
-        _rebuild_vectors(
-            quiet=getattr(args, "quiet", False),
-            source=getattr(args, "vector_source", "all"),
-            phase=getattr(args, "phase", None),
-            mode=rebuild_mode,
-        )
-        return
-
     if getattr(args, "preview", False):
         _ingest_preview(args)
         return

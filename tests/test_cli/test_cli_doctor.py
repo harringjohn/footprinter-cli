@@ -2,6 +2,7 @@
 
 import json
 import platform
+from unittest.mock import patch
 
 import pytest
 from conftest import run_fp
@@ -358,6 +359,162 @@ class TestDoctorOutputFormat:
             if any(s in line for s in ("OK", "WARN", "FAIL"))
         ]
         assert len(lines_with_status) >= 3
+
+
+# ---------------------------------------------------------------------------
+# 7. Subcommand registration
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorSubcommands:
+    def test_doctor_help_shows_subcommands(self):
+        stdout, stderr, code = run_fp("doctor", "--help")
+        output = stdout + stderr
+        assert code == 0
+        assert "search" in output
+        assert "semantic" in output
+
+    def test_doctor_search_help(self):
+        stdout, stderr, code = run_fp("doctor", "search", "--help")
+        output = stdout + stderr
+        assert code == 0
+        assert "fts" in output.lower() or "search" in output.lower()
+
+    def test_doctor_semantic_help(self):
+        stdout, stderr, code = run_fp("doctor", "semantic", "--help")
+        output = stdout + stderr
+        assert code == 0
+        assert "vector" in output.lower()
+
+    def test_doctor_semantic_help_shows_modes(self):
+        stdout, stderr, code = run_fp("doctor", "semantic", "--help")
+        output = stdout + stderr
+        assert "incremental" in output
+        assert "sync" in output
+        assert "full" in output
+
+    def test_bare_doctor_still_runs_checks(self):
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        assert "python" in output.lower()
+
+
+# ---------------------------------------------------------------------------
+# 8. fp doctor search — routing
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorSearch:
+    @patch("footprinter.ingest.vector_ops._repair_fts")
+    def test_calls_repair_fts(self, mock_repair):
+        run_fp("doctor", "search")
+        mock_repair.assert_called_once()
+
+    @patch("footprinter.ingest.vector_ops._repair_fts")
+    def test_passes_quiet(self, mock_repair):
+        run_fp("doctor", "search", "--quiet")
+        _, kwargs = mock_repair.call_args
+        assert kwargs.get("quiet") is True
+
+
+# ---------------------------------------------------------------------------
+# 9. fp doctor semantic — routing
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorSemantic:
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_calls_rebuild_vectors(self, mock_rebuild):
+        run_fp("doctor", "semantic")
+        mock_rebuild.assert_called_once()
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_default_mode_incremental(self, mock_rebuild):
+        run_fp("doctor", "semantic")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("mode") == "incremental"
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_full_mode(self, mock_rebuild):
+        run_fp("doctor", "semantic", "full")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("mode") == "full"
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_sync_mode(self, mock_rebuild):
+        run_fp("doctor", "semantic", "sync")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("mode") == "sync"
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_vector_source_flag(self, mock_rebuild):
+        run_fp("doctor", "semantic", "--vector-source", "files")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("source") == "files"
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_phase_flag(self, mock_rebuild):
+        run_fp("doctor", "semantic", "--phase", "chat_info")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("phase") == "chat_info"
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_quiet_flag(self, mock_rebuild):
+        run_fp("doctor", "semantic", "--quiet")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs.get("quiet") is True
+
+    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    def test_all_flags_combined(self, mock_rebuild):
+        run_fp("doctor", "semantic", "full", "--vector-source", "chats", "--phase", "messages", "--quiet")
+        _, kwargs = mock_rebuild.call_args
+        assert kwargs == {"quiet": True, "source": "chats", "phase": "messages", "mode": "full"}
+
+
+# ---------------------------------------------------------------------------
+# 10. FTS health check in bare doctor
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorFtsHealth:
+    def test_bare_doctor_includes_fts_check(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text("directories:\n  - ~/Work\n")
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        assert "fts" in output.lower()
+
+    def test_json_includes_fts_check(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text("directories:\n  - ~/Work\n")
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor", "--json")
+        data = json.loads(stdout)
+        assert any(c["name"] == "fts_health" for c in data)
+
+
+# ---------------------------------------------------------------------------
+# 11. Flags removed from ingest
+# ---------------------------------------------------------------------------
+
+
+class TestIngestFlagsRemoved:
+    def test_rebuild_vectors_rejected(self):
+        _, _, code = run_fp("ingest", "--rebuild-vectors")
+        assert code != 0
+
+    def test_repair_fts_rejected(self):
+        _, _, code = run_fp("ingest", "--repair-fts")
+        assert code != 0
 
 
 # ---------------------------------------------------------------------------

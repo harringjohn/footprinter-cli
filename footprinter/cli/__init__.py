@@ -64,6 +64,8 @@ def main(argv=None) -> None:
             "\n"
             "diagnostics:\n"
             "  fp doctor                  Check installation health\n"
+            "  fp doctor search           Rebuild FTS search indexes\n"
+            "  fp doctor semantic         Rebuild vector store\n"
             "\n"
             "cleanup:\n"
             "  fp uninstall               Remove Footprinter (MCP entry, data, package)\n"

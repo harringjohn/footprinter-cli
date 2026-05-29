@@ -1,8 +1,8 @@
-"""fp doctor — post-install health check command.
+"""fp doctor — installation health checks and repair subcommands.
 
-Diagnostic checks for installation and environment issues.
-Like ``brew doctor`` or ``gh auth status`` — reports problems,
-doesn't fix them.
+Bare ``fp doctor`` runs diagnostic checks (like ``brew doctor``).
+Naming a specific system — ``fp doctor search`` or ``fp doctor semantic``
+— diagnoses and repairs that system.
 """
 
 import importlib.util
@@ -186,6 +186,31 @@ def _check_mcp_config() -> Check:
         return Check("mcp_config", "WARN", f"Could not read Claude Desktop config: {e}")
 
 
+def _check_fts_health() -> Check:
+    from footprinter.paths import get_db_path
+
+    db_path = get_db_path()
+    if not db_path.exists():
+        return Check("fts_health", "OK", "No database — FTS check skipped")
+    try:
+        from footprinter.ingest.database import Database
+
+        db = Database(str(db_path))
+        health = db.check_fts_health()
+        db.close()
+        errors = [t for t, info in health.items() if info["status"] == "error"]
+        if errors:
+            return Check(
+                "fts_health",
+                "WARN",
+                f"FTS indexes need repair: {', '.join(errors)}"
+                " — run 'fp doctor search'",
+            )
+        return Check("fts_health", "OK", "FTS indexes healthy")
+    except Exception as e:
+        return Check("fts_health", "WARN", f"FTS health check failed: {e}")
+
+
 def run_checks() -> list[Check]:
     """Run all diagnostic checks and return the results."""
     return [
@@ -193,6 +218,7 @@ def run_checks() -> list[Check]:
         _check_platform(),
         _check_config(),
         _check_database(),
+        _check_fts_health(),
         _check_fda(),
         _check_semantic_deps(),
         _check_parse_deps(),
@@ -207,18 +233,88 @@ def register(subparsers) -> None:
         help="Check installation health",
         description=(
             "Run diagnostic checks on your Footprinter installation.\n"
-            "Reports environment, configuration, and dependency status.\n"
-            "Diagnostic only — does not modify anything."
+            "Reports environment, configuration, and dependency status.\n\n"
+            "Name a specific system to diagnose and repair it."
         ),
         epilog=(
             "examples:\n"
             "  fp doctor                  Run all health checks\n"
-            "  fp doctor --json           Machine-readable output"
+            "  fp doctor --json           Machine-readable output\n"
+            "  fp doctor search           Rebuild FTS search indexes\n"
+            "  fp doctor semantic         Rebuild vector store (incremental)\n"
+            "  fp doctor semantic full    Rebuild vector store (full reset)"
         ),
         formatter_class=FORMATTER,
     )
     add_json_flag(parser)
     parser.set_defaults(func=_handle)
+
+    sub = parser.add_subparsers(dest="doctor_command", metavar="COMMAND")
+
+    # fp doctor search
+    search_p = sub.add_parser(
+        "search",
+        help="Rebuild FTS search indexes",
+        description="Drop and rebuild all FTS search indexes from base table data.",
+        formatter_class=FORMATTER,
+    )
+    search_p.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress Rich output",
+    )
+    search_p.set_defaults(func=_handle_search)
+
+    # fp doctor semantic
+    semantic_p = sub.add_parser(
+        "semantic",
+        help="Rebuild the vector store",
+        description="Rebuild the ChromaDB vector store from database contents.",
+        formatter_class=FORMATTER,
+    )
+    semantic_p.add_argument(
+        "mode",
+        nargs="?",
+        const="incremental",
+        default="incremental",
+        choices=["incremental", "sync", "full"],
+        metavar="MODE",
+        help=(
+            "Rebuild mode: incremental (default, new/modified/removed only), "
+            "sync (incremental + verify counts), full (delete and rebuild everything)"
+        ),
+    )
+    semantic_p.add_argument(
+        "--vector-source",
+        choices=["files", "chats", "all"],
+        default="all",
+        help="Which vectors to rebuild (default: all)",
+    )
+    semantic_p.add_argument(
+        "--phase",
+        choices=["files", "messages", "chat_info"],
+        default=None,
+        help="Run a single rebuild phase (default: all)",
+    )
+    semantic_p.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress Rich output",
+    )
+    semantic_p.set_defaults(func=_handle_semantic)
+
+
+def _handle_search(args) -> None:
+    from footprinter.ingest.vector_ops import _repair_fts
+
+    _repair_fts(quiet=getattr(args, "quiet", False))
+
+
+def _handle_semantic(args) -> None:
+    from footprinter.ingest.vector_ops import _rebuild_vectors
+
+    _rebuild_vectors(
+        quiet=getattr(args, "quiet", False),
+        source=getattr(args, "vector_source", "all"),
+        phase=getattr(args, "phase", None),
+        mode=getattr(args, "mode", "incremental"),
+    )
 
 
 def _handle(args) -> None:

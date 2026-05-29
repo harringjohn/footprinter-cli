@@ -112,7 +112,7 @@ class VectorStore:
     def get_instance(cls, chroma_path: Optional[str] = None) -> "VectorStore":
         """Return a shared singleton instance (thread-safe).
 
-        If the rebuild stamp has changed (another process ran --rebuild-vectors
+        If the rebuild stamp has changed (another process ran fp doctor semantic
         full) or the chroma directory has been deleted, the stale singleton is
         discarded and a fresh instance is created.
         """

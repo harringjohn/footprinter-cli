@@ -184,7 +184,7 @@ class IngestService:
             for table, info in fts_health.items():
                 if info["status"] == "error":
                     log.warning(
-                        "FTS index corrupted (%s) — run 'fp ingest --repair-fts' to fix",
+                        "FTS index corrupted (%s) — run 'fp doctor search' to fix",
                         table,
                     )
         except sqlite3.OperationalError as e:

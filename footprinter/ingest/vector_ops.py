@@ -567,7 +567,7 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
                 console.print(
                     f"  [yellow]\u26a0[/yellow] Chats: {stale_count} messages"
                     " missing chunk counts — re-run"
-                    " [bold]fp ingest --rebuild-vectors[/bold] to populate"
+                    " [bold]fp doctor semantic[/bold] to populate"
                 )
             else:
                 db_total = db_msg_chunks + db_chat_info_count
@@ -700,7 +700,7 @@ def _rebuild_vectors(
                     if console:
                         console.print()
                         console.print(f"[bold red]Chroma is corrupted:[/bold red] {integrity['error']}")
-                        console.print("Run [bold]fp ingest --rebuild-vectors full[/bold] to rebuild from scratch.")
+                        console.print("Run [bold]fp doctor semantic full[/bold] to rebuild from scratch.")
                     return
             except ImportError:
                 raise
