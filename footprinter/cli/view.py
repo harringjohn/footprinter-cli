@@ -48,6 +48,12 @@ ENTITY_MAP: dict[str, tuple[str, str, str, str]] = {
     "visits": ("visit_service", "visits", "visit", "collection"),
 }
 
+_FILTER_SUPPORT: dict[str, set[str]] = {
+    "files": {"project_id"},
+    "folders": {"project_id"},
+    "emails": {"project_id", "client_id"},
+}
+
 # ---------------------------------------------------------------------------
 # Column specs for Rich table rendering
 # ---------------------------------------------------------------------------
@@ -190,7 +196,28 @@ def _handle_collection(args) -> None:
     if noun == "folders":
         list_kwargs["depth"] = getattr(args, "depth", None)
 
+    project_id = getattr(args, "project_id", None)
+    if project_id is not None:
+        list_kwargs["project_id"] = project_id
+
+    client_id = getattr(args, "client_id", None)
+    if client_id is not None:
+        list_kwargs["client_id"] = client_id
+
     with open_db() as conn:
+        if list_kwargs.get("project_id") is not None:
+            from footprinter.services import project_service
+
+            if project_service.get(conn, list_kwargs["project_id"], role=Role.ADMIN) is None:
+                console.print(f"[red]Project {list_kwargs['project_id']} not found.[/red]")
+                sys.exit(1)
+        if list_kwargs.get("client_id") is not None:
+            from footprinter.services import client_service
+
+            if client_service.get(conn, list_kwargs["client_id"], role=Role.ADMIN) is None:
+                console.print(f"[red]Client {list_kwargs['client_id']} not found.[/red]")
+                sys.exit(1)
+
         result = service.list_(conn, **list_kwargs)
         rows = result[list_key]
         if (verbose or getattr(args, "json", False)) and rows:
@@ -275,6 +302,8 @@ def register(subparsers) -> None:
             "  fp view clients --json           JSON output\n"
             "  fp view clients --csv            CSV export\n"
             "  fp view files --limit 10         First 10 files\n"
+            "  fp view files --project 3        Files in project 3\n"
+            "  fp view emails --client 1        Emails for client 1\n"
             "  fp view projects --verbose       Include access columns\n"
             "\n"
             "entity nouns:\n"
@@ -337,6 +366,25 @@ def register(subparsers) -> None:
                 type=int,
                 default=None,
                 help="Max folder path depth below home (default: no limit)",
+            )
+        supported = _FILTER_SUPPORT.get(noun, set())
+        if "project_id" in supported:
+            p.add_argument(
+                "--project",
+                type=int,
+                default=None,
+                dest="project_id",
+                metavar="ID",
+                help="Filter by project ID",
+            )
+        if "client_id" in supported:
+            p.add_argument(
+                "--client",
+                type=int,
+                default=None,
+                dest="client_id",
+                metavar="ID",
+                help="Filter by client ID",
             )
         add_verbose_flag(p)
 
