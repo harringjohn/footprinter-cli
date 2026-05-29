@@ -103,7 +103,6 @@ def main(argv=None) -> None:
         uninstall,
         update,
         upsert,
-        vectorize,
         view,
     )
 
@@ -122,7 +121,6 @@ def main(argv=None) -> None:
         upsert,
         data,
         delete,
-        vectorize,
         uninstall,
         doctor,
     ]:

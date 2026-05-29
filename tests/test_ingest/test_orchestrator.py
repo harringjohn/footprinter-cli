@@ -680,17 +680,19 @@ class TestRebuildVectorsFileEnabled:
         conn.row_factory = sqlite3.Row
         conn.execute(
             "CREATE TABLE files (id INTEGER PRIMARY KEY, path TEXT, source TEXT, "
-            "status TEXT, modified_at TEXT, vectorized_at TEXT, vectorized_chunks INTEGER, metadata TEXT)"
+            "status TEXT, modified_at TEXT, vectorized_at TEXT, vectorized_chunks INTEGER, "
+            "metadata TEXT, vectorize INTEGER DEFAULT 1)"
         )
         conn.execute(
             "CREATE TABLE messages (id INTEGER PRIMARY KEY, chat_id INTEGER, "
             "role TEXT, content TEXT, created_at TEXT, vectorized_at TEXT, metadata TEXT, "
-            "status TEXT DEFAULT 'listed', vectorized_chunks INTEGER)"
+            "status TEXT DEFAULT 'listed', vectorized_chunks INTEGER, vectorize INTEGER DEFAULT 1)"
         )
         conn.execute(
             "CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT, "
             "account TEXT, created_at TEXT, message_count INTEGER, "
-            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'listed')"
+            "metadata_vectorized_at TEXT, metadata TEXT, status TEXT DEFAULT 'listed', "
+            "vectorize INTEGER DEFAULT 1)"
         )
         if extra_sql:
             for sql in extra_sql:
