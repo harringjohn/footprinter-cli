@@ -10,7 +10,6 @@ Assign relationships (routes through ``service.assign()``):
 """
 
 import csv
-import os
 import sqlite3
 import sys
 from pathlib import Path

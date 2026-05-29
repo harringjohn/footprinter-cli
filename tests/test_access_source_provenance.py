@@ -1,7 +1,5 @@
 """Tests for FPR-1789 — access_source provenance tracking."""
 
-import sqlite3
-
 import pytest
 
 from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
