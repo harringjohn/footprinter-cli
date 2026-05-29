@@ -24,6 +24,7 @@ ALL_SUBCOMMANDS = [
     "delete",
     "vectorize",
     "uninstall",
+    "permission",
 ]
 
 
@@ -90,6 +91,7 @@ class TestStubSubcommands:
             "data": "data",
             "delete": "delete",
             "vectorize": "vectorize",
+            "permission": "permission_cmd",
         }
         module_name = module_map.get(subcmd, subcmd)
         mod = __import__(f"footprinter.cli.{module_name}", fromlist=["register"])

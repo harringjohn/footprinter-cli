@@ -57,6 +57,9 @@ def main(argv=None) -> None:
             "  fp view emails              List indexed emails\n"
             "  fp view visits              List browser history\n"
             "\n"
+            "access control:\n"
+            "  fp permission recalculate  Re-resolve access stamps from the policy chain\n"
+            "\n"
             "servers:\n"
             "  fp mcp                     Start the MCP server\n"
             "  fp api                     Start the HTTP API server\n"
@@ -90,6 +93,7 @@ def main(argv=None) -> None:
         doctor,
         ingest,
         mcp_cmd,
+        permission_cmd,
         search,
         setup,
         status,
@@ -102,6 +106,7 @@ def main(argv=None) -> None:
     for mod in [
         ingest,
         mcp_cmd,
+        permission_cmd,
         api_cmd,
         status,
         search,
