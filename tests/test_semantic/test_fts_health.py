@@ -268,13 +268,13 @@ class TestCheckFtsTriggers:
 
 
 class TestCliRepairFtsFlag:
-    def test_run_cli_repair_fts_flag(self):
-        """--repair-fts is accepted by the argparser and routes to handler."""
+    def test_run_cli_doctor_search(self):
+        """fp doctor search is accepted by the argparser and routes to handler."""
         from unittest.mock import patch
 
         with patch("footprinter.ingest.vector_ops._repair_fts") as mock_repair:
             from tests.conftest import run_fp
 
-            stdout, stderr, code = run_fp("ingest", "--repair-fts")
+            stdout, stderr, code = run_fp("doctor", "search")
             assert code == 0
             mock_repair.assert_called_once()

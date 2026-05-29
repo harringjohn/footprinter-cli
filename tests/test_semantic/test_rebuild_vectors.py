@@ -618,11 +618,11 @@ class TestCliPhaseArgument:
     """--phase should be wired through to _rebuild_vectors."""
 
     def test_phase_argument_parsed(self):
-        """fp run --rebuild-vectors --phase chat_info should pass phase."""
+        """fp doctor semantic --phase chat_info should pass phase."""
         with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
-            run_fp("ingest", "--rebuild-vectors", "--phase", "chat_info")
+            run_fp("doctor", "semantic", "--phase", "chat_info")
 
         mock_rebuild.assert_called_once()
         _, kwargs = mock_rebuild.call_args
@@ -633,7 +633,7 @@ class TestCliPhaseArgument:
         with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
-            run_fp("ingest", "--rebuild-vectors")
+            run_fp("doctor", "semantic")
 
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("phase") is None
@@ -1024,26 +1024,26 @@ class TestIncrementalMode:
         mock_vs_cls.reset_instance.assert_not_called()
 
     def test_cli_argument_parsing(self):
-        """CLI --rebuild-vectors should parse mode values correctly."""
+        """CLI doctor semantic should parse mode values correctly."""
         with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
-            # bare --rebuild-vectors → incremental
-            run_fp("ingest", "--rebuild-vectors")
+            # bare doctor semantic → incremental
+            run_fp("doctor", "semantic")
             _, kwargs = mock_rebuild.call_args
             assert kwargs.get("mode") == "incremental", f"Expected mode='incremental', got {kwargs.get('mode')}"
 
             mock_rebuild.reset_mock()
 
-            # --rebuild-vectors full → full
-            run_fp("ingest", "--rebuild-vectors", "full")
+            # doctor semantic full → full
+            run_fp("doctor", "semantic", "full")
             _, kwargs = mock_rebuild.call_args
             assert kwargs.get("mode") == "full", f"Expected mode='full', got {kwargs.get('mode')}"
 
             mock_rebuild.reset_mock()
 
-            # --rebuild-vectors sync → sync
-            run_fp("ingest", "--rebuild-vectors", "sync")
+            # doctor semantic sync → sync
+            run_fp("doctor", "semantic", "sync")
             _, kwargs = mock_rebuild.call_args
             assert kwargs.get("mode") == "sync", f"Expected mode='sync', got {kwargs.get('mode')}"
 
