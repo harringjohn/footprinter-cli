@@ -59,7 +59,7 @@ class ChatIndexer:
             return
         # Check per-record vectorize flag
         row = self.db.conn.execute(
-            "SELECT COALESCE(json_extract(metadata, '$.vectorize'), 1) as vec FROM messages WHERE id = ?",
+            "SELECT vectorize as vec FROM messages WHERE id = ?",
             (msg_id,),
         ).fetchone()
         if row and row["vec"] == 0:
@@ -93,7 +93,7 @@ class ChatIndexer:
             return
         # Check per-record vectorize flag
         row = self.db.conn.execute(
-            "SELECT COALESCE(json_extract(metadata, '$.vectorize'), 1) as vec FROM chats WHERE id = ?",
+            "SELECT vectorize as vec FROM chats WHERE id = ?",
             (chat_id,),
         ).fetchone()
         if row and row["vec"] == 0:

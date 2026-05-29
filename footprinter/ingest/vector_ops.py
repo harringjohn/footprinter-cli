@@ -85,14 +85,14 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
                 "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
                 " AND (vectorized_at IS NULL OR modified_at > vectorized_at)"
             )
         else:
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
                 "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
             )
         counts["files"] = cursor.fetchone()[0]
     if chats_enabled:
@@ -101,7 +101,7 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
                 "SELECT COUNT(*) FROM messages "
                 "WHERE content IS NOT NULL AND TRIM(content) != ''"
                 " AND status = 'listed'"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
                 " AND vectorized_at IS NULL"
             )
         else:
@@ -109,21 +109,21 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
                 "SELECT COUNT(*) FROM messages "
                 "WHERE content IS NOT NULL AND TRIM(content) != ''"
                 " AND status = 'listed'"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
             )
         counts["messages"] = cursor.fetchone()[0]
         if incremental:
             cursor.execute(
                 "SELECT COUNT(*) FROM chats "
                 "WHERE status = 'listed'"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
                 " AND metadata_vectorized_at IS NULL"
             )
         else:
             cursor.execute(
                 "SELECT COUNT(*) FROM chats "
                 "WHERE status = 'listed'"
-                " AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0"
+                " AND vectorize != 0"
             )
         counts["chats"] = cursor.fetchone()[0]
 
@@ -221,7 +221,7 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
         "source = 'local'",
         "status = 'listed'",
         "path IS NOT NULL",
-        "COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0",
+        "vectorize != 0",
     ]
     params: list = []
 
@@ -312,7 +312,7 @@ def _vectorize_messages(conn, cursor, store, console, mode: str = "full") -> dic
         JOIN chats chat ON message.chat_id = chat.id
         WHERE message.content IS NOT NULL AND message.content != ''
             AND message.status = 'listed'
-            AND COALESCE(json_extract(message.metadata, '$.vectorize'), 1) != 0
+            AND message.vectorize != 0
             {incremental_filter}
         ORDER BY message.id
         """
@@ -423,7 +423,7 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
         SELECT id, title, account as source, created_at, message_count
         FROM chats
         WHERE status = 'listed'
-            AND COALESCE(json_extract(metadata, '$.vectorize'), 1) != 0
+            AND vectorize != 0
             {incremental_filter}
         ORDER BY id
         """

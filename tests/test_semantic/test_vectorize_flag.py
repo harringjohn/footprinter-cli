@@ -33,7 +33,8 @@ def _make_rebuild_db(tmp_path):
             message_count INTEGER DEFAULT 0,
             metadata TEXT,
             metadata_vectorized_at TEXT,
-            status TEXT DEFAULT 'listed'
+            status TEXT DEFAULT 'listed',
+            vectorize INTEGER DEFAULT 1
         )
     """)
     conn.execute("""
@@ -47,6 +48,7 @@ def _make_rebuild_db(tmp_path):
             vectorized_at TEXT,
             vectorized_chunks INTEGER,
             status TEXT DEFAULT 'listed',
+            vectorize INTEGER DEFAULT 1,
             FOREIGN KEY (chat_id) REFERENCES chats(id)
         )
     """)
@@ -82,8 +84,8 @@ class TestRebuildMessagesRespectsFlag:
         )
         # Message 2: flagged with vectorize=0 (should be skipped)
         conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, created_at, metadata) "
-            "VALUES (2, 1, 'assistant', 'Exclude me from vectors', '2026-01-02', ?)",
+            "INSERT INTO messages (id, chat_id, role, content, created_at, metadata, vectorize) "
+            "VALUES (2, 1, 'assistant', 'Exclude me from vectors', '2026-01-02', ?, 0)",
             (json.dumps({"vectorize": 0}),),
         )
         conn.commit()
@@ -150,8 +152,8 @@ class TestRebuildChatInfoRespectsFlag:
         )
         # Chat 2: flagged
         conn.execute(
-            "INSERT INTO chats (id, external_id, title, account, message_count, metadata) "
-            "VALUES (2, 'chat-2', 'Flagged Chat', 'test', 3, ?)",
+            "INSERT INTO chats (id, external_id, title, account, message_count, metadata, vectorize) "
+            "VALUES (2, 'chat-2', 'Flagged Chat', 'test', 3, ?, 0)",
             (json.dumps({"vectorize": 0}),),
         )
         conn.commit()
@@ -199,7 +201,7 @@ class TestChatIndexerRespectsFlag:
             "VALUES (1, 'chat-1', 'test', 'Test Chat', 1)"
         )
         db.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, metadata) VALUES (1, 1, 'user', 'Exclude this', ?)",
+            "INSERT INTO messages (id, chat_id, role, content, metadata, vectorize) VALUES (1, 1, 'user', 'Exclude this', ?, 0)",
             (json.dumps({"vectorize": 0}),),
         )
         db.conn.commit()
@@ -265,8 +267,8 @@ class TestChatIndexerChatInfoRespectsFlag:
             "VALUES ('local', 'file', 'local_fs', 'Local', 'folder', 1)"
         )
         db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, message_count, metadata) "
-            "VALUES (1, 'chat-1', 'test', 'Flagged Chat', 5, ?)",
+            "INSERT INTO chats (id, external_id, account, title, message_count, metadata, vectorize) "
+            "VALUES (1, 'chat-1', 'test', 'Flagged Chat', 5, ?, 0)",
             (json.dumps({"vectorize": 0}),),
         )
         db.conn.commit()

@@ -142,7 +142,7 @@ def run_vectorization(
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 
     if file_ids is not None:
-        where = "status = 'listed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        where = "status = 'listed' AND vectorize = 1"
         if not full_mode:
             where += " AND vectorized_at IS NULL"
         if len(file_ids) <= 500:
@@ -156,7 +156,7 @@ def run_vectorization(
             where += " AND id IN (SELECT file_id FROM _vec_scope)"
             rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
     else:
-        where = "status = 'listed' AND COALESCE(json_extract(metadata, '$.vectorize'), 1) = 1"
+        where = "status = 'listed' AND vectorize = 1"
         if not full_mode:
             where += " AND vectorized_at IS NULL"
         rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
