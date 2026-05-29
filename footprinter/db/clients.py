@@ -3,7 +3,6 @@
 Provides list, detail, create, and update functions for clients.
 """
 
-import json
 import sqlite3
 from typing import Optional
 
@@ -54,7 +53,7 @@ def list_clients(
     fetch_sql = f"""
         SELECT client.id, client.name, client.slug, client.client_type, client.status,
                client.mcp_view, client.mcp_read,
-               client.mcp_view_source, client.mcp_read_source, client.path_pattern,
+               client.mcp_view_source, client.mcp_read_source,
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
@@ -79,7 +78,6 @@ def list_clients(
             "mcp_read": row["mcp_read"] or "inherit",
             "mcp_view_source": row["mcp_view_source"],
             "mcp_read_source": row["mcp_read_source"],
-            "path_pattern": row["path_pattern"] or "",
         }
         for row in rows
     ]
@@ -138,7 +136,7 @@ def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optiona
     if not cursor.fetchone():
         return None
 
-    updatable = {"name", "client_type", "path_pattern", "status", "status_reason", "metadata"}
+    updatable = {"name", "client_type", "status", "status_reason"}
     sql_fields = []
     values = []
     new_name = None
@@ -146,8 +144,6 @@ def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optiona
     for key in updatable:
         if key in fields:
             val = fields[key]
-            if key == "metadata" and val is not None:
-                val = json.dumps(val)
             if key == "client_type" and val not in VALID_CLIENT_TYPES:
                 valid = ", ".join(sorted(VALID_CLIENT_TYPES))
                 raise ValueError(f"Invalid client_type. Must be one of: {valid}")
@@ -166,6 +162,11 @@ def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optiona
         new_slug = _make_slug(new_name)
         sql_fields.append("slug = ?")
         values.append(new_slug)
+
+    # Stamp status_changed_at on a status change; updated_at on any change
+    if "status" in fields:
+        sql_fields.append("status_changed_at = CURRENT_TIMESTAMP")
+    sql_fields.append("updated_at = CURRENT_TIMESTAMP")
 
     values.append(client_id)
     try:
@@ -186,7 +187,7 @@ def update_client(conn: sqlite3.Connection, client_id: int, **fields) -> Optiona
     return True
 
 
-def create_client(conn: sqlite3.Connection, *, name: str, client_type: str, path_pattern: Optional[str] = None) -> dict:
+def create_client(conn: sqlite3.Connection, *, name: str, client_type: str) -> dict:
     """Create a new client.
 
     Returns dict with ``id`` and ``slug``.
@@ -203,9 +204,9 @@ def create_client(conn: sqlite3.Connection, *, name: str, client_type: str, path
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """INSERT INTO clients (name, slug, client_type, path_pattern)
-               VALUES (?, ?, ?, ?)""",
-            (name, slug, client_type, path_pattern),
+            """INSERT INTO clients (name, slug, client_type)
+               VALUES (?, ?, ?)""",
+            (name, slug, client_type),
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -221,7 +222,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     """
     cursor = conn.cursor()
     cursor.execute(
-        """SELECT id, name, slug, client_type, status, path_pattern,
+        """SELECT id, name, slug, client_type, status,
                   mcp_view, mcp_read,
                   mcp_view_source, mcp_read_source
            FROM clients WHERE id = ?""",
@@ -237,7 +238,6 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
         "slug": row["slug"],
         "client_type": row["client_type"],
         "status": row["status"],
-        "path_pattern": row["path_pattern"] or "",
         "mcp_view": row["mcp_view"] or "inherit",
         "mcp_read": row["mcp_read"] or "inherit",
         "mcp_view_source": row["mcp_view_source"],
@@ -246,15 +246,14 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
 
     # Attached projects
     cursor.execute(
-        """SELECT id, project_name, project_type, status
-           FROM projects WHERE client_id = ? ORDER BY project_name""",
+        """SELECT id, name, status
+           FROM projects WHERE client_id = ? ORDER BY name""",
         (client_id,),
     )
     client["projects"] = [
         {
             "id": r["id"],
-            "project_name": r["project_name"],
-            "project_type": r["project_type"],
+            "name": r["name"],
             "status": r["status"],
         }
         for r in cursor.fetchall()
@@ -278,7 +277,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     Returns all columns including mcp_view. Does NOT filter by visibility.
     """
     rows = conn.execute(
-        """SELECT id, name, slug, client_type, path_pattern, status,
+        """SELECT id, name, slug, client_type, status,
                   created_at, mcp_view, mcp_read,
                   mcp_view_source, mcp_read_source
            FROM clients WHERE name LIKE ?""",

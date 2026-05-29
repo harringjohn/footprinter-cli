@@ -86,7 +86,7 @@ def list_emails(
                email.subject, email.body_preview, email.received_at,
                email.labels, email.has_attachments, email.is_read,
                email.client_id, email.project_id,
-               client.name AS client_name, project.project_name,
+               client.name AS client_name, project.name AS project_name,
                email.mcp_view, email.mcp_read,
                email.mcp_view_source, email.mcp_read_source
         FROM emails email
@@ -139,7 +139,7 @@ def get_email(conn: sqlite3.Connection, email_id: int) -> Optional[dict]:
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT email.*, client.name AS client_name, project.project_name
+        SELECT email.*, client.name AS client_name, project.name AS project_name
         FROM emails email
         LEFT JOIN clients client ON email.client_id = client.id
         LEFT JOIN projects project ON email.project_id = project.id

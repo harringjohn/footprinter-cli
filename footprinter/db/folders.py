@@ -130,7 +130,7 @@ def list_folders(
         )
         SELECT
             folder_cte.*,
-            project.project_name AS project_name,
+            project.name AS project_name,
             {count_expr} AS live_file_count,
             {size_expr} AS live_size_bytes
         FROM folder_cte
@@ -298,7 +298,7 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
             folder.id, folder.path, folder.relative_path, folder.name, folder.source,
             folder.project_id, folder.mcp_view, folder.mcp_read,
             folder.mcp_view_source, folder.mcp_read_source,
-            project.project_name,
+            project.name AS project_name,
             (SELECT COUNT(*) FROM files file
              WHERE file.folder_id = folder.id AND file.status = 'listed'
             ) AS live_file_count,

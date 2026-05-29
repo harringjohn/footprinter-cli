@@ -127,7 +127,7 @@ def get_chat_detail(
                chat.client_id, chat.project_id,
                chat.mcp_view, chat.mcp_read,
                chat.mcp_view_source, chat.mcp_read_source,
-               project.project_name, client.name AS client_name
+               project.name AS project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
         LEFT JOIN clients client ON chat.client_id = client.id
