@@ -15,10 +15,10 @@ _requires_darwin = pytest.mark.skipif(
     reason="Full Disk Access / Safari is a macOS-only prerequisite",
 )
 
+from footprinter.cli.diagnostics import validate_config  # noqa: E402
 from footprinter.cli.setup import (  # noqa: E402
     SAFARI_FDA_URL,
     _check_semantic_deps,
-    check_existing_config,
     collect_answers,
     collect_chat_export_path,
     generate_config,
@@ -29,7 +29,6 @@ from footprinter.cli.setup import (  # noqa: E402
     print_summary,
     run_interactive_wizard,
     run_orchestrator,
-    validate_config,
     write_config,
 )
 from footprinter.paths import get_bundled_path  # noqa: E402
@@ -218,31 +217,6 @@ class TestConfigWrite:
 
 # ---------------------------------------------------------------------------
 # TestCheckExistingConfig — 3 tests
-# ---------------------------------------------------------------------------
-class TestCheckExistingConfig:
-    """Tests for check_existing_config()."""
-
-    def test_returns_1_when_no_config(self):
-        from footprinter.source_registry import ConfigError
-
-        with patch("footprinter.cli.setup.get_config", side_effect=ConfigError("missing")):
-            assert check_existing_config() == 1
-
-    def test_returns_1_for_invalid_config(self, tmp_path):
-        bad_config = tmp_path / "config.yaml"
-        bad_config.write_text(yaml.dump({"directories": []}))
-        with patch("footprinter.cli.setup.get_config", return_value={"directories": []}):
-            assert check_existing_config() == 1
-
-    def test_returns_0_for_valid_config(self, tmp_path):
-        d = tmp_path / "scandir"
-        d.mkdir()
-        good_config = tmp_path / "config.yaml"
-        good_config.write_text(yaml.dump({"directories": [str(d)], "browsers": ["safari"]}))
-        with patch("footprinter.cli.setup.get_config", return_value={"directories": [str(d)], "browsers": ["safari"]}):
-            assert check_existing_config() == 0
-
-
 # ---------------------------------------------------------------------------
 # TestRunOrchestratorCommand — 2 tests
 # ---------------------------------------------------------------------------
@@ -2421,7 +2395,7 @@ class TestCollectVectorizationQuick:
     """Tests for collect_vectorization_answers in quick mode."""
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
     def test_quick_accept_returns_full_dict(self, mock_confirm, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2453,7 +2427,7 @@ class TestCollectVectorizationQuick:
         assert result["chat_vectorization"] is False
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
     def test_quick_no_junk_still_valid(self, mock_confirm, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2470,7 +2444,7 @@ class TestCollectVectorizationFull:
     """Tests for collect_vectorization_answers in full mode."""
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
     def test_full_defaults_accepted(self, mock_confirm, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2488,7 +2462,7 @@ class TestCollectVectorizationFull:
         assert result["file_vectorization"] is True
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_full_custom_file_types(self, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
 
@@ -2508,7 +2482,7 @@ class TestCollectVectorizationFull:
         assert ".rs" in result["file_types"]
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_full_decline_bulk_exclusions_toggle_individually(self, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
 
@@ -2543,7 +2517,7 @@ class TestContentSnippetsDefault:
     explain the local-only security posture."""
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_content_snippets_default_on_fresh_install(self, mock_importable, mock_console, tmp_path):
         """Fresh install: snippet Confirm.ask is invoked with default=True."""
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2565,7 +2539,7 @@ class TestContentSnippetsDefault:
         )
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_content_snippets_existing_choice_preserved(self, mock_importable, mock_console, tmp_path):
         """Reconfigure: existing choice (False) is preserved as the default."""
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2587,7 +2561,7 @@ class TestContentSnippetsDefault:
             f"Expected snippet prompt with default=False (existing choice); got {seen_defaults}"
         )
 
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
     def test_snippets_prompt_uses_local_only_security_language(self, mock_confirm, mock_importable, tmp_path):
         """The snippet prompt should explain content stays local on the user's machine."""
@@ -2624,7 +2598,7 @@ class TestSemanticEnableFirst:
     file-type or exclusion configuration."""
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_full_mode_asks_enable_before_file_types_when_declined(
         self, mock_importable, mock_console, tmp_path
     ):
@@ -2660,7 +2634,7 @@ class TestSemanticEnableFirst:
         )
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_full_mode_asks_details_when_enabled(
         self, mock_importable, mock_console, tmp_path
     ):
@@ -2706,7 +2680,7 @@ class TestCollectVectorizationExisting:
     """Tests for collect_vectorization_answers with existing config."""
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
     def test_existing_file_types_used_as_default(self, mock_confirm, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2718,7 +2692,7 @@ class TestCollectVectorizationExisting:
         assert result["file_types"] == [".py", ".md"]
 
     @patch("footprinter.cli.setup.console")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
     def test_existing_exclude_patterns_preserved(self, mock_confirm, mock_importable, mock_console, tmp_path):
         from footprinter.cli.setup import collect_vectorization_answers
@@ -2738,7 +2712,7 @@ class TestCheckSemanticDeps:
     """Tests for _check_semantic_deps pip install paths."""
 
     @patch("footprinter.cli.setup.subprocess.run")
-    @patch("footprinter.cli.setup._is_importable", return_value=True)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
     def test_deps_already_installed(self, mock_importable, mock_run):
         result = _check_semantic_deps()
         assert result is True
@@ -2750,7 +2724,7 @@ class TestCheckSemanticDeps:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.setup.subprocess.run")
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
-    @patch("footprinter.cli.setup._is_importable", return_value=False)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=False)
     def test_deps_missing_user_accepts_install_succeeds(self, mock_importable, mock_confirm, mock_run, mock_console):
         mock_run.return_value = MagicMock(returncode=0)
         result = _check_semantic_deps()
@@ -2767,7 +2741,7 @@ class TestCheckSemanticDeps:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.setup.subprocess.run")
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
-    @patch("footprinter.cli.setup._is_importable", return_value=False)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=False)
     def test_deps_missing_user_accepts_install_fails(self, mock_importable, mock_confirm, mock_run, mock_console):
         mock_run.return_value = MagicMock(returncode=1, stderr="pkg build failed")
         result = _check_semantic_deps()
@@ -2780,7 +2754,7 @@ class TestCheckSemanticDeps:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.setup.subprocess.run")
     @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
-    @patch("footprinter.cli.setup._is_importable", return_value=False)
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=False)
     def test_deps_missing_user_declines(self, mock_importable, mock_confirm, mock_run, mock_console):
         result = _check_semantic_deps()
         assert result is False

@@ -44,9 +44,9 @@ class TestSetupRegister:
         stdout, stderr, code = run_fp("setup", "--help")
         assert code == 0
 
-    def test_setup_help_mentions_check(self):
+    def test_setup_help_check_removed(self):
         stdout, stderr, code = run_fp("setup", "--help")
-        assert "--check" in stdout + stderr
+        assert "--check" not in stdout + stderr
 
     def test_setup_help_mentions_hooks(self):
         from footprinter.cli.setup import _hooks_available
@@ -107,7 +107,6 @@ class TestSetupKeptFunctions:
         "func_name",
         [
             "run_interactive_wizard",
-            "check_existing_config",
             "install_git_hooks",
             "seed_access_policies",
             "folders_add",

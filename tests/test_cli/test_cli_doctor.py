@@ -132,14 +132,15 @@ class TestDoctorFDA:
         stdout, stderr, code = run_fp("doctor")
         output = stdout + stderr
         assert "WARN" in output
-        assert "Full Disk Access" in output
+        collapsed = " ".join(output.split())
+        assert "Full Disk Access" in collapsed
 
 
 class TestDoctorSemanticDeps:
     def test_semantic_deps_missing_warns(self, tmp_path, monkeypatch):
-        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
 
-        monkeypatch.setattr(doctor, "_find_spec", lambda name: None)
+        monkeypatch.setattr(diagnostics, "is_importable", lambda name: False)
 
         home = tmp_path / ".footprinter"
         home.mkdir()
@@ -149,32 +150,22 @@ class TestDoctorSemanticDeps:
         stdout, stderr, code = run_fp("doctor")
         output = stdout + stderr
         assert "WARN" in output
-        assert "semantic" in output.lower() or "pipx install" in output.lower()
+        assert "semantic" in output.lower() or "not installed" in output.lower()
 
-    def test_semantic_deps_checks_onnxruntime_not_sentence_transformers(self, monkeypatch):
-        from footprinter.cli import doctor
+    def test_optional_features_checks_onnxruntime_not_sentence_transformers(self, monkeypatch):
+        from footprinter.cli import diagnostics
 
         recorded = []
 
         def record(name):
             recorded.append(name)
-            return None
+            return True
 
-        monkeypatch.setattr(doctor, "_find_spec", record)
-        doctor._check_semantic_deps()
+        monkeypatch.setattr(diagnostics, "is_importable", record)
+        diagnostics.check_optional_features({"semantic": {}})
 
         assert "onnxruntime" in recorded
         assert "sentence_transformers" not in recorded
-
-    def test_semantic_deps_ok_message_mentions_onnxruntime(self, monkeypatch):
-        from footprinter.cli import doctor
-
-        monkeypatch.setattr(doctor, "_find_spec", lambda name: object())
-        result = doctor._check_semantic_deps()
-
-        assert result.status == "OK"
-        assert "onnxruntime" in result.message
-        assert "sentence_transformers" not in result.message
 
     def test_find_spec_valueerror_returns_none(self, monkeypatch):
         """find_spec raises ValueError when a package's __spec__ is None."""
@@ -199,50 +190,50 @@ class TestDoctorSemanticDeps:
 
 class TestDoctorParseDeps:
     def test_parse_deps_checks_pypdf_not_pdfplumber(self, monkeypatch):
-        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
 
         recorded = []
 
         def record(name):
             recorded.append(name)
-            return None
+            return True
 
-        monkeypatch.setattr(doctor, "_find_spec", record)
-        doctor._check_parse_deps()
+        monkeypatch.setattr(diagnostics, "is_importable", record)
+        diagnostics.check_optional_features({})
 
         assert "pypdf" in recorded
         assert "pdfplumber" not in recorded
 
     def test_parse_deps_checks_all_four_extras(self, monkeypatch):
-        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
 
         recorded = []
 
         def record(name):
             recorded.append(name)
-            return None
+            return True
 
-        monkeypatch.setattr(doctor, "_find_spec", record)
-        doctor._check_parse_deps()
+        monkeypatch.setattr(diagnostics, "is_importable", record)
+        diagnostics.check_optional_features({})
 
         assert {"docx", "pypdf", "openpyxl", "pptx"}.issubset(recorded)
 
 
 class TestDoctorWarnMessageRendering:
-    """Rich must not swallow the [full] markup in install hints."""
+    """Rich must not swallow bracket markup in install hints."""
 
     def _force_missing(self, monkeypatch, *names):
-        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
 
         targets = set(names)
-        real = doctor._find_spec
+        orig = diagnostics.is_importable
 
         def fake(name):
             if name in targets:
-                return None
-            return real(name)
+                return False
+            return orig(name)
 
-        monkeypatch.setattr(doctor, "_find_spec", fake)
+        monkeypatch.setattr(diagnostics, "is_importable", fake)
 
     def _setup_home(self, tmp_path, monkeypatch):
         home = tmp_path / ".footprinter"
@@ -250,39 +241,35 @@ class TestDoctorWarnMessageRendering:
         (home / "config.yaml").write_text("directories:\n  - ~/Work\n")
         monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
 
-    def test_full_extra_renders_in_semantic_warn_hint(self, tmp_path, monkeypatch):
-        self._force_missing(
-            monkeypatch, "chromadb", "onnxruntime", "sentence_transformers"
-        )
+    def test_semantic_extra_renders_in_warn_hint(self, tmp_path, monkeypatch):
+        self._force_missing(monkeypatch, "chromadb", "onnxruntime")
         self._setup_home(tmp_path, monkeypatch)
 
         stdout, stderr, code = run_fp("doctor")
         output = stdout + stderr
-        assert "footprinter-cli[full]" in output
+        assert "footprinter-cli[semantic]" in output
 
-    def test_full_extra_renders_in_parse_warn_hint(self, tmp_path, monkeypatch):
-        self._force_missing(monkeypatch, "docx", "pypdf", "pdfplumber")
+    def test_parse_extra_renders_in_warn_hint(self, tmp_path, monkeypatch):
+        self._force_missing(monkeypatch, "docx", "pypdf", "openpyxl", "pptx")
         self._setup_home(tmp_path, monkeypatch)
 
         stdout, stderr, code = run_fp("doctor")
         output = stdout + stderr
-        assert "footprinter-cli[full]" in output
+        assert "footprinter-cli[parse]" in output
 
-    def test_json_warn_message_contains_unescaped_full_extra(
+    def test_json_warn_message_contains_unescaped_extra(
         self, tmp_path, monkeypatch
     ):
-        self._force_missing(
-            monkeypatch, "chromadb", "onnxruntime", "sentence_transformers"
-        )
+        self._force_missing(monkeypatch, "chromadb", "onnxruntime")
         self._setup_home(tmp_path, monkeypatch)
 
         stdout, stderr, code = run_fp("doctor", "--json")
         data = json.loads(stdout)
 
-        semantic_check = next(c for c in data if c["name"] == "semantic_deps")
+        semantic_check = next(c for c in data if c["name"] == "Semantic Search")
         assert semantic_check["status"] == "WARN"
-        assert "footprinter-cli[full]" in semantic_check["message"]
-        assert "\\[full]" not in semantic_check["message"]
+        assert "footprinter-cli[semantic]" in semantic_check["message"]
+        assert "\\[semantic]" not in semantic_check["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +502,260 @@ class TestIngestFlagsRemoved:
     def test_repair_fts_rejected(self):
         _, _, code = run_fp("ingest", "--repair-fts")
         assert code != 0
+
+
+# ---------------------------------------------------------------------------
+# 12. Grouped output
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorGroupedOutput:
+    def test_output_shows_group_headers(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text(
+            "directories:\n  - /tmp\nbrowsers:\n  - safari\n"
+        )
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        for group in ("Environment", "Configuration", "Optional Features", "Data Integrity", "Integrations"):
+            assert group in output, f"Group header '{group}' missing from output"
+
+    def test_group_headers_appear_in_order(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text(
+            "directories:\n  - /tmp\nbrowsers:\n  - safari\n"
+        )
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor")
+        output = stdout + stderr
+        groups = ["Environment", "Configuration", "Optional Features", "Data Integrity", "Integrations"]
+        positions = [output.index(g) for g in groups]
+        assert positions == sorted(positions), f"Groups out of order: {list(zip(groups, positions))}"
+
+
+# ---------------------------------------------------------------------------
+# 13. JSON output includes group field
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorJsonGroupField:
+    def test_json_checks_have_group_field(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text(
+            "directories:\n  - /tmp\nbrowsers:\n  - safari\n"
+        )
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor", "--json")
+        data = json.loads(stdout)
+        for check in data:
+            assert "group" in check, f"Check '{check['name']}' missing 'group' field"
+
+    def test_json_groups_match_expected_set(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        (home / "config.yaml").write_text(
+            "directories:\n  - /tmp\nbrowsers:\n  - safari\n"
+        )
+        db = home / "footprinter.db"
+        _create_minimal_db(db)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+
+        stdout, stderr, code = run_fp("doctor", "--json")
+        data = json.loads(stdout)
+        groups = {check["group"] for check in data}
+        expected = {"Environment", "Configuration", "Optional Features", "Data Integrity", "Integrations"}
+        assert groups == expected, f"Got groups {groups}, expected {expected}"
+
+
+# ---------------------------------------------------------------------------
+# 14. Architecture check (Rosetta detection)
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorArchitecture:
+    def test_rosetta_detected_warns(self, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
+            "Python is running as x86_64 on arm64 hardware (Rosetta). "
+            "Native dependencies may have compatibility issues. "
+            "Consider recreating venv with native arm64 Python."
+        ))
+
+        result = doctor._check_architecture()
+        assert result.status == "WARN"
+        assert "Rosetta" in result.message
+        assert result.group == "Environment"
+
+    def test_native_arm64_ok(self, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics, "check_architecture", lambda: None)
+
+        result = doctor._check_architecture()
+        assert result.status == "OK"
+        assert result.group == "Environment"
+
+
+# ---------------------------------------------------------------------------
+# 15. Core dependencies check
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorCoreDeps:
+    def test_all_core_deps_present_ok(self, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics, "check_core_deps", lambda: [
+            ("PyYAML", True), ("Rich", True),
+        ])
+
+        result = doctor._check_core_deps()
+        assert result.status == "OK"
+        assert result.group == "Configuration"
+
+    def test_missing_core_dep_fails(self, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics, "check_core_deps", lambda: [
+            ("PyYAML", False), ("Rich", True),
+        ])
+
+        result = doctor._check_core_deps()
+        assert result.status == "FAIL"
+        assert "PyYAML" in result.message
+        assert "pip install" in result.message
+        assert result.group == "Configuration"
+
+
+# ---------------------------------------------------------------------------
+# 16. Config content validation
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorConfigContent:
+    def _setup_config(self, tmp_path, monkeypatch, content):
+        home = tmp_path / ".footprinter"
+        home.mkdir(exist_ok=True)
+        cfg = home / "config.yaml"
+        cfg.write_text(content)
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+        monkeypatch.setenv("FOOTPRINTER_CONFIG", str(cfg))
+
+    def test_valid_config_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli import doctor
+
+        d = tmp_path / "projects"
+        d.mkdir()
+        self._setup_config(
+            tmp_path, monkeypatch,
+            f"directories:\n  - {d}\nbrowsers:\n  - safari\nexclusions: []\nindexing: {{}}\n",
+        )
+
+        result = doctor._check_config_content()
+        assert result.status == "OK"
+        assert result.group == "Configuration"
+
+    def test_unknown_browser_fails(self, tmp_path, monkeypatch):
+        from footprinter.cli import doctor
+
+        self._setup_config(
+            tmp_path, monkeypatch,
+            "directories:\n  - /tmp\nbrowsers:\n  - opera\n",
+        )
+
+        result = doctor._check_config_content()
+        assert result.status == "FAIL"
+        assert "opera" in result.message.lower()
+        assert result.group == "Configuration"
+
+    def test_missing_directory_warns(self, tmp_path, monkeypatch):
+        from footprinter.cli import doctor
+
+        self._setup_config(
+            tmp_path, monkeypatch,
+            "directories:\n  - /nonexistent/path\nbrowsers:\n  - safari\n",
+        )
+
+        result = doctor._check_config_content()
+        assert result.status == "WARN"
+        assert "nonexistent" in result.message.lower()
+        assert result.group == "Configuration"
+
+    def test_no_config_skips(self, tmp_path, monkeypatch):
+        home = tmp_path / ".footprinter"
+        home.mkdir()
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(home))
+        monkeypatch.delenv("FOOTPRINTER_CONFIG", raising=False)
+
+        from footprinter.cli import doctor
+
+        result = doctor._check_config_content()
+        assert result.status == "OK"
+        assert "skipped" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# 17. Optional features in doctor
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorOptionalFeatures:
+    def test_optional_features_returns_check_list(self, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics, "check_optional_features", lambda cfg: [
+            ("Semantic Search", True, False, "pip install footprinter-cli[semantic]"),
+            ("Document Parsing", False, None, "pip install footprinter-cli[parse]"),
+        ])
+        monkeypatch.setattr(
+            "footprinter.source_registry.get_config",
+            lambda: {"semantic": {}},
+        )
+
+        results = doctor._check_optional_features()
+        assert isinstance(results, list)
+        assert len(results) == 2
+
+        sem = results[0]
+        assert sem.group == "Optional Features"
+        assert sem.status == "OK"
+        assert "not enabled" in sem.message
+
+        parse = results[1]
+        assert parse.group == "Optional Features"
+        assert parse.status == "WARN"
+        assert "not installed" in parse.message
+
+
+# ---------------------------------------------------------------------------
+# 18. setup --check removed
+# ---------------------------------------------------------------------------
+
+
+class TestSetupCheckRemoved:
+    def test_setup_help_no_check_flag(self):
+        stdout, stderr, code = run_fp("setup", "--help")
+        output = stdout + stderr
+        assert "--check" not in output, "--check flag should be removed from fp setup"
 
 
 # ---------------------------------------------------------------------------

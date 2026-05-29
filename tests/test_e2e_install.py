@@ -131,7 +131,8 @@ class TestSetupWizardE2E:
 
     def test_generate_config_from_answers(self, tmp_path):
         """Full pipeline: answers → generate_config → write → validate."""
-        from footprinter.cli.setup import generate_config, validate_config, write_config
+        from footprinter.cli.diagnostics import validate_config
+        from footprinter.cli.setup import generate_config, write_config
 
         workspace = self._make_workspace(tmp_path)
 
@@ -176,13 +177,10 @@ class TestSetupWizardE2E:
         assert "safari" in output
         assert "chrome" in output
 
-    def test_check_validates_written_config(self, tmp_path, monkeypatch):
-        """fp setup --check should validate a config written by fp setup."""
-        from footprinter.cli.setup import (
-            check_existing_config,
-            generate_config,
-            write_config,
-        )
+    def test_doctor_validates_written_config(self, tmp_path, monkeypatch):
+        """fp doctor should validate a config written by fp setup."""
+        from footprinter.cli.diagnostics import validate_config
+        from footprinter.cli.setup import generate_config, write_config
 
         workspace = self._make_workspace(tmp_path)
         config_path = workspace / "config" / "config.yaml"
@@ -194,12 +192,11 @@ class TestSetupWizardE2E:
         config = generate_config(answers)
         write_config(config, path=config_path)
 
-        # get_config() reads $FOOTPRINTER_CONFIG before falling through to
-        # get_config_path(). The session fixture in conftest points it at
-        # the example template, so shadow it here with the written config.
-        monkeypatch.setenv("FOOTPRINTER_CONFIG", str(config_path))
-        result = check_existing_config()
-        assert result == 0
+        with open(config_path) as f:
+            loaded = yaml.safe_load(f)
+
+        errors, _ = validate_config(loaded)
+        assert errors == [], f"Validation errors: {errors}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -560,10 +557,10 @@ class TestNoPersonalData:
 
 
 class TestDependencyCheck:
-    """Verify fp setup --check dependency verification."""
+    """Verify diagnostic dependency verification."""
 
     def test_check_core_deps_returns_list(self):
-        from footprinter.cli.setup import check_core_deps
+        from footprinter.cli.diagnostics import check_core_deps
 
         results = check_core_deps()
         assert isinstance(results, list)
@@ -573,14 +570,14 @@ class TestDependencyCheck:
             assert isinstance(available, bool)
 
     def test_core_deps_always_available(self):
-        from footprinter.cli.setup import check_core_deps
+        from footprinter.cli.diagnostics import check_core_deps
 
         results = check_core_deps()
         for name, available in results:
             assert available, f"Core dep {name} should be available"
 
     def test_check_optional_features_returns_list(self):
-        from footprinter.cli.setup import check_optional_features
+        from footprinter.cli.diagnostics import check_optional_features
 
         results = check_optional_features({})
         assert isinstance(results, list)

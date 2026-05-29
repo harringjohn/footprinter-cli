@@ -61,7 +61,6 @@ class TestEntryPointSubprocess:
     @pytest.mark.parametrize(
         "module,flag",
         [
-            ("footprinter.cli.setup", "--check"),
             ("footprinter.cli.status", "--json"),
             ("footprinter.cli.search", "--help"),
             # orchestrator --help removed — main() no longer exists
@@ -104,15 +103,14 @@ class TestHomeDirectoryCreation:
         _run(["-m", "footprinter.cli.status", "--json"], env=env)
         assert home.exists(), "FOOTPRINTER_HOME was not created by fp status"
 
-    def test_setup_check_creates_footprinter_home(self, tmp_path):
-        """fp setup --check should create FOOTPRINTER_HOME dir."""
+    def test_doctor_creates_footprinter_home(self, tmp_path):
+        """fp doctor should create FOOTPRINTER_HOME dir."""
         home = tmp_path / "fp_home"
         env = _isolated_env(tmp_path)
         env["FOOTPRINTER_HOME"] = str(home)
-        # Unset both so get_config_path() and get_db_path() fall through to get_home()
         env.pop("FOOTPRINTER_DB_PATH", None)
         env.pop("FOOTPRINTER_CONFIG", None)
 
         assert not home.exists()
-        _run(["-m", "footprinter.cli.setup", "--check"], env=env)
-        assert home.exists(), "FOOTPRINTER_HOME was not created by fp setup --check"
+        _run(["-m", "footprinter.cli", "doctor"], env=env)
+        assert home.exists(), "FOOTPRINTER_HOME was not created by fp doctor"
