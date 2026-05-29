@@ -139,7 +139,7 @@ def _check_config_content() -> Check:
     if not config_path.exists():
         return Check("config_content", "OK", "skipped (no config)", group="Configuration")
     try:
-        from footprinter.source_registry import ConfigError, get_config
+        from footprinter.source_registry import get_config
 
         config = get_config()
     except Exception:
@@ -176,7 +176,7 @@ def _check_optional_features() -> list[Check]:
 
         config = get_config()
     except Exception:
-        return []
+        config = {}
 
     from footprinter.cli.diagnostics import check_optional_features
 

@@ -3,9 +3,9 @@
 Extracted from setup.py to decouple diagnostics from the interactive wizard.
 """
 
-import os
 import platform
 import subprocess
+from pathlib import Path
 
 
 KNOWN_BROWSERS = ["safari", "chrome"]
@@ -43,8 +43,7 @@ def validate_config(config: dict) -> tuple[list[str], list[str]]:
         errors.append("'directories' must be a list")
     else:
         for d in dirs:
-            expanded = os.path.expanduser(d)
-            if not os.path.isdir(expanded):
+            if not Path(d).expanduser().is_dir():
                 missing_dirs.append(d)
 
     browsers = config.get("browsers")
@@ -57,6 +56,8 @@ def validate_config(config: dict) -> tuple[list[str], list[str]]:
             if b not in KNOWN_BROWSERS:
                 errors.append(f"Unknown browser: {b}")
 
+    # Missing dirs are warnings, not errors — the bundled example config lists
+    # macOS-flavored defaults that a fresh Linux install won't have.
     warnings = []
     if missing_dirs:
         warnings.append(
@@ -74,6 +75,8 @@ def validate_config(config: dict) -> tuple[list[str], list[str]]:
 def check_architecture() -> str | None:
     """Check for architecture mismatches. Returns warning string or None."""
     machine = platform.machine()
+    # hw.optional.arm64 returns 1 on Apple Silicon even under Rosetta,
+    # unlike hw.machine which reports x86_64 under Rosetta.
     if machine == "x86_64":
         try:
             hw = subprocess.run(
