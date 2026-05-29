@@ -52,7 +52,7 @@ C_DIM = "dim"
 VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
 ALLOWED_TABLES = frozenset({"clients", "projects"})
-ALLOWED_COLUMNS = frozenset({"name", "project_name"})
+ALLOWED_COLUMNS = frozenset({"name"})
 
 
 # ---------------------------------------------------------------------------

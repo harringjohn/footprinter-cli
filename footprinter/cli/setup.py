@@ -874,8 +874,9 @@ def _offer_csv_import(conn) -> None:
     """Prompt user to import clients/projects from CSV files.
 
     Loops until the user enters an empty path to finish.
-    Detects entity type from CSV headers (client_type → clients,
-    project_name → projects). Shows a summary and confirms before inserting.
+    Prompts the user to choose clients vs projects (both share a ``name``
+    column, so headers can't reliably distinguish them). Shows a summary
+    and confirms before inserting.
     """
     import csv as csv_mod
 
@@ -909,19 +910,17 @@ def _offer_csv_import(conn) -> None:
             console.print("  [dim]Empty CSV — nothing to import.[/dim]")
             continue
 
-        # Detect entity type from headers
-        if "client_type" in headers:
-            entity_type = "client"
-            svc_name = "client_service"
-        elif "project_name" in headers:
-            entity_type = "project"
-            svc_name = "project_service"
-        else:
-            console.print(
-                "  [red]Could not detect CSV type.[/red] Expected 'client_type' "
-                "(for clients) or 'project_name' (for projects) in headers."
-            )
+        # Ask which entity type this CSV holds — clients and projects both
+        # carry a `name` column, so we can't infer the type from headers.
+        kind = Prompt.ask(
+            "  Is this a clients or projects CSV?",
+            choices=["clients", "projects", "skip"],
+            default="skip",
+        )
+        if kind == "skip":
             continue
+        entity_type = "client" if kind == "clients" else "project"
+        svc_name = "client_service" if entity_type == "client" else "project_service"
 
         from footprinter.cli.upsert import CSV_COLUMNS, _process_csv_rows
 

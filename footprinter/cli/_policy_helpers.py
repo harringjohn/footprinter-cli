@@ -290,7 +290,7 @@ def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) 
     from footprinter.permissions import resolve_permission_with_source
     from footprinter.visibility import resolve_visibility_with_source
 
-    row = conn.execute("SELECT id, project_name FROM projects WHERE id = ?", (project_id,)).fetchone()
+    row = conn.execute("SELECT id, name FROM projects WHERE id = ?", (project_id,)).fetchone()
     if not row:
         console.print(f"[red]Project not found:[/red] id={project_id}")
         return 1
@@ -302,13 +302,13 @@ def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) 
     if json_output:
         data = {
             "project_id": project_id,
-            "project_name": row["project_name"],
+            "project_name": row["name"],
             "permission": {"resolved": perm_str, "source": perm_src},
             "visibility": {"resolved": vis_val, "source": vis_src},
         }
         output_json(data)
     else:
-        console.print(f"\nProject Check: [bold]{row['project_name']}[/bold]  (id={project_id})")
+        console.print(f"\nProject Check: [bold]{row['name']}[/bold]  (id={project_id})")
         console.print()
         console.print(f"  Permission: [bold]{perm_str}[/bold]   (from {perm_src})")
         console.print(f"  Visibility: [bold]{vis_val}[/bold]   (from {vis_src})")
@@ -590,12 +590,12 @@ def bulk_apply(
         scope = f"folder:{normalized}"
         target_label = f"folder [cyan]{normalized}[/cyan]"
     else:
-        row = conn.execute("SELECT project_name FROM projects WHERE id = ?", (project,)).fetchone()
+        row = conn.execute("SELECT name FROM projects WHERE id = ?", (project,)).fetchone()
         if not row:
             console.print(f"[red]Project not found:[/red] id={project}")
             return 1
         scope = f"project:{project}"
-        target_label = f"project [cyan]{row['project_name']}[/cyan] (id={project})"
+        target_label = f"project [cyan]{row['name']}[/cyan] (id={project})"
 
     counts = count_affected_entities(conn, scope)
     total = sum(counts.values())

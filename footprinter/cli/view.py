@@ -67,11 +67,9 @@ ENTITY_COLUMNS: dict[str, list[_Col]] = {
     "project": [
         ("ID", "id", "dim", "right"),
         ("Name", "name", "cyan", None),
-        ("Type", "type", None, None),
         ("Client", "client", None, None),
         ("Status", "status", None, None),
         ("Files", "file_count", None, "right"),
-        ("Path", "root_path", "dim", None),
     ],
     "file": [
         ("ID", "id", "dim", "right"),

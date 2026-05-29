@@ -25,7 +25,7 @@ from footprinter.cli._common import (
 #: Maps each deletable noun to (service_module, name_key).
 DELETABLE_ENTITIES: dict[str, tuple[str, str]] = {
     "client": ("client_service", "name"),
-    "project": ("project_service", "project_name"),
+    "project": ("project_service", "name"),
 }
 
 # ---------------------------------------------------------------------------

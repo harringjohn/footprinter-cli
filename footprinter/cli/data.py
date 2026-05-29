@@ -40,7 +40,7 @@ def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, lis
     """Return (sql, params) for an unbounded export query."""
     params: list = []
     if entity_type == "client":
-        sql = "SELECT name, client_type, slug, path_pattern, status FROM clients"
+        sql = "SELECT name, client_type, slug, status FROM clients"
         if status_filter:
             sql += " WHERE status = ?"
             params.append(status_filter)
@@ -49,9 +49,9 @@ def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, lis
         sql += " ORDER BY name"
     else:
         sql = (
-            "SELECT p.project_name, p.root_path, "
+            "SELECT p.name, "
             "COALESCE(c.name, '') AS client, "
-            "p.project_type, p.description, p.github_url, p.status "
+            "p.description, p.status "
             "FROM projects p LEFT JOIN clients c ON p.client_id = c.id"
         )
         if status_filter:
@@ -59,7 +59,7 @@ def _export_query(entity_type: str, status_filter: str | None) -> tuple[str, lis
             params.append(status_filter)
         else:
             sql += " WHERE p.status = 'listed'"
-        sql += " ORDER BY p.project_name"
+        sql += " ORDER BY p.name"
     return sql, params
 
 
@@ -73,38 +73,28 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "name": "Acme Corp",
             "client_type": "external",
             "slug": "",
-            "path_pattern": "~/Work/clients/acme/",
             "status": "listed",
         },
-        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "listed"},
-        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "listed"},
+        {"name": "Internal Tools", "client_type": "internal", "slug": "", "status": "listed"},
+        {"name": "Side Project", "client_type": "personal", "slug": "", "status": "listed"},
     ],
     "project": [
         {
-            "project_name": "My Web App",
-            "root_path": "~/Work/projects/my-app",
+            "name": "My Web App",
             "client": "Acme Corp",
-            "project_type": "python",
             "description": "A web application",
-            "github_url": "",
             "status": "listed",
         },
         {
-            "project_name": "Documentation",
-            "root_path": "~/Work/docs",
+            "name": "Documentation",
             "client": "",
-            "project_type": "docs",
             "description": "Internal documentation",
-            "github_url": "",
             "status": "listed",
         },
         {
-            "project_name": "Mobile App",
-            "root_path": "~/Work/mobile",
+            "name": "Mobile App",
             "client": "Internal Tools",
-            "project_type": "typescript",
             "description": "Mobile app",
-            "github_url": "",
             "status": "listed",
         },
     ],
