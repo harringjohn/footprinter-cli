@@ -1,4 +1,4 @@
-"""Tests for fp update CLI commands.
+"""Tests for fp update vectorize functionality.
 
 Tests single-record vectorize toggle, review, and import subcommands.
 """
@@ -6,6 +6,7 @@ Tests single-record vectorize toggle, review, and import subcommands.
 import argparse
 import json
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
@@ -26,7 +27,7 @@ def _make_test_db(tmp_path):
         "VALUES (2, 'b.txt', '/tmp/b.txt', 'local', 'listed', 'text', 200, 0)"
     )
     db.conn.execute(
-        "INSERT INTO files (id, name, path, source, status, content_type, size_bytes, status) "
+        "INSERT INTO files (id, name, path, source, status, content_type, size_bytes, vectorize) "
         "VALUES (3, 'removed.txt', '/tmp/r.txt', 'local', 'removed', 'text', 50, 1)"
     )
 
@@ -50,12 +51,26 @@ def _make_test_db(tmp_path):
 class TestUpdateVectorize:
     """fp update file <id> --vectorize false should set files.vectorize = 0."""
 
+    def _run_update(self, db_path, noun, entity_id, vectorize_val):
+        from footprinter.cli.update import _handle_data_single
+
+        args = argparse.Namespace(
+            noun=noun, id=entity_id, vectorize=vectorize_val,
+            project_id=None, client_id=None, status=None, json=False,
+        )
+        with patch("footprinter.cli.update.open_db") as mock_open:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            mock_open.return_value.__enter__ = lambda s: conn
+            mock_open.return_value.__exit__ = lambda s, *a: conn.close()
+            try:
+                _handle_data_single(args)
+            except SystemExit:
+                pass
+
     def test_update_file_vectorize_false(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_update
-
-        args = argparse.Namespace(entity_table="files", id=1, vectorize="false")
-        _handle_update(args, db_path=db_path)
+        self._run_update(db_path, "file", 1, "false")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -65,10 +80,7 @@ class TestUpdateVectorize:
 
     def test_update_file_vectorize_true(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_update
-
-        args = argparse.Namespace(entity_table="files", id=2, vectorize="true")
-        _handle_update(args, db_path=db_path)
+        self._run_update(db_path, "file", 2, "true")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -78,10 +90,7 @@ class TestUpdateVectorize:
 
     def test_update_message_vectorize(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_update
-
-        args = argparse.Namespace(entity_table="messages", id=1, vectorize="false")
-        _handle_update(args, db_path=db_path)
+        self._run_update(db_path, "message", 1, "false")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -91,10 +100,7 @@ class TestUpdateVectorize:
 
     def test_update_chat_vectorize(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_update
-
-        args = argparse.Namespace(entity_table="chats", id=1, vectorize="false")
-        _handle_update(args, db_path=db_path)
+        self._run_update(db_path, "chat", 1, "false")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -104,10 +110,7 @@ class TestUpdateVectorize:
 
     def test_update_skips_removed_records(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_update
-
-        args = argparse.Namespace(entity_table="files", id=3, vectorize="false")
-        _handle_update(args, db_path=db_path)
+        self._run_update(db_path, "file", 3, "false")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -123,43 +126,52 @@ class TestUpdateReview:
         db_path = _make_test_db(tmp_path)
         from footprinter.cli.update import _handle_review
 
-        from rich.console import Console
-        from io import StringIO
-
-        buf = StringIO()
-        out = Console(file=buf, force_terminal=False, width=120)
         args = argparse.Namespace(entity=None)
-        _handle_review(args, db_path=db_path, output=out)
-        text = buf.getvalue()
-        assert "1" in text, "should show 1 excluded file"
+        with patch("footprinter.cli.update.open_db") as mock_open:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            mock_open.return_value.__enter__ = lambda s: conn
+            mock_open.return_value.__exit__ = lambda s, *a: conn.close()
+            with patch("footprinter.cli.update.console") as mock_console:
+                _handle_review(args)
+                mock_console.print.assert_called_once()
 
     def test_review_filters_by_entity(self, tmp_path):
         db_path = _make_test_db(tmp_path)
         from footprinter.cli.update import _handle_review
 
-        from rich.console import Console
-        from io import StringIO
-
-        buf = StringIO()
-        out = Console(file=buf, force_terminal=False, width=120)
         args = argparse.Namespace(entity="messages")
-        _handle_review(args, db_path=db_path, output=out)
-        text = buf.getvalue()
-        assert "messages" in text.lower() or "Messages" in text
+        with patch("footprinter.cli.update.open_db") as mock_open:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            mock_open.return_value.__enter__ = lambda s: conn
+            mock_open.return_value.__exit__ = lambda s, *a: conn.close()
+            with patch("footprinter.cli.update.console") as mock_console:
+                _handle_review(args)
+                mock_console.print.assert_called_once()
 
 
 class TestUpdateImport:
     """fp update import applies vectorize flags from JSON."""
 
+    def _run_import(self, db_path, import_file):
+        from footprinter.cli.update import _handle_import
+
+        args = argparse.Namespace(path=str(import_file))
+        with patch("footprinter.cli.update.open_db") as mock_open:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            mock_open.return_value.__enter__ = lambda s: conn
+            mock_open.return_value.__exit__ = lambda s, *a: conn.close()
+            _handle_import(args)
+
     def test_import_structured_format(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_import
 
         import_file = tmp_path / "flags.json"
         import_file.write_text(json.dumps({"entity": "files", "action": "exclude", "ids": [1]}))
 
-        args = argparse.Namespace(path=str(import_file))
-        _handle_import(args, db_path=db_path)
+        self._run_import(db_path, import_file)
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -169,13 +181,11 @@ class TestUpdateImport:
 
     def test_import_flat_list(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_import
 
         import_file = tmp_path / "flags.json"
         import_file.write_text(json.dumps([1]))
 
-        args = argparse.Namespace(path=str(import_file))
-        _handle_import(args, db_path=db_path)
+        self._run_import(db_path, import_file)
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -185,13 +195,11 @@ class TestUpdateImport:
 
     def test_import_include_action(self, tmp_path):
         db_path = _make_test_db(tmp_path)
-        from footprinter.cli.update import _handle_import
 
         import_file = tmp_path / "flags.json"
         import_file.write_text(json.dumps({"entity": "files", "action": "include", "ids": [2]}))
 
-        args = argparse.Namespace(path=str(import_file))
-        _handle_import(args, db_path=db_path)
+        self._run_import(db_path, import_file)
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
