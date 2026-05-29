@@ -96,7 +96,7 @@ class TestBareConnectSubcommands:
 
 
 class TestBareDataCommand:
-    """fp data (no action) should show help with the 3 actions."""
+    """fp data (no action) should show help with import action."""
 
     def test_data_bare_shows_help(self):
         stdout, stderr, code = run_fp("data")
