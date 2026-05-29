@@ -59,7 +59,6 @@ def list_(
     include: list[str] | None = None,
     status: Optional[str | list[str]] = None,
     client: Optional[str] = None,
-    project_type: Optional[str] = None,
     limit: int = 50,
     page: int = 1,
 ) -> dict:
@@ -69,7 +68,6 @@ def list_(
         conn,
         status=status,
         client=client,
-        project_type=project_type,
         limit=limit,
         page=page,
     )
@@ -134,12 +132,12 @@ def resolve_by_name(
         return _build_project_navigation(conn, rows[0], role=role)
 
     # Check exact match (case-insensitive)
-    exact = [r for r in rows if r["project_name"].lower() == name.lower()]
+    exact = [r for r in rows if r["name"].lower() == name.lower()]
     if len(exact) == 1:
         return _build_project_navigation(conn, exact[0], role=role)
 
     # Disambiguation
-    return _build_disambiguation(rows, "project_name", name, role)
+    return _build_disambiguation(rows, "name", name, role)
 
 
 def _build_project_navigation(conn: sqlite3.Connection, row: dict, *, role: Role) -> dict:
@@ -180,17 +178,14 @@ def _build_disambiguation(rows: list[dict], name_col: str, query: str, role: Rol
 def upsert(
     conn: sqlite3.Connection,
     *,
-    project_name: str,
+    name: str,
     role: Role = Role.ADMIN,
-    root_path: Optional[str] = None,
     client_id: Optional[int] = None,
-    project_type: Optional[str] = None,
     description: Optional[str] = None,
-    github_url: Optional[str] = None,
     status: Optional[str] = None,
     status_reason: Optional[str] = None,
 ) -> dict:
-    """Insert or update a project. Matches on root_path first, then project_name.
+    """Insert or update a project. Matches on name (first match).
 
     Returns dict with ``id`` and ``action`` ("created"|"updated").
     Raises PermissionError if role cannot write, ValueError on bad input.
@@ -198,38 +193,25 @@ def upsert(
     if not role.can_write:
         raise PermissionError("Role does not permit write operations")
 
-    project_name = (project_name or "").strip()
-    if not project_name:
-        raise ValueError("project_name is required")
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("name is required")
 
-    existing_id = db.find_project_id_by_key(
-        conn,
-        root_path=root_path,
-        project_name=project_name,
-    )
+    existing_id = db.find_project_id_by_key(conn, name=name)
 
     if existing_id is None:
         result = db.create_project(
             conn,
-            project_name=project_name,
-            root_path=root_path,
+            name=name,
             client_id=client_id,
-            project_type=project_type,
             description=description,
-            github_url=github_url,
             status=status,
         )
         return {"id": result["id"], "action": "created"}
 
     update_fields: dict = {}
-    if project_type is not None:
-        update_fields["project_type"] = project_type
-    if root_path is not None:
-        update_fields["root_path"] = root_path
     if description is not None:
         update_fields["description"] = description
-    if github_url is not None:
-        update_fields["github_url"] = github_url
     if client_id is not None:
         update_fields["client_id"] = client_id
     if status is not None:
@@ -237,7 +219,7 @@ def upsert(
         if status_reason is not None:
             update_fields["status_reason"] = status_reason
     # Always update name — desired-state semantics
-    update_fields["project_name"] = project_name
+    update_fields["name"] = name
     db.update_project(conn, existing_id, **update_fields)
     return {"id": existing_id, "action": "updated"}
 

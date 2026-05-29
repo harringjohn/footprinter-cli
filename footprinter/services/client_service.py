@@ -200,10 +200,8 @@ def upsert(
     name: str,
     client_type: str,
     role: Role = Role.ADMIN,
-    path_pattern: Optional[str] = None,
     status: Optional[str] = None,
     status_reason: Optional[str] = None,
-    slug: Optional[str] = None,
 ) -> dict:
     """Insert or update a client by name.
 
@@ -225,7 +223,6 @@ def upsert(
             conn,
             name=name,
             client_type=client_type,
-            path_pattern=path_pattern,
         )
         new_id = result["id"]
         # Apply optional fields that create_client doesn't accept
@@ -237,8 +234,6 @@ def upsert(
         return {"id": new_id, "slug": result["slug"], "action": "created"}
 
     update_fields: dict = {"client_type": client_type}
-    if path_pattern is not None:
-        update_fields["path_pattern"] = path_pattern
     if status is not None:
         update_fields["status"] = status
         if status_reason is not None:
