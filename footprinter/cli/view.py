@@ -14,6 +14,7 @@ from footprinter.cli._common import (
     FORMATTER,
     add_csv_flag,
     add_json_flag,
+    add_template_flag,
     add_verbose_flag,
     console,
     enrich_verbose_access,
@@ -115,6 +116,84 @@ ENTITY_COLUMNS: dict[str, list[_Col]] = {
     ],
 }
 
+#: Full export column sets per entity type — used by --csv and --template.
+#: Migrated from data.py DATA_SOURCE_SPECS.export_columns and EXPORT_COLUMNS.
+EXPORT_COLUMNS: dict[str, list[str]] = {
+    "client": ["name", "client_type", "slug", "path_pattern", "status"],
+    "project": ["project_name", "root_path", "client", "project_type", "description", "github_url", "status"],
+    "file": [
+        "id", "name", "path", "source", "status", "content_type",
+        "size_bytes", "modified_at", "project_id", "client_id", "mcp_view", "mcp_read",
+    ],
+    "folder": [
+        "id", "path", "relative_path", "name", "source", "status",
+        "project_id", "client_id", "mcp_view", "mcp_read",
+    ],
+    "email": [
+        "id", "message_id", "account", "subject", "from_address", "received_at",
+        "status", "project_id", "client_id", "mcp_view", "mcp_read",
+    ],
+    "chat": [
+        "id", "external_id", "account", "title", "message_count", "status",
+        "created_at", "updated_at", "project_id", "client_id", "mcp_view", "mcp_read",
+    ],
+    "visit": [
+        "id", "url", "title", "visit_time", "browser", "status",
+        "project_id", "client_id", "mcp_view", "mcp_read",
+    ],
+}
+
+#: Service-layer dict key → export CSV column name (where they differ).
+EXPORT_KEY_MAP: dict[str, dict[str, str]] = {
+    "project": {"name": "project_name", "type": "project_type"},
+}
+
+#: Template example rows per entity type — used by --template.
+TEMPLATE_ROWS: dict[str, list[dict]] = {
+    "client": [
+        {"name": "Acme Corp", "client_type": "external", "slug": "", "path_pattern": "~/Work/clients/acme/", "status": "listed"},
+        {"name": "Internal Tools", "client_type": "internal", "slug": "", "path_pattern": "", "status": "listed"},
+        {"name": "Side Project", "client_type": "personal", "slug": "", "path_pattern": "", "status": "listed"},
+    ],
+    "project": [
+        {"project_name": "My Web App", "root_path": "~/Work/projects/my-app", "client": "Acme Corp", "project_type": "python", "description": "A web application", "github_url": "", "status": "listed"},
+        {"project_name": "Documentation", "root_path": "~/Work/docs", "client": "", "project_type": "docs", "description": "Internal documentation", "github_url": "", "status": "listed"},
+        {"project_name": "Mobile App", "root_path": "~/Work/mobile", "client": "Internal Tools", "project_type": "typescript", "description": "Mobile app", "github_url": "", "status": "listed"},
+    ],
+    "file": [
+        {"id": "1", "name": "readme.md", "path": "/Users/me/Work/readme.md", "source": "local", "status": "listed", "content_type": "markdown", "size_bytes": "1024", "modified_at": "2026-01-15T10:00:00Z", "project_id": "1", "client_id": "1", "mcp_view": "visible", "mcp_read": "allow"},
+        {"id": "2", "name": "notes.txt", "path": "/Users/me/Work/notes.txt", "source": "local", "status": "hidden", "content_type": "text", "size_bytes": "512", "modified_at": "2026-02-01T10:00:00Z", "project_id": "", "client_id": "", "mcp_view": "inherit", "mcp_read": "inherit"},
+    ],
+    "folder": [
+        {"id": "1", "path": "/Users/me/Work", "relative_path": "Work", "name": "Work", "source": "local", "status": "listed", "project_id": "1", "client_id": "", "mcp_view": "visible", "mcp_read": "allow"},
+        {"id": "2", "path": "/Users/me/Personal", "relative_path": "Personal", "name": "Personal", "source": "local", "status": "listed", "project_id": "", "client_id": "", "mcp_view": "inherit", "mcp_read": "inherit"},
+    ],
+    "email": [
+        {"id": "1", "message_id": "msg-001@example.com", "account": "work", "subject": "Project Update", "from_address": "sender@example.com", "received_at": "2026-02-01T09:00:00Z", "status": "listed", "project_id": "1", "client_id": "1", "mcp_view": "visible", "mcp_read": "allow"},
+        {"id": "2", "message_id": "msg-002@example.com", "account": "personal", "subject": "Newsletter", "from_address": "news@example.com", "received_at": "2026-02-02T09:00:00Z", "status": "listed", "project_id": "", "client_id": "", "mcp_view": "inherit", "mcp_read": "inherit"},
+    ],
+    "chat": [
+        {"id": "1", "external_id": "conv-001", "account": "personal", "title": "Architecture Chat", "message_count": "5", "status": "listed", "created_at": "2026-01-10T08:00:00Z", "updated_at": "2026-01-10T09:00:00Z", "project_id": "1", "client_id": "1", "mcp_view": "visible", "mcp_read": "allow"},
+        {"id": "2", "external_id": "conv-002", "account": "personal", "title": "Random Chat", "message_count": "3", "status": "listed", "created_at": "2026-01-11T08:00:00Z", "updated_at": "2026-01-11T09:00:00Z", "project_id": "", "client_id": "", "mcp_view": "inherit", "mcp_read": "inherit"},
+    ],
+    "visit": [
+        {"id": "1", "url": "https://example.com", "title": "Example", "visit_time": "2026-03-01T12:00:00Z", "browser": "safari", "status": "listed", "project_id": "1", "client_id": "1", "mcp_view": "visible", "mcp_read": "allow"},
+        {"id": "2", "url": "https://news.com", "title": "News", "visit_time": "2026-03-02T12:00:00Z", "browser": "chrome", "status": "listed", "project_id": "", "client_id": "", "mcp_view": "inherit", "mcp_read": "inherit"},
+    ],
+}
+
+#: Valid-values notes per entity type — printed to stderr by --template.
+VALID_VALUES_NOTES: dict[str, dict[str, str]] = {
+    "client": {"client_type": "external, internal, personal", "status": "listed, unlisted, removed"},
+    "project": {"status": "listed, unlisted, removed"},
+    "file": {"status": "listed, unlisted, removed", "mcp_view": "hidden, opaque, visible, inherit", "mcp_read": "allow, deny, inherit"},
+    "folder": {"status": "listed, unlisted, removed", "mcp_view": "hidden, opaque, visible, inherit", "mcp_read": "allow, deny, inherit"},
+    "email": {"status": "listed, unlisted, removed", "mcp_view": "hidden, opaque, visible, inherit", "mcp_read": "allow, deny, inherit"},
+    "chat": {"status": "listed, unlisted, removed", "mcp_view": "hidden, opaque, visible, inherit", "mcp_read": "allow, deny, inherit"},
+    "visit": {"status": "listed, unlisted, removed", "mcp_view": "hidden, opaque, visible, inherit", "mcp_read": "allow, deny, inherit"},
+}
+
+
 # ---------------------------------------------------------------------------
 # Service resolution
 # ---------------------------------------------------------------------------
@@ -181,6 +260,18 @@ def _handle_collection(args) -> None:
 
     noun = args.noun
     svc_name, list_key, entity_type, _mode = ENTITY_MAP[noun]
+
+    if getattr(args, "template", False):
+        export_cols = EXPORT_COLUMNS.get(entity_type)
+        template_data = TEMPLATE_ROWS.get(entity_type, [])
+        output_csv(template_data, columns=export_cols)
+        notes = VALID_VALUES_NOTES.get(entity_type, {})
+        if notes:
+            print("\nValid values:", file=sys.stderr)
+            for fld, values in notes.items():
+                print(f"  {fld}: {values}", file=sys.stderr)
+        return
+
     service = _get_service(svc_name)
 
     verbose = getattr(args, "verbose", False)
@@ -228,9 +319,11 @@ def _handle_collection(args) -> None:
         return
 
     if getattr(args, "csv", False):
-        cols = ENTITY_COLUMNS.get(entity_type)
-        col_keys = [c[1] for c in cols] if cols else None
-        output_csv(rows, columns=col_keys)
+        export_cols = EXPORT_COLUMNS.get(entity_type)
+        key_map = EXPORT_KEY_MAP.get(entity_type, {})
+        if key_map:
+            rows = [{key_map.get(k, k): v for k, v in row.items()} for row in rows]
+        output_csv(rows, columns=export_cols)
         return
 
     if not rows:
@@ -392,5 +485,6 @@ def register(subparsers) -> None:
         fmt_group = p.add_mutually_exclusive_group()
         add_json_flag(fmt_group)
         add_csv_flag(fmt_group)
+        add_template_flag(fmt_group)
 
         p.set_defaults(func=_handle_collection)

@@ -45,8 +45,8 @@ def list_visits(
         conn,
         f"SELECT COUNT(*) FROM visits bv {where_clause}",
         f"""
-        SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
-               bv.client_id, bv.project_id,
+        SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.status,
+               bv.visit_count, bv.client_id, bv.project_id,
                client.name AS client_name, project.project_name,
                bv.mcp_view, bv.mcp_read,
                bv.mcp_view_source, bv.mcp_read_source
@@ -68,6 +68,7 @@ def list_visits(
             "title": r["title"],
             "visit_time": r["visit_time"],
             "browser": r["browser"],
+            "status": r["status"] or "listed",
             "visit_count": r["visit_count"],
             "client_id": r["client_id"],
             "project_id": r["project_id"],
