@@ -99,7 +99,7 @@ DATA_CSV_SPECS: dict[str, tuple[list[str], list[str], str, str]] = {
 # ---------------------------------------------------------------------------
 
 
-def _get_service(service_name: str):
+def _get_service(service_name: str) -> object:
     """Lazy-import and return a service module from footprinter.services."""
     import footprinter.services as svc
 
@@ -111,7 +111,7 @@ def _get_service(service_name: str):
 # ---------------------------------------------------------------------------
 
 
-def _get_insert_fn(module_path: str, fn_name: str):
+def _get_insert_fn(module_path: str, fn_name: str) -> callable:
     """Lazy-import and return a DB insert function."""
     mod = importlib.import_module(module_path)
     return getattr(mod, fn_name)
@@ -122,18 +122,18 @@ def _get_insert_fn(module_path: str, fn_name: str):
 # ---------------------------------------------------------------------------
 
 
-def _normalize_insert_result(result) -> tuple[str, int | None]:
+def _normalize_insert_result(result: object) -> tuple[str, int | None]:
     """Normalize heterogeneous DB insert function return values."""
     if result is None:
         return ("error", None)
-    if result is False:
-        return ("duplicate", None)
+    if isinstance(result, bool):
+        return ("duplicate", None) if not result else ("error", None)
     if isinstance(result, tuple):
         action, entity_id = result
         return (action, entity_id)
     if isinstance(result, int):
         return ("created", result)
-    return ("unknown", None)
+    return ("error", None)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +258,17 @@ def _handle_bulk(args) -> None:
                     error_details.append({"row": i, "error": f"{entity_type.title()} '{name}' already exists"})
                     continue
 
+                if entity_type == "project" and "client" in kwargs and "client_id" not in kwargs:
+                    from footprinter.db.clients import find_client_id_by_name
+
+                    client_name = kwargs.pop("client")
+                    resolved_id = find_client_id_by_name(conn, client_name)
+                    if resolved_id is None:
+                        errors += 1
+                        error_details.append({"row": i, "error": f"Client not found: {client_name!r}"})
+                        continue
+                    kwargs["client_id"] = resolved_id
+
                 kwargs.pop("client", None)
                 kwargs.pop("slug", None)
 
@@ -348,16 +359,14 @@ def _handle_data_bulk(args) -> None:
                 try:
                     result = insert_fn(conn, data)
                     action, _entity_id = _normalize_insert_result(result)
-                    if action in ("inserted", "created"):
+                    if action in ("inserted", "created", "updated", "unchanged"):
                         created += 1
                     elif action == "duplicate":
                         errors += 1
                         error_details.append({"row": i, "error": "Duplicate record"})
-                    elif action == "error":
-                        errors += 1
-                        error_details.append({"row": i, "error": "Insert returned None"})
                     else:
-                        created += 1
+                        errors += 1
+                        error_details.append({"row": i, "error": f"Unexpected insert result: {action}"})
                 except Exception as e:
                     errors += 1
                     error_details.append({"row": i, "error": str(e)})

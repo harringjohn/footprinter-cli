@@ -234,6 +234,62 @@ class TestAddBulkCsv:
         assert result["created"] == 2
         assert result["errors"] == 0
 
+    @patch("footprinter.cli.add.IngestService")
+    @patch("footprinter.cli.add.open_db")
+    def test_add_projects_csv_resolves_client_name(self, mock_open_db, _mock_ingest, tmp_path):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "name,client",
+            "my-api,Acme Corp",
+        ])
+        with (
+            patch("footprinter.cli.add._check_exists", return_value=False),
+            patch("footprinter.cli.add._get_service") as mock_get_svc,
+            patch(
+                "footprinter.db.clients.find_client_id_by_name",
+                return_value=7,
+            ),
+        ):
+            mock_svc = MagicMock()
+            mock_svc.upsert.return_value = {"id": 1, "action": "created"}
+            mock_get_svc.return_value = mock_svc
+
+            stdout, _, code = run_fp("add", "projects", csv_path, "--json")
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 1
+        kwargs = mock_svc.upsert.call_args.kwargs
+        assert kwargs.get("client_id") == 7
+
+    @patch("footprinter.cli.add.IngestService")
+    @patch("footprinter.cli.add.open_db")
+    def test_add_projects_csv_unresolvable_client_name(self, mock_open_db, _mock_ingest, tmp_path):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "name,client",
+            "my-api,NoSuchClient",
+        ])
+        with (
+            patch("footprinter.cli.add._check_exists", return_value=False),
+            patch("footprinter.cli.add._get_service") as mock_get_svc,
+            patch(
+                "footprinter.db.clients.find_client_id_by_name",
+                return_value=None,
+            ),
+        ):
+            mock_svc = MagicMock()
+            mock_get_svc.return_value = mock_svc
+
+            stdout, _, code = run_fp("add", "projects", csv_path, "--json")
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 0
+        assert result["errors"] == 1
+        assert any("not found" in d["error"].lower() for d in result.get("error_details", []))
+        mock_svc.upsert.assert_not_called()
+
     # ---------------------------------------------------------------------------
     # 8. Bulk super entity CSV — existing rows become errors
     # ---------------------------------------------------------------------------
