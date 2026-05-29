@@ -60,7 +60,7 @@ def list_visits(
         f"""
         SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.status,
                bv.visit_count, bv.client_id, bv.project_id,
-               client.name AS client_name, project.project_name,
+               client.name AS client_name, project.name AS project_name,
                bv.mcp_view, bv.mcp_read,
                bv.mcp_view_source, bv.mcp_read_source
         FROM visits bv
@@ -111,7 +111,7 @@ def get_visit(conn: sqlite3.Connection, entry_id: int) -> dict | None:
         SELECT bv.id, bv.url, bv.title, bv.visit_time, bv.browser, bv.visit_count,
                bv.indexed_at, bv.status,
                bv.client_id, bv.project_id,
-               client.name AS client_name, project.project_name,
+               client.name AS client_name, project.name AS project_name,
                bv.mcp_view, bv.mcp_read,
                bv.mcp_view_source, bv.mcp_read_source
         FROM visits bv

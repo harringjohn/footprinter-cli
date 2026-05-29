@@ -100,7 +100,7 @@ class TestUpsertSingle:
         assert code == 0
         mock_get_svc.assert_called_with("project_service")
         kwargs = mock_svc.upsert.call_args.kwargs
-        assert kwargs.get("project_name") == "demo"
+        assert kwargs.get("name") == "demo"
 
 
 # ---------------------------------------------------------------------------

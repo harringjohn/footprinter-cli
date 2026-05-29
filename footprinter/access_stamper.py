@@ -102,7 +102,7 @@ ENTITY_META: dict[str, dict[str, Any]] = {
         "has_project_id": False,
         "has_client_id": True,
         "has_account": False,
-        "path_column": "root_path",
+        "path_column": None,
     },
     "client": {
         "table": "clients",

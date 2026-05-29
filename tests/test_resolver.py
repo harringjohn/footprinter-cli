@@ -32,8 +32,8 @@ def resolver_db(tmp_path):
         "INSERT INTO clients (name, slug, client_type, status) VALUES ('Acme Corp', 'acme-corp', 'external', 'listed')"
     )
     conn.execute(
-        "INSERT INTO projects (project_name, project_type, root_path, status) "
-        "VALUES ('Manila', 'python', '/Users/test/Work/manila', 'listed')"
+        "INSERT INTO projects (name, status) "
+        "VALUES ('Manila', 'listed')"
     )
     conn.commit()
     yield conn
@@ -73,8 +73,15 @@ class TestResolveIdentifierWhitelist:
     def test_valid_projects_table_allowed(self, resolver_db):
         from footprinter.cli._common import resolve_identifier
 
-        result = resolve_identifier(resolver_db, "projects", "project_name", "Manila")
+        result = resolve_identifier(resolver_db, "projects", "name", "Manila")
         assert result == 1
+
+    def test_project_name_column_now_rejected(self, resolver_db):
+        """The legacy ``project_name`` column is no longer in the whitelist."""
+        from footprinter.cli._common import resolve_identifier
+
+        with pytest.raises(ValueError, match="Invalid table/column"):
+            resolve_identifier(resolver_db, "projects", "project_name", "Manila")
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +99,7 @@ class TestResolveIdentifierNumericId:
     def test_resolve_project_by_id(self, resolver_db):
         from footprinter.cli._common import resolve_identifier
 
-        result = resolve_identifier(resolver_db, "projects", "project_name", "1")
+        result = resolve_identifier(resolver_db, "projects", "name", "1")
         assert result == 1
 
 
@@ -117,7 +124,7 @@ class TestResolveIdentifierByName:
     def test_resolve_project_by_name(self, resolver_db):
         from footprinter.cli._common import resolve_identifier
 
-        result = resolve_identifier(resolver_db, "projects", "project_name", "Manila")
+        result = resolve_identifier(resolver_db, "projects", "name", "Manila")
         assert result == 1
 
 
@@ -151,13 +158,13 @@ class TestResolveIdentifierAmbiguous:
 
         # Insert a second project with the same name
         resolver_db.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status) "
-            "VALUES ('Manila', 'node', '/Users/test/Work/manila-2', 'listed')"
+            "INSERT INTO projects (name, status) "
+            "VALUES ('Manila', 'listed')"
         )
         resolver_db.commit()
 
         with pytest.raises(ValueError, match="Ambiguous") as exc_info:
-            resolve_identifier(resolver_db, "projects", "project_name", "Manila")
+            resolve_identifier(resolver_db, "projects", "name", "Manila")
 
         # Error message should list both matches
         msg = str(exc_info.value)

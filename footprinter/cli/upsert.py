@@ -10,7 +10,6 @@ Assign relationships (routes through ``service.assign()``):
 """
 
 import csv
-import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -72,16 +71,12 @@ SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
             {"required": True, "help": "Client type (external, internal, personal)", "dest": "client_type"},
             "client_type",
         ),
-        ("--path-pattern", {"default": None, "help": "Path pattern for client files"}, "path_pattern"),
         ("--status", {"default": None, "help": "Client status (listed, unlisted, removed)"}, "status"),
     ],
     "project": [
-        ("--name", {"required": True, "help": "Project name", "dest": "project_name"}, "project_name"),
-        ("--root-path", {"default": None, "help": "Project root path"}, "root_path"),
+        ("--name", {"required": True, "help": "Project name"}, "name"),
         ("--client-id", {"default": None, "type": int, "help": "Client ID"}, "client_id"),
-        ("--project-type", {"default": None, "help": "Project type (python, node, etc.)"}, "project_type"),
         ("--description", {"default": None, "help": "Project description"}, "description"),
-        ("--github-url", {"default": None, "help": "GitHub repository URL"}, "github_url"),
         (
             "--status",
             {
@@ -101,12 +96,12 @@ SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
 CSV_COLUMNS: dict[str, tuple[list[str], list[str], list[str]]] = {
     "client": (
         ["name", "client_type"],
-        ["slug", "path_pattern", "status"],
+        ["slug", "status"],
         [],
     ),
     "project": (
-        ["project_name"],
-        ["root_path", "client_id", "client", "project_type", "description", "github_url", "status"],
+        ["name"],
+        ["client_id", "client", "description", "status"],
         ["client_id"],
     ),
 }
@@ -271,6 +266,8 @@ def _process_csv_rows(
 
         # Remove 'client' if both client and client_id were provided
         kwargs.pop("client", None)
+        # slug is auto-derived from name (not user-settable); drop if present
+        kwargs.pop("slug", None)
 
         try:
             result = service.upsert(conn, role=Role.ADMIN, **kwargs)
@@ -347,7 +344,7 @@ def _resolve_folder_row(conn, row: dict, i: int) -> tuple[dict | None, dict | No
     elif raw_pname:
         from footprinter.db.projects import find_project_id_by_key
 
-        project_id = find_project_id_by_key(conn, project_name=raw_pname)
+        project_id = find_project_id_by_key(conn, name=raw_pname)
         if project_id is None:
             return None, {"row": i, "error": f"Project not found: {raw_pname!r}"}
 
@@ -461,14 +458,7 @@ def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
     if entity_type == "project":
         from footprinter.db.projects import find_project_id_by_key
 
-        return (
-            find_project_id_by_key(
-                conn,
-                root_path=kwargs.get("root_path"),
-                project_name=kwargs.get("project_name"),
-            )
-            is not None
-        )
+        return find_project_id_by_key(conn, name=kwargs.get("name")) is not None
     return False
 
 
@@ -986,15 +976,16 @@ def register(subparsers) -> None:
         "clients": (
             "CSV columns:\n"
             "  required: name, client_type\n"
-            "  optional: slug, path_pattern, status\n"
+            "  optional: slug, status\n"
             "\n"
+            "  slug is auto-derived from name; any value supplied is ignored.\n"
             "  client_type values: external, internal, personal\n"
             "  status values:      listed (default), unlisted, removed\n"
             "\n"
             "example CSV:\n"
-            "  name,client_type,path_pattern\n"
-            "  Acme Corp,external,/Work/acme\n"
-            "  Internal Tools,internal,\n"
+            "  name,client_type\n"
+            "  Acme Corp,external\n"
+            "  Internal Tools,internal\n"
             "\n"
             "modes:\n"
             "  Default is dry-run (validate only). Pass --commit to write.\n"
@@ -1002,22 +993,20 @@ def register(subparsers) -> None:
         ),
         "projects": (
             "CSV columns:\n"
-            "  required: project_name\n"
-            "  optional: root_path, client_id, client, project_type,\n"
-            "            description, github_url, status\n"
+            "  required: name\n"
+            "  optional: client_id, client, description, status\n"
             "\n"
             "  client: client name (resolved to client_id)\n"
             "  status values: listed (default), unlisted, removed\n"
             "\n"
             "example CSV:\n"
-            "  project_name,client,project_type,root_path\n"
-            "  my-api,Acme Corp,python,/Work/acme/api\n"
-            "  docs-site,,node,/Work/docs\n"
+            "  name,client,description\n"
+            "  my-api,Acme Corp,Acme public API\n"
+            "  docs-site,,Documentation site\n"
             "\n"
             "modes:\n"
             "  Default is dry-run (validate only). Pass --commit to write.\n"
-            "  Existing records (matched by root_path or project_name) are\n"
-            "  updated, new ones created."
+            "  Existing records (matched by name) are updated, new ones created."
         ),
     }
     for noun in ["clients", "projects"]:

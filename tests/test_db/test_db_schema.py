@@ -55,19 +55,16 @@ EXPECTED_COLUMNS = {
     },
     "projects": {
         "id",
-        "project_name",
+        "name",
         "description",
         "status",
         "status_reason",
         "created_at",
         "updated_at",
-        "metadata",
-        "root_path",
-        "project_type",
+        "slug",
+        "status_changed_at",
         "client_id",
         "client",
-        "github_url",
-        "root_folder_id",
         "mcp_read",
         "mcp_view",
         "mcp_read_source",
@@ -79,11 +76,11 @@ EXPECTED_COLUMNS = {
         "name",
         "slug",
         "client_type",
-        "path_pattern",
         "status",
         "status_reason",
         "created_at",
-        "metadata",
+        "updated_at",
+        "status_changed_at",
         "mcp_read",
         "mcp_view",
         "mcp_read_source",
@@ -319,13 +316,13 @@ class TestCompleteColumnSets:
         cursor = db.conn.cursor()
 
         cursor.execute(
-            "INSERT INTO projects (project_name) VALUES (?)",
+            "INSERT INTO projects (name) VALUES (?)",
             ("test-project",),
         )
         db.conn.commit()
 
         cursor.execute(
-            "SELECT status FROM projects WHERE project_name = ?",
+            "SELECT status FROM projects WHERE name = ?",
             ("test-project",),
         )
         row = cursor.fetchone()
@@ -342,12 +339,12 @@ class TestCompleteColumnSets:
         db = Database(temp_db)
         cursor = db.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (project_name) VALUES (?)",
+            "INSERT INTO projects (name) VALUES (?)",
             ("test-project-sr",),
         )
         db.conn.commit()
         cursor.execute(
-            "SELECT status_reason FROM projects WHERE project_name = ?",
+            "SELECT status_reason FROM projects WHERE name = ?",
             ("test-project-sr",),
         )
         row = cursor.fetchone()
@@ -1476,6 +1473,58 @@ class TestColumnRenames:
         assert "conversation_id" not in columns, "conversation_id still in chats"
         db.close()
 
+    def test_projects_name_column(self, temp_db):
+        """projects uses `name` (standardized), not the old `project_name`."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        columns = self._get_columns(db, "projects")
+        assert "name" in columns, "name missing from projects"
+        assert "project_name" not in columns, "project_name still in projects"
+        db.close()
+
+    def test_projects_has_slug_and_status_changed_at(self, temp_db):
+        """projects gains slug + status_changed_at for super-entity parity."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        columns = self._get_columns(db, "projects")
+        for col in ("slug", "status_changed_at"):
+            assert col in columns, f"{col} missing from projects"
+        db.close()
+
+    def test_projects_no_code_columns(self, temp_db):
+        """Code-project fields are stripped from the package schema (moved to app-scope)."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        columns = self._get_columns(db, "projects")
+        code_cols = {"root_path", "project_type", "github_url", "root_folder_id"}
+        present = code_cols & columns
+        assert not present, f"Code-project columns should not exist on projects: {present}"
+        db.close()
+
+    def test_projects_metadata_absent(self, temp_db):
+        """metadata is dropped from projects (never populated, speculative)."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        columns = self._get_columns(db, "projects")
+        assert "metadata" not in columns, "metadata should not exist on projects"
+        db.close()
+
+    def test_clients_pathpattern_metadata_absent(self, temp_db):
+        """clients drops path_pattern + metadata and gains updated_at + status_changed_at."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        columns = self._get_columns(db, "clients")
+        for col in ("path_pattern", "metadata"):
+            assert col not in columns, f"{col} should not exist on clients"
+        for col in ("updated_at", "status_changed_at"):
+            assert col in columns, f"{col} missing from clients"
+        db.close()
+
 
 class TestFTSDefinitions:
     """Verify FTS definitions are a single source of truth for all FTS tables."""
@@ -1603,7 +1652,7 @@ _ENTITY_INSERTS = {
         " VALUES ('http://x', '2025-01-01', 'chrome', {status}, {mcp_read}, {mcp_view})"
     ),
     "projects": (
-        "INSERT INTO projects (project_name, status, mcp_read, mcp_view)"
+        "INSERT INTO projects (name, status, mcp_read, mcp_view)"
         " VALUES ('x', {status}, {mcp_read}, {mcp_view})"
     ),
     "chats": (
@@ -1776,8 +1825,8 @@ class TestDisplayNameTriggers:
 
     def test_display_name_trigger_projects(self, temp_db):
         db = self._get_fresh_db(temp_db)
-        db.conn.execute("INSERT INTO projects (project_name) VALUES ('footprinter')")
-        row = db.conn.execute("SELECT display_name FROM projects WHERE project_name = 'footprinter'").fetchone()
+        db.conn.execute("INSERT INTO projects (name) VALUES ('footprinter')")
+        row = db.conn.execute("SELECT display_name FROM projects WHERE name = 'footprinter'").fetchone()
         assert row["display_name"] == "footprinter"
         db.close()
 

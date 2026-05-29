@@ -2,8 +2,7 @@
 Tests for file CRUD functions in footprinter.db.files.
 
 Tests module-level functions (insert_file, insert_drive_file,
-mark_removed_files, build_folder_maps, build_project_prefix_map)
-rather than raw SQL.
+mark_removed_files, build_folder_maps) rather than raw SQL.
 """
 
 from footprinter.db import files as files_db
@@ -91,7 +90,7 @@ class TestInsertFile:
 
         # Create a real project to reference
         cursor = db.conn.cursor()
-        cursor.execute("INSERT INTO projects (id, project_name, status) VALUES (99, 'test-proj', 'listed')")
+        cursor.execute("INSERT INTO projects (id, name, status) VALUES (99, 'test-proj', 'listed')")
 
         # Simulate manual project override
         cursor.execute("UPDATE files SET project_id = 99 WHERE id = ?", (file_id,))
@@ -133,19 +132,10 @@ class TestInsertFile:
         cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
         assert cursor.fetchone()["project_id"] is None
 
-        # Simulate a project being created, then re-index detecting it.
-        # We seed a project and folder so _find_project_for_path matches.
-        # Simpler: just set project_id to NULL explicitly, then re-insert
-        # with a path that won't match any project — the auto-detect returns
-        # None, which CASE WHEN NULL THEN NULL ELSE ... keeps as NULL.
-        # Instead, test the UPDATE SQL directly: manually set project_id=NULL
-        # then insert with a file_data that would produce project_id=42 if
-        # the code used it. Since _find_project_for_path returns None (no
-        # projects in test DB), we verify NULL stays NULL — the important
-        # thing is that the CASE expression doesn't break the NULL→value path.
-
-        # Re-insert — auto-detect returns None (no projects), so project_id
-        # stays NULL. This confirms the CASE expression handles NULL→NULL.
+        # No folder maps to this path, so folder inheritance yields no project.
+        # Re-insert with a path that resolves to no folder — project assignment
+        # returns None, which the CASE WHEN project_id IS NULL THEN ? backfill
+        # keeps as NULL. This confirms the CASE expression handles NULL→NULL.
         files_db.insert_file(
             db.conn,
             {
@@ -283,7 +273,7 @@ class TestInsertFileUnchanged:
         db.close()
 
     def test_null_project_id_fires_unchanged_when_no_project_resolves(self, temp_db):
-        """NULL project_id is fine on the fast-path when no project's root_path matches —
+        """NULL project_id is fine on the fast-path when no folder resolves a project —
         UPDATE backfill would have set NULL→NULL anyway."""
         from footprinter.ingest.database import Database
 
@@ -299,31 +289,35 @@ class TestInsertFileUnchanged:
         assert second == ("unchanged", file_id)
         db.close()
 
-    def test_null_project_id_falls_through_when_project_resolves(self, temp_db):
-        """When a project's root_path now matches, the fast-path defers to the UPDATE so
-        the `CASE WHEN project_id IS NULL THEN ?` backfill can run on the next ingest.
-        Protects the documented re-index contract (reference/data-model.md) for files
-        indexed before their project existed."""
+    def test_null_project_id_backfills_from_folder_when_unchanged(self, temp_db):
+        """An unchanged file with NULL project_id backfills a folder-inherited
+        project on re-ingest (the folder gained a project after first index)."""
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         first = files_db.insert_file(db.conn, self._payload())
         file_id = first[1]
 
-        # User creates a project after the file has been indexed
         cursor = db.conn.cursor()
+        cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
+        assert cursor.fetchone()["project_id"] is None, "precondition: no project yet"
+
+        # The folder covering the file's directory now gains a project.
+        cursor.execute("INSERT INTO projects (name) VALUES ('Late')")
+        project_id = cursor.lastrowid
         cursor.execute(
-            "INSERT INTO projects (id, project_name, status, root_path) VALUES (?, ?, ?, ?)",
-            (88, "test-proj", "listed", "/tmp/test"),
+            "INSERT INTO folders (source, path, relative_path, name, project_id) "
+            "VALUES ('local', '/tmp/test', '/tmp/test', 'test', ?)",
+            (project_id,),
         )
         db.conn.commit()
 
-        # Re-insert with identical hash+size — must NOT short-circuit
-        second = files_db.insert_file(db.conn, self._payload())
-        assert second == ("updated", file_id)
-
+        # Re-ingest identical content (same sha + size): the fast-path must fall
+        # through so the folder-inherited project is backfilled.
+        action, _ = files_db.insert_file(db.conn, self._payload())
+        assert action == "updated", "fast-path should fall through to backfill the project"
         cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
-        assert cursor.fetchone()["project_id"] == 88, "project should be backfilled by UPDATE"
+        assert cursor.fetchone()["project_id"] == project_id
         db.close()
 
     def test_missing_sha256_falls_through_to_update(self, temp_db):
@@ -782,23 +776,6 @@ class TestModuleLevelFileWrites:
         assert len(removed) == 1
         db.close()
 
-    def test_build_project_prefix_map_module_function(self, temp_db):
-        from footprinter.db.files import build_project_prefix_map
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        db.conn.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
-        )
-        db.conn.commit()
-
-        result = build_project_prefix_map(db.conn)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0][0] == "/Users/john/Work"
-        db.close()
-
     def test_build_folder_maps_module_function(self, temp_db):
         from footprinter.db.files import build_folder_maps
         from footprinter.ingest.database import Database
@@ -918,40 +895,6 @@ class TestGetKnownLocalPaths:
 class TestPrefixMaps:
     """Test in-memory prefix map building and resolution."""
 
-    def test_build_project_prefix_map(self, temp_db):
-        """build_project_prefix_map() returns (root_path, project_id) sorted longest-first."""
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        cursor = db.conn.cursor()
-
-        # Insert two projects with root_path values
-        cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('short', 'python', '/Users/john/Work', 'listed')"
-        )
-        short_id = cursor.lastrowid
-        cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('long', 'python', '/Users/john/Work/client-a', 'listed')"
-        )
-        long_id = cursor.lastrowid
-        # Project with NULL root_path — should be excluded
-        cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('null-root', 'python', NULL, 'listed')"
-        )
-        db.conn.commit()
-
-        result = files_db.build_project_prefix_map(db.conn)
-
-        # Should be list of (root_path, project_id) sorted by length desc
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0] == ("/Users/john/Work/client-a", long_id)
-        assert result[1] == ("/Users/john/Work", short_id)
-        db.close()
-
     def test_build_folder_maps(self, temp_db):
         """build_folder_maps() returns (path_map, project_map) dicts."""
         from footprinter.ingest.database import Database
@@ -961,8 +904,8 @@ class TestPrefixMaps:
 
         # Insert a project
         cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work', 'listed')"
+            "INSERT INTO projects (name, status)"
+            " VALUES ('proj', 'listed')"
         )
         proj_id = cursor.lastrowid
 
@@ -1005,8 +948,8 @@ class TestPrefixMaps:
 
         # Seed project and folder
         cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('myproj', 'python', '/Users/john/Work/myproj', 'listed')"
+            "INSERT INTO projects (name, status)"
+            " VALUES ('myproj', 'listed')"
         )
         proj_id = cursor.lastrowid
         cursor.execute(
@@ -1039,7 +982,6 @@ class TestPrefixMaps:
 
         # Build maps and insert via map path
         maps = {
-            "project_prefix_map": files_db.build_project_prefix_map(db.conn),
             "folder_path_map": files_db.build_folder_maps(db.conn)[0],
             "folder_project_map": files_db.build_folder_maps(db.conn)[1],
         }
@@ -1051,72 +993,6 @@ class TestPrefixMaps:
 
         assert map_row["project_id"] == sql_project_id
         assert map_row["folder_id"] == sql_folder_id
-        db.close()
-
-    def test_insert_file_maps_none_falls_back(self, temp_db):
-        """None maps = existing SQL behavior (falls back to defaults)."""
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        cursor = db.conn.cursor()
-
-        cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('proj', 'python', '/Users/john/Work/proj', 'listed')"
-        )
-        db.conn.commit()
-
-        result = files_db.insert_file(
-            db.conn,
-            {
-                "file_path": "/Users/john/Work/proj/file.py",
-                "file_name": "file.py",
-                "file_type": "py",
-                "file_size": 50,
-            },
-            relationship_maps=None,
-        )
-        assert result is not None
-        cursor.execute("SELECT project_id FROM files WHERE id = ?", (result[1],))
-        row = cursor.fetchone()
-        # SQL path should have found the project
-        assert row["project_id"] is not None
-        db.close()
-
-    def test_prefix_map_ancestor_matching(self, temp_db):
-        """Nested path matches correct project via prefix map."""
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        cursor = db.conn.cursor()
-
-        cursor.execute(
-            "INSERT INTO projects (project_name, project_type, root_path, status)"
-            " VALUES ('client-a', 'python', '/Users/john/Work/client-a', 'listed')"
-        )
-        proj_id = cursor.lastrowid
-        db.conn.commit()
-
-        prefix_map = files_db.build_project_prefix_map(db.conn)
-        maps = {
-            "project_prefix_map": prefix_map,
-            "folder_path_map": {},
-            "folder_project_map": {},
-        }
-
-        result = files_db.insert_file(
-            db.conn,
-            {
-                "file_path": "/Users/john/Work/client-a/sub/deep/file.txt",
-                "file_name": "file.txt",
-                "file_type": "txt",
-                "file_size": 10,
-            },
-            relationship_maps=maps,
-        )
-        assert result is not None
-        cursor.execute("SELECT project_id FROM files WHERE id = ?", (result[1],))
-        assert cursor.fetchone()["project_id"] == proj_id
         db.close()
 
     def test_folder_map_ancestor_walk(self, temp_db):

@@ -9,12 +9,12 @@ from the parent folder when no explicit project match exists.
 class TestLocalFileProjectInheritance:
     """Test project_id inheritance in insert_file()."""
 
-    def _create_project(self, db, name="Test Project", root_path=None):
+    def _create_project(self, db, name="Test Project"):
         """Create a project and return its id."""
         cursor = db.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (project_name, root_path) VALUES (?, ?)",
-            (name, root_path),
+            "INSERT INTO projects (name) VALUES (?)",
+            (name,),
         )
         db.conn.commit()
         return cursor.lastrowid
@@ -54,32 +54,6 @@ class TestLocalFileProjectInheritance:
         assert row["project_id"] == project_id
         db.close()
 
-    def test_local_file_path_match_takes_precedence(self, temp_db):
-        from footprinter.db import files as files_db
-        from footprinter.ingest.database import Database
-
-        db = Database(temp_db)
-        path_project = self._create_project(db, "PathProject", root_path="/tmp/test")
-        folder_project = self._create_project(db, "FolderProject")
-        self._create_folder(db, "/tmp/test", project_id=folder_project)
-
-        result = files_db.insert_file(
-            db.conn,
-            {
-                "file_path": "/tmp/test/data.csv",
-                "file_name": "data.csv",
-                "file_type": "csv",
-                "file_size": 200,
-            },
-        )
-        _, file_id = result
-
-        cursor = db.conn.cursor()
-        cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
-        row = cursor.fetchone()
-        assert row["project_id"] == path_project
-        db.close()
-
     def test_local_file_no_folder_no_project(self, temp_db):
         from footprinter.db import files as files_db
         from footprinter.ingest.database import Database
@@ -117,7 +91,7 @@ class TestDriveFileProjectInheritance:
 
     def _create_project(self, db, name="Test Project"):
         cursor = db.conn.cursor()
-        cursor.execute("INSERT INTO projects (project_name) VALUES (?)", (name,))
+        cursor.execute("INSERT INTO projects (name) VALUES (?)", (name,))
         db.conn.commit()
         return cursor.lastrowid
 

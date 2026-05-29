@@ -161,7 +161,7 @@ class TestMcpCheck:
             "VALUES (99, 'Test Client', 'test-client', 'external', 'listed')"
         )
         conn.execute(
-            "INSERT INTO projects (id, project_name, client_id, status) VALUES (99, 'Client Project', 99, 'listed')"
+            "INSERT INTO projects (id, name, client_id, status) VALUES (99, 'Client Project', 99, 'listed')"
         )
         conn.execute(
             "INSERT INTO files (id, name, path, source, status, project_id, size_bytes) "

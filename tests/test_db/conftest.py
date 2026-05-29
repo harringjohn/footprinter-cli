@@ -33,20 +33,20 @@ def db_conn(tmp_path):
 
     # -- Clients ---------------------------------------------------------------
     conn.execute(
-        """INSERT INTO clients (id, name, slug, client_type, path_pattern, status,
+        """INSERT INTO clients (id, name, slug, client_type, status,
                                 mcp_view, mcp_read)
            VALUES
-               (1, 'Acme Corp',  'acme',   'external', '~/Work/clients/acme/',   'listed', 'visible', 'allow'),
-               (2, 'Hidden Inc', 'hidden', 'external', '~/Work/clients/hidden/', 'listed', 'hidden',  'allow')"""
+               (1, 'Acme Corp',  'acme',   'external', 'listed', 'visible', 'allow'),
+               (2, 'Hidden Inc', 'hidden', 'external', 'listed', 'hidden',  'allow')"""
     )
 
     # -- Projects --------------------------------------------------------------
     conn.execute(
-        """INSERT INTO projects (id, project_name, project_type, root_path, status,
+        """INSERT INTO projects (id, name, status,
                                  client_id, mcp_view, mcp_read)
            VALUES
-               (1, 'Alpha', 'python', '/Users/u/Work/alpha', 'listed', 1, 'visible', 'allow'),
-               (2, 'Beta',  'node',   '/Users/u/Work/beta',  'listed', 2, 'hidden',  'allow')"""
+               (1, 'Alpha', 'listed', 1, 'visible', 'allow'),
+               (2, 'Beta',  'listed', 2, 'hidden',  'allow')"""
     )
 
     # -- Files -----------------------------------------------------------------

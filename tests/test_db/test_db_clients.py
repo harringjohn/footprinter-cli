@@ -59,8 +59,8 @@ class TestListClientsFileCountAlignment:
             "VALUES (1, 'Acme', 'acme', 'external', 'listed')"
         )
         conn.execute(
-            "INSERT INTO projects (id, project_name, root_path, status, client_id) "
-            "VALUES (1, 'Alpha', '/p/alpha', 'listed', 1)"
+            "INSERT INTO projects (id, name, status, client_id) "
+            "VALUES (1, 'Alpha', 'listed', 1)"
         )
         conn.execute(
             """INSERT INTO files (id, name, path, source, status, content_type, size_bytes, project_id)
@@ -101,7 +101,7 @@ class TestSchemaDefaultsForNewRows:
     def test_create_project_status_default(self, tool_db):
         result = create_project(
             tool_db,
-            project_name="Defaults Project",
+            name="Defaults Project",
         )
         row = tool_db.execute(
             "SELECT status FROM projects WHERE id = ?", (result["id"],)
@@ -112,7 +112,7 @@ class TestSchemaDefaultsForNewRows:
         """Caller-supplied status must still flow through to the row."""
         result = create_project(
             tool_db,
-            project_name="Unlisted Project",
+            name="Unlisted Project",
             status="unlisted",
         )
         row = tool_db.execute(

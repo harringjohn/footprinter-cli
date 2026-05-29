@@ -32,8 +32,7 @@ logger = logging.getLogger(__name__)
 # Python code uses utils.time.UTC_FMT / utc_now_iso() for the same format.
 #
 # Source-specific metadata is stored in the `metadata` TEXT column
-# (JSON) on tables that need it: files, projects, chats, messages,
-# emails, clients.
+# (JSON) on tables that need it: files, chats, messages, emails.
 
 
 # Single source of truth for FTS5 virtual table definitions.
@@ -336,24 +335,19 @@ class SchemaMixin:
             """
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_name TEXT NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT,
                 description TEXT,
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                metadata TEXT,
-
-                -- Code project info (app-scope adds more columns)
-                root_path TEXT,
-                project_type TEXT,
+                status_changed_at DATETIME,
 
                 -- Client association
                 client_id INTEGER REFERENCES clients(id),
                 client TEXT,
-                github_url TEXT,
-                root_folder_id INTEGER REFERENCES folders(id),
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -369,7 +363,7 @@ class SchemaMixin:
         """
         )
 
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_root ON projects(root_path)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_visibility ON projects(mcp_view)")
 
@@ -548,12 +542,12 @@ class SchemaMixin:
                 name TEXT NOT NULL UNIQUE,
                 slug TEXT NOT NULL UNIQUE,
                 client_type TEXT NOT NULL,
-                path_pattern TEXT,
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
                 status_reason TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                metadata TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                status_changed_at DATETIME,
 
                 -- MCP access control
                 mcp_read TEXT DEFAULT 'inherit'
@@ -731,7 +725,7 @@ class SchemaMixin:
             "files": "NEW.name",
             "folders": "NEW.name",
             "visits": "NEW.title",
-            "projects": "NEW.project_name",
+            "projects": "NEW.name",
             "chats": "NEW.title",
             "messages": "SUBSTR(NEW.content, 1, 100)",
             "emails": "NEW.subject",

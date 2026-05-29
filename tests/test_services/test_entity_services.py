@@ -122,16 +122,16 @@ class TestClientService:
         assert result["action"] == "updated"
         assert result["id"] == 1
 
-    def test_upsert_update_with_extra_fields(self, service_db):
+    def test_upsert_update_with_status(self, service_db):
         result = client_service.upsert(
             service_db,
             name="Acme Corp",
             client_type="external",
-            path_pattern="~/Work/clients/acme-new/",
+            status="unlisted",
         )
         assert result["action"] == "updated"
         fetched = client_service.get(service_db, result["id"])
-        assert fetched["path_pattern"] == "~/Work/clients/acme-new/"
+        assert fetched["status"] == "unlisted"
 
     def test_upsert_validation(self, service_db):
         with pytest.raises(ValueError):
@@ -252,9 +252,9 @@ class TestClientService:
         """Aggregates must not leak hidden/opaque project data to VIEWER."""
         # Add a hidden project under Acme (client 1, visible)
         service_db.execute(
-            """INSERT INTO projects (id, project_name, project_type, root_path, status,
+            """INSERT INTO projects (id, name, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Secret', 'python', '/Users/u/Work/secret', 'listed',
+               VALUES (10, 'Secret', 'listed',
                        1, 'hidden', 'allow')"""
         )
         service_db.execute(
@@ -290,7 +290,7 @@ class TestProjectService:
     def test_resolve_by_name_single_match(self, service_db):
         result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
         assert result is not None
-        assert result.get("project_name") == "Alpha"
+        assert result.get("name") == "Alpha"
         assert "file_count" in result
         assert "top_content_types" in result
         assert "folders" in result
@@ -299,22 +299,22 @@ class TestProjectService:
     def test_resolve_by_name_exact_match_among_many(self, service_db):
         """When multiple fuzzy matches exist but one is exact, return it."""
         service_db.execute(
-            """INSERT INTO projects (id, project_name, project_type, root_path, status,
+            """INSERT INTO projects (id, name, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
+               VALUES (10, 'Alpha Plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
         result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
         assert result is not None
-        assert result.get("project_name") == "Alpha"
+        assert result.get("name") == "Alpha"
 
     def test_resolve_by_name_ambiguous(self, service_db):
         """Multiple fuzzy matches with no exact → disambiguation."""
         service_db.execute(
-            """INSERT INTO projects (id, project_name, project_type, root_path, status,
+            """INSERT INTO projects (id, name, status,
                                      client_id, mcp_view, mcp_read)
-               VALUES (10, 'Alpha Plus', 'python', '/Users/u/Work/alpha-plus', 'listed',
+               VALUES (10, 'Alpha Plus', 'listed',
                        1, 'visible', 'allow')"""
         )
         service_db.commit()
@@ -363,7 +363,6 @@ class TestProjectService:
         result = project_service.get(service_db, 3, role=Role.VIEWER)
         assert result is not None
         assert "id" in result
-        assert "type" in result
         assert "status" in result
         assert "name" not in result
 
@@ -384,14 +383,14 @@ class TestProjectService:
         with pytest.raises(PermissionError):
             project_service.upsert(
                 service_db,
-                project_name="New Proj",
+                name="New Proj",
                 role=Role.VIEWER,
             )
 
     def test_upsert_create(self, service_db):
         result = project_service.upsert(
             service_db,
-            project_name="New Proj",
+            name="New Proj",
         )
         assert result["action"] == "created"
         assert result["id"] is not None
@@ -399,7 +398,7 @@ class TestProjectService:
     def test_upsert_create_fetchable(self, service_db):
         created = project_service.upsert(
             service_db,
-            project_name="Fetchable Proj",
+            name="Fetchable Proj",
         )
         fetched = project_service.get(service_db, created["id"])
         assert fetched is not None
@@ -408,25 +407,15 @@ class TestProjectService:
     def test_upsert_update_by_name(self, service_db):
         result = project_service.upsert(
             service_db,
-            project_name="Alpha",
-            project_type="go",
-        )
-        assert result["action"] == "updated"
-        assert result["id"] == 1
-
-    def test_upsert_update_by_root_path(self, service_db):
-        """root_path match takes priority over name."""
-        result = project_service.upsert(
-            service_db,
-            project_name="Renamed Alpha",
-            root_path="/Users/u/Work/alpha",
+            name="Alpha",
+            description="updated description",
         )
         assert result["action"] == "updated"
         assert result["id"] == 1
 
     def test_upsert_validation(self, service_db):
         with pytest.raises(ValueError):
-            project_service.upsert(service_db, project_name="")
+            project_service.upsert(service_db, name="")
 
     def test_delete_permission_denied(self, service_db):
         with pytest.raises(PermissionError):
@@ -435,8 +424,8 @@ class TestProjectService:
     def test_delete_happy_path_hard_removes_row(self, service_db):
         # Insert a fresh project with no dependents so the hard delete succeeds.
         service_db.execute(
-            """INSERT INTO projects (id, project_name, project_type, root_path, status)
-               VALUES (99, 'Disposable', 'python', '/tmp/disposable', 'listed')"""
+            """INSERT INTO projects (id, name, status)
+               VALUES (99, 'Disposable', 'listed')"""
         )
         service_db.commit()
         result = project_service.delete(service_db, 99)

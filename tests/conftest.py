@@ -297,8 +297,8 @@ def populate_minimal_db(db_path):
            VALUES ('local', 'file', 'local_fs', NULL, 'Local Files', 'folder', 1)"""
     )
     conn.execute(
-        """INSERT INTO projects (project_name, project_type, root_path, status)
-           VALUES ('test-project', 'python', '/Users/testuser/Work/test-project', 'listed')"""
+        """INSERT INTO projects (name, status)
+           VALUES ('test-project', 'listed')"""
     )
     conn.execute(
         """INSERT INTO files (name, path, source, status, content_type, size_bytes)
@@ -322,20 +322,20 @@ def populate_access_control_db(db_path):
 
     # Projects
     conn.execute(
-        """INSERT INTO projects (id, project_name, project_type, root_path, status)
+        """INSERT INTO projects (id, name, status)
            VALUES
-               (1, 'Visible Project', 'python', '/Users/testuser/Work/visible', 'listed'),
-               (2, 'Hidden Project', 'python', '/Users/testuser/Work/hidden', 'listed'),
-               (3, 'Opaque Project', 'python', '/Users/testuser/Work/opaque', 'listed')"""
+               (1, 'Visible Project', 'listed'),
+               (2, 'Hidden Project', 'listed'),
+               (3, 'Opaque Project', 'listed')"""
     )
 
     # Clients
     conn.execute(
-        """INSERT INTO clients (id, name, slug, client_type, path_pattern, status)
+        """INSERT INTO clients (id, name, slug, client_type, status)
            VALUES
-               (1, 'Visible Client', 'visible', 'external', '~/Work/clients/visible/', 'listed'),
-               (2, 'Hidden Client', 'hidden', 'external', '~/Work/clients/hidden/', 'listed'),
-               (3, 'Opaque Client', 'opaque', 'external', '~/Work/clients/opaque/', 'listed')"""
+               (1, 'Visible Client', 'visible', 'external', 'listed'),
+               (2, 'Hidden Client', 'hidden', 'external', 'listed'),
+               (3, 'Opaque Client', 'opaque', 'external', 'listed')"""
     )
 
     # Chats: visible(1), hidden(2), opaque(3), permission-denied(4)

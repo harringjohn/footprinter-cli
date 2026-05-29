@@ -95,7 +95,7 @@ class TestProjectEntity:
         with patch("footprinter.db_base.get_db_path", return_value=bypass_db):
             result = footprinter_project("Visible Project")
         assert "error" not in result
-        assert "project_name" in result or "root_path" in result
+        assert "name" in result
 
 
 # ==============================================================================
@@ -187,9 +187,9 @@ class TestOpaqueFilterProjectClient:
     """_filter_to_opaque() must handle project and client types."""
 
     def test_project_opaque_filter(self):
-        full = {"id": 1, "project_name": "Secret", "project_type": "python", "status": "listed"}
+        full = {"id": 1, "name": "Secret", "status": "listed"}
         filtered = _filter_to_opaque("project", full)
-        assert set(filtered.keys()) == {"id", "project_type", "status"}
+        assert set(filtered.keys()) == {"id", "status"}
 
     def test_client_opaque_filter(self):
         full = {"id": 1, "name": "Secret", "client_type": "external", "status": "listed"}

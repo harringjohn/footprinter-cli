@@ -33,11 +33,11 @@ def _seeded_view_db():
     )
 
     conn.execute(
-        "INSERT INTO projects (id, project_name, status, client_id) "
+        "INSERT INTO projects (id, name, status, client_id) "
         "VALUES (1, 'Alpha Project', 'listed', 1)"
     )
     conn.execute(
-        "INSERT INTO projects (id, project_name, status, client_id) "
+        "INSERT INTO projects (id, name, status, client_id) "
         "VALUES (2, 'Beta Project', 'listed', 2)"
     )
 

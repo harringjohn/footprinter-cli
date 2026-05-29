@@ -26,7 +26,7 @@ def _seed_entities(conn, indexed_at=None):
     cur.execute("INSERT INTO clients (id, name, slug, client_type) VALUES (1, 'TestCo', 'testco', 'external')")
     # Project
     cur.execute(
-        "INSERT INTO projects (id, project_name, root_path, client_id) VALUES (1, 'TestProj', '/Users/me/Work/test', 1)"
+        "INSERT INTO projects (id, name, client_id) VALUES (1, 'TestProj', 1)"
     )
     # Files
     cur.execute(

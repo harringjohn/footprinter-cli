@@ -8,6 +8,7 @@ import sqlite3
 from typing import Optional
 
 from footprinter.db.sql_utils import build_status_filter, paginate, paginated_response
+from footprinter.utils.text import _make_slug
 
 VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
 
@@ -35,29 +36,19 @@ def resolve_client_name(conn: sqlite3.Connection, client_id: int) -> Optional[st
 def find_project_id_by_key(
     conn: sqlite3.Connection,
     *,
-    root_path: Optional[str] = None,
-    project_name: Optional[str] = None,
+    name: Optional[str] = None,
 ) -> Optional[int]:
-    """Find a project ID by match key: root_path first, then project_name.
+    """Find a project ID by name (first match).
 
-    Returns the project ID or None. root_path has priority (UNIQUE constraint);
-    project_name is a softer fallback (takes first match).
+    Project names are not unique, so this returns the first matching row.
+    Returns the project ID or None.
     """
+    if not name:
+        return None
     cursor = conn.cursor()
-    if root_path:
-        cursor.execute("SELECT id FROM projects WHERE root_path = ?", (root_path,))
-        row = cursor.fetchone()
-        if row:
-            return row["id"]
-    if project_name:
-        cursor.execute(
-            "SELECT id FROM projects WHERE project_name = ?",
-            (project_name,),
-        )
-        row = cursor.fetchone()
-        if row:
-            return row["id"]
-    return None
+    cursor.execute("SELECT id FROM projects WHERE name = ?", (name,))
+    row = cursor.fetchone()
+    return row["id"] if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +63,11 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     — the service layer handles that.
     """
     rows = conn.execute(
-        """SELECT id, project_name, project_type, root_path, status, client,
-                  description, github_url, mcp_view, mcp_read,
+        """SELECT id, name, status, client,
+                  description, mcp_view, mcp_read,
                   mcp_view_source, mcp_read_source
            FROM projects
-           WHERE project_name LIKE ?""",
+           WHERE name LIKE ?""",
         (f"%{name}%",),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -85,7 +76,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
 def count_hidden_by_name(conn: sqlite3.Connection, name: str) -> int:
     """Count hidden projects matching a fuzzy name query (for diagnostics)."""
     row = conn.execute(
-        "SELECT COUNT(*) FROM projects WHERE project_name LIKE ? AND COALESCE(mcp_view, 'inherit') = 'hidden'",
+        "SELECT COUNT(*) FROM projects WHERE name LIKE ? AND COALESCE(mcp_view, 'inherit') = 'hidden'",
         (f"%{name}%",),
     ).fetchone()
     return row[0]
@@ -171,7 +162,6 @@ def list_projects(
     limit: int = 50,
     status: Optional[str | list[str]] = None,
     client: Optional[str] = None,
-    project_type: Optional[str] = None,
 ) -> dict:
     """List projects with file counts, pagination, and SQL-side filtering.
 
@@ -185,12 +175,10 @@ def list_projects(
         ``"all"`` → no status filter.
     client : str or None
         Filter by client name (exact match).
-    project_type : str or None
-        Filter by project_type (exact match).
 
     Returns
     -------
-    dict with keys: projects, pagination, types, clients,
+    dict with keys: projects, pagination, clients,
                     no_project_count, no_project_size_bytes
     """
     cursor = conn.cursor()
@@ -211,10 +199,6 @@ def list_projects(
         conditions.append("client.name = ?")
         params.append(client)
 
-    if project_type is not None:
-        conditions.append("project.project_type = ?")
-        params.append(project_type)
-
     where = " WHERE " + " AND ".join(conditions) if conditions else ""
 
     # The count query needs the same JOIN as the fetch for client filtering
@@ -224,18 +208,16 @@ def list_projects(
         {where}
     """
     fetch_sql = f"""
-        SELECT project.id, project.project_name, project.project_type, project.root_path,
-               project.status, client.name AS client, project.description, project.github_url,
-               project.root_folder_id, project.mcp_view, project.mcp_read,
+        SELECT project.id, project.name,
+               project.status, client.name AS client, project.description,
+               project.mcp_view, project.mcp_read,
                project.mcp_view_source, project.mcp_read_source,
-               root_folder.direct_file_count as root_file_count,
                (SELECT COUNT(*) FROM folders folder
                    WHERE folder.project_id = project.id) as folder_count
         FROM projects project
-        LEFT JOIN folders root_folder ON project.root_folder_id = root_folder.id
         LEFT JOIN clients client ON project.client_id = client.id
         {where}
-        ORDER BY project.project_name
+        ORDER BY project.name
         LIMIT ? OFFSET ?
     """
     project_rows, pagination = paginate(
@@ -265,17 +247,12 @@ def list_projects(
         projects.append(
             {
                 "id": project_id,
-                "name": row["project_name"],
-                "type": row["project_type"] or "unknown",
+                "name": row["name"],
                 "client": row["client"] or "",
-                "root_path": row["root_path"] or "",
                 "status": row["status"] or "listed",
                 "description": row["description"] or "",
-                "github_url": row["github_url"] or "",
                 "file_count": stats["count"],
                 "size_bytes": stats["size"],
-                "root_folder_id": row["root_folder_id"],
-                "root_file_count": row["root_file_count"] or 0,
                 "folder_count": row["folder_count"] or 0,
                 "mcp_view": row["mcp_view"] or "inherit",
                 "mcp_read": row["mcp_read"] or "inherit",
@@ -284,10 +261,7 @@ def list_projects(
             }
         )
 
-    # Extras: types and clients from ALL projects (for filter dropdowns)
-    cursor.execute("SELECT DISTINCT project_type FROM projects WHERE project_type IS NOT NULL")
-    types = sorted(r["project_type"] for r in cursor.fetchall())
-
+    # Extra: distinct client names across ALL projects (for filter dropdowns)
     cursor.execute("""
         SELECT DISTINCT client.name FROM clients client
         INNER JOIN projects project ON project.client_id = client.id
@@ -309,7 +283,6 @@ def list_projects(
         "projects",
         projects,
         pagination,
-        types=types,
         clients=clients,
         no_project_count=no_project_stats["count"],
         no_project_size_bytes=no_project_stats["size"],
@@ -325,10 +298,9 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT project.id, project.project_name, project.description,
-               project.status, project.project_type, project.root_path,
-               project.client_id, project.client, project.github_url,
-               project.root_folder_id, project.metadata,
+        SELECT project.id, project.name, project.description,
+               project.status,
+               project.client_id, project.client,
                project.mcp_read, project.mcp_view,
                project.mcp_view_source, project.mcp_read_source,
                project.created_at, project.updated_at,
@@ -349,16 +321,12 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
     if not row:
         return None
 
-    root_path = row["root_path"] or ""
     result = {
         "id": row["id"],
-        "name": row["project_name"],
-        "type": row["project_type"] or "unknown",
+        "name": row["name"],
         "client": row["client_name"] or row["client"] or "",
-        "root_path": root_path,
         "status": row["status"] or "listed",
         "description": row["description"] or "",
-        "github_url": row["github_url"] or "",
         "file_count": row["file_count"],
         "total_size": row["total_size"],
         "folder_count": row["folder_count"],
@@ -399,8 +367,7 @@ def list_project_files(
 
     cursor.execute(
         """
-        SELECT id, project_name, project_type, root_path,
-               status, description, client
+        SELECT id, name, status, description, client
         FROM projects WHERE id = ?
         """,
         (project_id,),
@@ -409,7 +376,6 @@ def list_project_files(
     if not project:
         return None
 
-    root_path = project["root_path"] or ""
     order_sql = "DESC" if order == "desc" else "ASC"
     sort_col = sort if sort in ("modified_at", "name", "size_bytes", "content_type") else "modified_at"
 
@@ -426,14 +392,12 @@ def list_project_files(
 
     files = []
     for row in rows:
-        file_path = row["path"] or ""
-        rel_path = file_path[len(root_path) + 1 :] if file_path.startswith(root_path) else file_path
         files.append(
             {
                 "id": row["id"],
                 "name": row["name"],
                 "content_type": row["content_type"] or "",
-                "path": rel_path,
+                "path": row["path"] or "",
                 "size_bytes": row["size_bytes"],
                 "modified_at": row["modified_at"] or "",
                 "source": row["source"],
@@ -445,9 +409,7 @@ def list_project_files(
 
     project_dict = {
         "id": project["id"],
-        "name": project["project_name"],
-        "type": project["project_type"],
-        "root_path": root_path,
+        "name": project["name"],
         "status": project["status"] or "listed",
         "description": project["description"] or "",
         "client": project["client"] or "",
@@ -463,15 +425,15 @@ def list_project_files(
 def create_project(
     conn: sqlite3.Connection,
     *,
-    project_name: str,
-    root_path: Optional[str] = None,
+    name: str,
     client_id: Optional[int] = None,
-    project_type: Optional[str] = None,
     description: Optional[str] = None,
-    github_url: Optional[str] = None,
     status: Optional[str] = None,
 ) -> dict:
     """Create a new project.
+
+    A ``slug`` is derived from ``name`` via ``_make_slug``. Project names are
+    not unique, so the slug is non-unique too (no UNIQUE constraint).
 
     ``status`` is included in the INSERT only when the caller passes a value;
     otherwise the schema DEFAULT ('listed') applies. The column list is built
@@ -480,17 +442,11 @@ def create_project(
     Returns a dict of the full project row.
     Raises ValueError on invalid input.
     """
-    project_name = (project_name or "").strip()
-    if not project_name:
-        raise ValueError("project_name is required")
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("name is required")
 
     cursor = conn.cursor()
-
-    # Check root_path uniqueness
-    if root_path:
-        cursor.execute("SELECT id FROM projects WHERE root_path = ?", (root_path,))
-        if cursor.fetchone():
-            raise ValueError("A project with that root_path already exists")
 
     # Resolve client name
     client_name = None
@@ -499,24 +455,8 @@ def create_project(
         if client_name is None:
             raise ValueError("Client not found")
 
-    columns = [
-        "project_name",
-        "root_path",
-        "project_type",
-        "client_id",
-        "client",
-        "description",
-        "github_url",
-    ]
-    values: list = [
-        project_name,
-        root_path,
-        project_type,
-        client_id,
-        client_name,
-        description,
-        github_url,
-    ]
+    columns = ["name", "slug", "client_id", "client", "description"]
+    values: list = [name, _make_slug(name), client_id, client_name, description]
     if status is not None:
         columns.append("status")
         values.append(status)
@@ -536,6 +476,10 @@ def create_project(
 def update_project(conn: sqlite3.Connection, project_id: int, **fields) -> Optional[bool]:
     """Update a project's fields.
 
+    Stamps ``updated_at`` on any change and ``status_changed_at`` on a status
+    change. Regenerates ``slug`` from ``name`` whenever the name changes
+    (names are non-unique, so slugs are too).
+
     Returns True on success, None if not found.
     Raises ValueError on invalid input.
     """
@@ -543,16 +487,7 @@ def update_project(conn: sqlite3.Connection, project_id: int, **fields) -> Optio
         return None
 
     cursor = conn.cursor()
-    updatable = {
-        "project_name",
-        "description",
-        "github_url",
-        "metadata",
-        "project_type",
-        "root_path",
-        "status",
-        "status_reason",
-    }
+    updatable = {"name", "slug", "description", "status", "status_reason"}
     sql_fields: list[str] = []
     values: list = []
 
@@ -573,24 +508,26 @@ def update_project(conn: sqlite3.Connection, project_id: int, **fields) -> Optio
             sql_fields.append("client = ?")
             values.append(None)
 
-    # Check root_path uniqueness when changing it
-    if "root_path" in fields and fields["root_path"]:
-        cursor.execute(
-            "SELECT id FROM projects WHERE root_path = ? AND id != ?",
-            (fields["root_path"], project_id),
-        )
-        if cursor.fetchone():
-            raise ValueError("A project with that root_path already exists")
-
+    new_name = None
     for key in updatable:
         if key in fields:
             val = fields[key]
-            if key == "metadata" and val is not None:
-                import json
-
-                val = json.dumps(val)
+            if key == "name":
+                new_name = (val or "").strip()
+                if not new_name:
+                    raise ValueError("Name cannot be empty")
+                val = new_name
             sql_fields.append(f"{key} = ?")
             values.append(val)
+
+    # Regenerate slug on name change unless an explicit slug was supplied
+    if new_name and "slug" not in fields:
+        sql_fields.append("slug = ?")
+        values.append(_make_slug(new_name))
+
+    # Stamp status_changed_at on a status change (mirrors folders/files)
+    if "status" in fields:
+        sql_fields.append("status_changed_at = CURRENT_TIMESTAMP")
 
     if not sql_fields:
         return True

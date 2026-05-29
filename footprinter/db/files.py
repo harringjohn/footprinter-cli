@@ -52,7 +52,7 @@ def list_files(
     base = """
         SELECT file.id, file.name, file.path, file.source, file.status, file.content_type,
                file.size_bytes, file.modified_at, file.project_id, file.client_id,
-               project.project_name,
+               project.name AS project_name,
                file.mcp_view, file.mcp_read,
                file.mcp_view_source, file.mcp_read_source
         FROM files file
@@ -130,7 +130,7 @@ def get_file(
                file.external_id, file.account,
                file.mcp_view, file.mcp_read,
                file.mcp_view_source, file.mcp_read_source,
-               project.project_name
+               project.name AS project_name
         FROM files file
         LEFT JOIN projects project ON file.project_id = project.id
         WHERE file.id = ?
@@ -255,33 +255,6 @@ def _determine_file_status(name: str, path: str) -> tuple:
     return "listed", None
 
 
-def _find_project_for_path(
-    conn: sqlite3.Connection,
-    file_path: str,
-    project_prefix_map: Optional[List[Tuple[str, int]]] = None,
-) -> Optional[int]:
-    """Find most specific project by root_path prefix match."""
-    if project_prefix_map is not None:
-        for root_path, project_id in project_prefix_map:
-            if file_path.startswith(root_path):
-                return project_id
-        return None
-
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id FROM projects
-        WHERE root_path IS NOT NULL
-        AND ? LIKE root_path || '%'
-        ORDER BY LENGTH(root_path) DESC
-        LIMIT 1
-    """,
-        (file_path,),
-    )
-    row = cursor.fetchone()
-    return row["id"] if row else None
-
-
 def _get_folder_project_id(
     conn: sqlite3.Connection,
     folder_id: int,
@@ -396,23 +369,6 @@ def _find_folder_for_path(
     return None
 
 
-def build_project_prefix_map(conn: sqlite3.Connection) -> List[Tuple[str, int]]:
-    """Load project prefix map sorted by path length descending.
-
-    Returns:
-        List of (root_path, project_id) tuples, longest path first.
-    """
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id, root_path FROM projects
-        WHERE root_path IS NOT NULL
-        ORDER BY LENGTH(root_path) DESC
-        """
-    )
-    return [(row["root_path"], row["id"]) for row in cursor.fetchall()]
-
-
 def build_folder_maps(
     conn: sqlite3.Connection,
 ) -> Tuple[Dict[Tuple[str, str], int], Dict[int, int]]:
@@ -455,16 +411,15 @@ def insert_file(
     )
     existing = cursor.fetchone()
 
-    proj_map = relationship_maps.get("project_prefix_map") if relationship_maps else None
     fpath_map = relationship_maps.get("folder_path_map") if relationship_maps else None
     fproj_map = relationship_maps.get("folder_project_map") if relationship_maps else None
     dsn = relationship_maps.get("remote_source_names") if relationship_maps else None
 
     # Fast path: unchanged active row → skip the UPDATE.
     # Requires a non-None sha256 on both sides so missing hashes never short-circuit.
-    # When existing.project_id IS NULL we still consult _find_project_for_path: if a
-    # project would resolve, fall through so the UPDATE's `CASE WHEN project_id IS NULL
-    # THEN ?` backfill can run. If no project matches, NULL→NULL — fast-path is safe.
+    # When the row has no project_id but folder inheritance now resolves one, we
+    # fall through instead so the UPDATE's `CASE WHEN project_id IS NULL THEN ?`
+    # backfill runs (e.g. a folder gained a project after the file was indexed).
     if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
         incoming_size = file_data.get("file_size")
@@ -476,12 +431,19 @@ def insert_file(
             and incoming_sha == existing["sha256_hash"]
             and incoming_size == existing["size_bytes"]
         ):
-            if existing["project_id"] is not None or _find_project_for_path(
-                conn, file_path, project_prefix_map=proj_map
+            if existing["project_id"] is not None:
+                return ("unchanged", existing["id"])
+            backfill_folder = _find_folder_for_path(
+                conn, "local", file_path, folder_path_map=fpath_map, remote_source_names=dsn
+            )
+            if backfill_folder is None or _get_folder_project_id(
+                conn, backfill_folder, folder_project_map=fproj_map
             ) is None:
                 return ("unchanged", existing["id"])
+            # else: a folder-inherited project is now available → fall through
 
-    project_id = _find_project_for_path(conn, file_path, project_prefix_map=proj_map)
+    # Project assignment comes from folder inheritance (and explicit user
+    # assignment); files are no longer matched to a project by path prefix.
     folder_id = _find_folder_for_path(
         conn,
         "local",
@@ -489,7 +451,8 @@ def insert_file(
         folder_path_map=fpath_map,
         remote_source_names=dsn,
     )
-    if project_id is None and folder_id is not None:
+    project_id = None
+    if folder_id is not None:
         project_id = _get_folder_project_id(conn, folder_id, folder_project_map=fproj_map)
 
     name = file_data.get("file_name") or file_data.get("name")

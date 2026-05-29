@@ -165,7 +165,7 @@ def search_files_keyword(
             params.append(fts5_str)
 
     if project:
-        where.append("project.project_name = ?")
+        where.append("project.name = ?")
         params.append(project)
     if client:
         where.append("client.name = ?")
@@ -197,7 +197,7 @@ def search_files_keyword(
         SELECT file.id, file.source, file.name, file.path, file.content_type,
                file.size_bytes, file.modified_at, file.account, file.mime_type,
                file.mcp_view, file.status, file.status_reason,
-               project.project_name, client.name AS client
+               project.name AS project_name, client.name AS client
         FROM files file
         {fts_join}
         LEFT JOIN projects project ON file.project_id = project.id
@@ -267,7 +267,7 @@ def search_emails_keyword(
             params.append(fts5_str)
 
     if project:
-        where.append("project.project_name = ?")
+        where.append("project.name = ?")
         params.append(project)
     if client:
         where.append("client.name = ?")
@@ -300,7 +300,7 @@ def search_emails_keyword(
                email.mcp_view, email.mcp_read,
                email.mcp_view_source, email.mcp_read_source,
                email.status,
-               project.project_name, client.name AS client_name
+               project.name AS project_name, client.name AS client_name
         FROM emails email
         {fts_join}
         LEFT JOIN projects project ON email.project_id = project.id
@@ -366,7 +366,7 @@ def search_chats_keyword(
         params.extend(cond_params)
 
     if project:
-        where.append("project.project_name = ?")
+        where.append("project.name = ?")
         params.append(project)
     if client:
         where.append("client.name = ?")
@@ -389,7 +389,7 @@ def search_chats_keyword(
                chat.created_at, chat.modified_at,
                chat.message_count, chat.mcp_view, chat.mcp_read,
                chat.mcp_view_source, chat.mcp_read_source, chat.status,
-               project.project_name, client.name AS client_name
+               project.name AS project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
         LEFT JOIN clients client ON chat.client_id = client.id
