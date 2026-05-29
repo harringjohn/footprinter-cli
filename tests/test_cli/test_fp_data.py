@@ -58,7 +58,7 @@ class TestDataHelp:
         _, _, code = run_fp("data", "--help")
         assert code == 0
 
-    def test_help_lists_subcommands(self):
+    def test_help_lists_import(self):
         stdout, stderr, _ = run_fp("data", "--help")
         output = stdout + stderr
         assert "import" in output, "'import' not in fp data --help"

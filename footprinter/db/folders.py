@@ -153,6 +153,7 @@ def list_folders(
             "direct_files": row["live_file_count"],
             "total_size_bytes": row["live_size_bytes"],
             "project_id": row["project_id"],
+            "client_id": row["client_id"],
             "project_name": row["project_name"] or "",
             "mcp_view": row["mcp_view"],
             "mcp_read": row["mcp_read"],
