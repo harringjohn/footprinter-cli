@@ -1,23 +1,18 @@
-"""Tests for ``fp setup`` — slim-down refactor + reset + conditional hooks.
+"""Tests for ``fp setup`` — slim-down refactor.
 
 Validates:
   1. setup.py exposes register(subparsers) for the fp CLI router
   2. fp setup subcommands (mcp, google, folders) respond to --help
   3. CLI routing rejects removed subcommands (access, clients, projects, folders list)
   4. Kept functions survive the refactor
-  5. ``--reset`` clears data and re-runs wizard
-  6. ``--hooks`` conditionally registered based on hook file presence
+  5. Removed flags (--hooks, --reset, --check) are rejected
 """
 
 import inspect
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from tests.conftest import run_fp
-
-SETUP_MODULE_PATH = Path(__file__).resolve().parent.parent.parent / "footprinter" / "cli" / "setup.py"
 
 
 # ---------------------------------------------------------------------------
@@ -48,17 +43,13 @@ class TestSetupRegister:
         stdout, stderr, code = run_fp("setup", "--help")
         assert "--check" not in stdout + stderr
 
-    def test_setup_help_mentions_hooks(self):
-        from footprinter.cli.setup import _hooks_available
-
-        if not _hooks_available():
-            pytest.skip("hooks not available (snapshot environment)")
+    def test_setup_help_omits_hooks(self):
         stdout, stderr, code = run_fp("setup", "--help")
-        assert "--hooks" in stdout + stderr
+        assert "--hooks" not in stdout + stderr
 
-    def test_setup_help_mentions_reset(self):
+    def test_setup_help_omits_reset(self):
         stdout, stderr, code = run_fp("setup", "--help")
-        assert "--reset" in stdout + stderr
+        assert "--reset" not in stdout + stderr
 
     def test_setup_mcp_help_exits_zero(self):
         stdout, stderr, code = run_fp("setup", "mcp", "--help")
@@ -107,7 +98,6 @@ class TestSetupKeptFunctions:
         "func_name",
         [
             "run_interactive_wizard",
-            "install_git_hooks",
             "seed_access_policies",
             "folders_add",
             "folders_remove",
@@ -122,112 +112,17 @@ class TestSetupKeptFunctions:
 
 
 # ---------------------------------------------------------------------------
-# 4. Reset — ``fp setup --reset`` clears data and re-runs wizard
+# 4. Removed flags are rejected
 # ---------------------------------------------------------------------------
 
 
-class TestSetupReset:
-    """``fp setup --reset`` clears DB + chroma, preserves config, re-runs wizard."""
+class TestSetupRemovedFlags:
+    """Removed flags (--hooks, --reset) are rejected by the parser."""
 
-    @pytest.fixture(autouse=True)
-    def _setup_home(self, tmp_path, monkeypatch):
-        """Redirect FOOTPRINTER_HOME to a temp dir for each test."""
-        self.home = tmp_path / "fp_home"
-        self.home.mkdir()
-        monkeypatch.setenv("FOOTPRINTER_HOME", str(self.home))
-        monkeypatch.delenv("FOOTPRINTER_DB_PATH", raising=False)
+    def test_hooks_flag_rejected(self):
+        _stdout, _stderr, code = run_fp("setup", "--hooks")
+        assert code != 0, "fp setup --hooks should fail (removed)"
 
-    def _create_data(self):
-        """Create fake DB and chroma dir in the temp home."""
-        db = self.home / "footprinter.db"
-        db.write_text("fake db")
-        chroma = self.home / "chroma"
-        chroma.mkdir()
-        (chroma / "index.bin").write_text("fake vectors")
-        return db, chroma
-
-    def test_reset_clears_db_and_chroma(self):
-        db, chroma = self._create_data()
-        with (
-            patch("footprinter.cli.setup.run_interactive_wizard") as mock_wizard,
-            patch("footprinter.cli.setup.Confirm.ask", return_value=True),
-        ):
-            _stdout, _stderr, code = run_fp("setup", "--reset")
-        assert code == 0, f"Expected exit 0, got {code}"
-        assert not db.exists(), "DB should be deleted"
-        assert not chroma.exists(), "Chroma dir should be deleted"
-        assert mock_wizard.called, "Wizard should have been called"
-
-    def test_reset_aborted_preserves_data(self):
-        db, chroma = self._create_data()
-        with patch("footprinter.cli.setup.Confirm.ask", return_value=False):
-            _stdout, _stderr, _code = run_fp("setup", "--reset")
-        assert db.exists(), "DB should be preserved when reset is cancelled"
-        assert chroma.exists(), "Chroma should be preserved when reset is cancelled"
-
-    def test_reset_preserves_config(self):
-        self._create_data()
-        config = self.home / "config.yaml"
-        config.write_text("general:\n  enabled: true\n")
-        with (
-            patch("footprinter.cli.setup.run_interactive_wizard"),
-            patch("footprinter.cli.setup.Confirm.ask", return_value=True),
-        ):
-            run_fp("setup", "--reset")
-        assert config.exists(), "config.yaml must be preserved"
-
-    def test_reset_handles_missing_data(self):
-        """Reset on empty home should not crash."""
-        with (
-            patch("footprinter.cli.setup.run_interactive_wizard"),
-            patch("footprinter.cli.setup.Confirm.ask", return_value=True),
-        ):
-            _stdout, _stderr, code = run_fp("setup", "--reset")
-        assert code == 0, f"Expected clean exit, got {code}"
-
-
-    def test_reset_no_test_mode_warning_outside_test(self):
-        """Reset outside test mode should NOT show the reset-specific test warning."""
-        with (
-            patch("footprinter.cli.setup.run_interactive_wizard"),
-            patch("footprinter.cli.setup.Confirm.ask", return_value=True),
-        ):
-            stdout, _stderr, code = run_fp("setup", "--reset")
-        assert code == 0, f"Expected exit 0, got {code}"
-        assert "not production" not in stdout.lower(), (
-            f"Reset test-mode warning should not appear outside test mode, got: {stdout}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 7. Conditional hooks
-# ---------------------------------------------------------------------------
-
-
-class TestConditionalHooks:
-    """--hooks flag and hooks UI are conditional on hook file presence."""
-
-    def test_hooks_available_true(self):
-        """_hooks_available() returns True when scripts/hooks/post-merge exists."""
-        from footprinter.cli.setup import _hooks_available
-
-        if not _hooks_available():
-            pytest.skip("hooks not available (snapshot environment)")
-        assert _hooks_available() is True
-
-    def test_hooks_hidden_when_unavailable(self):
-        """--hooks flag not registered when hook file is absent."""
-        with patch("footprinter.cli.setup._hooks_available", return_value=False):
-            stdout, stderr, code = run_fp("setup", "--help")
-        assert "--hooks" not in stdout + stderr
-
-    def test_hooks_visible_when_available(self):
-        """--hooks flag registered when hook file is present."""
-        with patch("footprinter.cli.setup._hooks_available", return_value=True):
-            stdout, stderr, code = run_fp("setup", "--help")
-        assert "--hooks" in stdout + stderr
-
-    def test_hooks_hint_removed_from_summary(self):
-        """Wizard summary no longer includes 'Git hooks' hint."""
-        source = SETUP_MODULE_PATH.read_text()
-        assert "Git hooks (dev)" not in source, "print_summary should not contain 'Git hooks (dev)' hint"
+    def test_reset_flag_rejected(self):
+        _stdout, _stderr, code = run_fp("setup", "--reset")
+        assert code != 0, "fp setup --reset should fail (removed)"
