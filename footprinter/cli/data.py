@@ -156,7 +156,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["status", "project_id", "client_id", "mcp_view", "mcp_read"],
+        writable_columns=["status", "project_id", "client_id"],
         order_by="id",
         has_status=True,
         template_rows=[
@@ -171,8 +171,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "modified_at": "2026-01-15T10:00:00Z",
                 "project_id": "1",
                 "client_id": "1",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -185,14 +183,10 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "modified_at": "2026-02-01T10:00:00Z",
                 "project_id": "",
                 "client_id": "",
-                "mcp_view": "inherit",
-                "mcp_read": "inherit",
             },
         ],
         valid_values={
             "status": "listed, unlisted, removed",
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
         },
     ),
     "folders": DataSourceSpec(
@@ -209,7 +203,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["status", "project_id", "client_id", "mcp_view", "mcp_read"],
+        writable_columns=["status", "project_id", "client_id"],
         order_by="id",
         has_status=True,
         template_rows=[
@@ -222,8 +216,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "1",
                 "client_id": "",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -234,14 +226,10 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "",
                 "client_id": "",
-                "mcp_view": "inherit",
-                "mcp_read": "inherit",
             },
         ],
         valid_values={
             "status": "listed, unlisted, removed",
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
         },
     ),
     "emails": DataSourceSpec(
@@ -259,7 +247,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["status", "project_id", "client_id", "mcp_view", "mcp_read"],
+        writable_columns=["status", "project_id", "client_id"],
         order_by="id",
         has_status=True,
         template_rows=[
@@ -273,8 +261,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "1",
                 "client_id": "1",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -286,14 +272,10 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "",
                 "client_id": "",
-                "mcp_view": "inherit",
-                "mcp_read": "inherit",
             },
         ],
         valid_values={
             "status": "listed, unlisted, removed",
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
         },
     ),
     "chats": DataSourceSpec(
@@ -312,7 +294,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["status", "project_id", "client_id", "mcp_view", "mcp_read"],
+        writable_columns=["status", "project_id", "client_id"],
         order_by="id",
         has_status=True,
         template_rows=[
@@ -327,8 +309,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "updated_at": "2026-01-10T09:00:00Z",
                 "project_id": "1",
                 "client_id": "1",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -341,14 +321,10 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "updated_at": "2026-01-11T09:00:00Z",
                 "project_id": "",
                 "client_id": "",
-                "mcp_view": "inherit",
-                "mcp_read": "inherit",
             },
         ],
         valid_values={
             "status": "listed, unlisted, removed",
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
         },
     ),
     "messages": DataSourceSpec(
@@ -362,7 +338,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["mcp_view", "mcp_read"],
+        writable_columns=[],
         order_by="id",
         has_status=False,
         template_rows=[
@@ -372,8 +348,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "message_id": "msg-1",
                 "role": "user",
                 "created_at": "2026-01-10T08:01:00Z",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -381,14 +355,9 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "message_id": "msg-2",
                 "role": "assistant",
                 "created_at": "2026-01-10T08:02:00Z",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
         ],
-        valid_values={
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
-        },
+        valid_values={},
     ),
     "visits": DataSourceSpec(
         table="visits",
@@ -404,7 +373,7 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
             "mcp_view",
             "mcp_read",
         ],
-        writable_columns=["status", "project_id", "client_id", "mcp_view", "mcp_read"],
+        writable_columns=["status", "project_id", "client_id"],
         order_by="id",
         has_status=True,
         template_rows=[
@@ -417,8 +386,6 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "1",
                 "client_id": "1",
-                "mcp_view": "visible",
-                "mcp_read": "allow",
             },
             {
                 "id": "2",
@@ -429,14 +396,10 @@ DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
                 "status": "listed",
                 "project_id": "",
                 "client_id": "",
-                "mcp_view": "inherit",
-                "mcp_read": "inherit",
             },
         ],
         valid_values={
             "status": "listed, unlisted, removed",
-            "mcp_view": "hidden, opaque, visible, inherit",
-            "mcp_read": "allow, deny, inherit",
         },
     ),
 }
@@ -577,7 +540,8 @@ def _handle_template(args) -> None:
     # Data-source entities go through the registry
     if noun in DATA_SOURCE_SPECS:
         spec = DATA_SOURCE_SPECS[noun]
-        _write_csv(spec.export_columns, spec.template_rows, getattr(args, "file", None))
+        template_columns = [c for c in spec.export_columns if c not in ("mcp_view", "mcp_read")]
+        _write_csv(template_columns, spec.template_rows, getattr(args, "file", None))
         notes = spec.valid_values
         if notes:
             print("\nValid values:", file=sys.stderr)
@@ -640,6 +604,13 @@ def _handle_import(args) -> None:
 
     # Determine which writable columns are present in the CSV
     csv_writable = [c for c in spec.writable_columns if c in reader.fieldnames]
+
+    if not spec.writable_columns:
+        if getattr(args, "json", False):
+            output_json({"total": 0, "updated": 0, "skipped": 0, "errors": 0})
+        else:
+            console.print(f"[dim]{noun} has no writable columns — nothing to import.[/dim]")
+        return
 
     if not csv_writable:
         console.print(

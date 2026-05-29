@@ -6,6 +6,7 @@ Validates:
   3. fp data template <noun> writes header + sample rows (no DB needed)
   4. fp data export <noun> queries the DB and writes CSV
   5. fp data import <noun> <file> validates input and runs in dry-run by default
+  6. writable_columns exclude mcp_view/mcp_read (policy-only columns)
 """
 
 import sqlite3
@@ -13,6 +14,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 from conftest import run_fp
+from footprinter.cli.data import DATA_SOURCE_SPECS
 
 
 def _seeded_inmemory_db():
@@ -175,3 +177,49 @@ class TestDataImport:
         # "Dry run" or "--commit" hint.
         output = stdout + stderr
         assert "commit" in output.lower() or "ould" in output  # "Would update"
+
+
+# ---------------------------------------------------------------------------
+# 6. Writable columns exclude policy-only MCP fields
+# ---------------------------------------------------------------------------
+
+
+class TestWritableColumnsExcludeMcp:
+    """mcp_view and mcp_read are policy-system output — not writable via import."""
+
+    def test_writable_columns_exclude_mcp_fields(self):
+        for noun, spec in DATA_SOURCE_SPECS.items():
+            for col in ("mcp_view", "mcp_read"):
+                assert col not in spec.writable_columns, (
+                    f"{noun}.writable_columns still contains {col!r}"
+                )
+
+    def test_messages_zero_writable_columns(self):
+        assert DATA_SOURCE_SPECS["messages"].writable_columns == []
+
+    def test_template_files_excludes_mcp_columns(self):
+        stdout, _, code = run_fp("data", "template", "files")
+        assert code == 0
+        header = stdout.splitlines()[0]
+        assert "mcp_view" not in header
+        assert "mcp_read" not in header
+
+    def test_import_ignores_mcp_columns_in_csv(self, tmp_path):
+        csv_path = tmp_path / "files.csv"
+        csv_path.write_text("id,status,mcp_view,mcp_read\n1,hidden,visible,allow\n")
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
+            "project_id INTEGER, client_id INTEGER, mcp_view TEXT, mcp_read TEXT)"
+        )
+        conn.execute("INSERT INTO files (id, status) VALUES (1, 'listed')")
+        conn.commit()
+
+        with patch("footprinter.cli.data.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("data", "import", "files", str(csv_path))
+
+        assert code == 0
+        output = stdout + stderr
+        assert "commit" in output.lower() or "ould" in output
