@@ -414,6 +414,9 @@ def insert_file(
 
     # Fast path: unchanged active row → skip the UPDATE.
     # Requires a non-None sha256 on both sides so missing hashes never short-circuit.
+    # When the row has no project_id but folder inheritance now resolves one, we
+    # fall through instead so the UPDATE's `CASE WHEN project_id IS NULL THEN ?`
+    # backfill runs (e.g. a folder gained a project after the file was indexed).
     if existing is not None and existing["status"] != "removed":
         incoming_sha = file_data.get("sha256_hash")
         incoming_size = file_data.get("file_size")
@@ -425,7 +428,16 @@ def insert_file(
             and incoming_sha == existing["sha256_hash"]
             and incoming_size == existing["size_bytes"]
         ):
-            return ("unchanged", existing["id"])
+            if existing["project_id"] is not None:
+                return ("unchanged", existing["id"])
+            backfill_folder = _find_folder_for_path(
+                conn, "local", file_path, folder_path_map=fpath_map, remote_source_names=dsn
+            )
+            if backfill_folder is None or _get_folder_project_id(
+                conn, backfill_folder, folder_project_map=fproj_map
+            ) is None:
+                return ("unchanged", existing["id"])
+            # else: a folder-inherited project is now available → fall through
 
     # Project assignment comes from folder inheritance (and explicit user
     # assignment); files are no longer matched to a project by path prefix.

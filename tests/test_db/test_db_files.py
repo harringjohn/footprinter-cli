@@ -289,6 +289,37 @@ class TestInsertFileUnchanged:
         assert second == ("unchanged", file_id)
         db.close()
 
+    def test_null_project_id_backfills_from_folder_when_unchanged(self, temp_db):
+        """An unchanged file with NULL project_id backfills a folder-inherited
+        project on re-ingest (the folder gained a project after first index)."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        first = files_db.insert_file(db.conn, self._payload())
+        file_id = first[1]
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
+        assert cursor.fetchone()["project_id"] is None, "precondition: no project yet"
+
+        # The folder covering the file's directory now gains a project.
+        cursor.execute("INSERT INTO projects (name) VALUES ('Late')")
+        project_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO folders (source, path, relative_path, name, project_id) "
+            "VALUES ('local', '/tmp/test', '/tmp/test', 'test', ?)",
+            (project_id,),
+        )
+        db.conn.commit()
+
+        # Re-ingest identical content (same sha + size): the fast-path must fall
+        # through so the folder-inherited project is backfilled.
+        action, _ = files_db.insert_file(db.conn, self._payload())
+        assert action == "updated", "fast-path should fall through to backfill the project"
+        cursor.execute("SELECT project_id FROM files WHERE id = ?", (file_id,))
+        assert cursor.fetchone()["project_id"] == project_id
+        db.close()
+
     def test_missing_sha256_falls_through_to_update(self, temp_db):
         """None == None must not incorrectly mark rows unchanged."""
         from footprinter.ingest.database import Database
