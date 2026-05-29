@@ -156,11 +156,10 @@ class TestDoctorSemanticDeps:
         from footprinter.cli import diagnostics
 
         recorded = []
-        orig = diagnostics.is_importable
 
         def record(name):
             recorded.append(name)
-            return orig(name)
+            return True
 
         monkeypatch.setattr(diagnostics, "is_importable", record)
         diagnostics.check_optional_features({"semantic": {}})
@@ -194,11 +193,10 @@ class TestDoctorParseDeps:
         from footprinter.cli import diagnostics
 
         recorded = []
-        orig = diagnostics.is_importable
 
         def record(name):
             recorded.append(name)
-            return orig(name)
+            return True
 
         monkeypatch.setattr(diagnostics, "is_importable", record)
         diagnostics.check_optional_features({})
@@ -210,11 +208,10 @@ class TestDoctorParseDeps:
         from footprinter.cli import diagnostics
 
         recorded = []
-        orig = diagnostics.is_importable
 
         def record(name):
             recorded.append(name)
-            return orig(name)
+            return True
 
         monkeypatch.setattr(diagnostics, "is_importable", record)
         diagnostics.check_optional_features({})
