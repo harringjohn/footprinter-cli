@@ -226,6 +226,7 @@ ALL_CLI_MODULES = [
     "footprinter.cli.vectorize",
     "footprinter.cli.mcp_cmd",
     "footprinter.cli.uninstall",
+    "footprinter.cli.permission_cmd",
 ]
 
 
@@ -282,6 +283,7 @@ VERB_MODULES = [
     "footprinter.cli.setup",
     "footprinter.cli.mcp_cmd",
     "footprinter.cli.ingest",
+    "footprinter.cli.permission_cmd",
 ]
 
 
