@@ -24,7 +24,7 @@ from rich.table import Table
 
 from footprinter.cli._common import FORMATTER, add_json_flag, output_json
 from footprinter.connectors import discover_connectors, is_installed, resolve_hook
-from footprinter.db.status import get_entity_status_breakdown
+from footprinter.db.status import get_access_resolution, get_entity_status_breakdown
 from footprinter.paths import get_chroma_path, get_config_path, get_db_path
 from footprinter.source_registry import get_config
 
@@ -263,6 +263,11 @@ def _query_all_counts(cursor, counts: dict) -> dict:
     except sqlite3.OperationalError:
         counts["entity_breakdown"] = {}
 
+    try:
+        counts["access_resolution"] = get_access_resolution(cursor.connection)
+    except sqlite3.OperationalError:
+        counts["access_resolution"] = {}
+
     return counts
 
 
@@ -420,6 +425,29 @@ def _print_entity_counts(counts: dict) -> None:
     console.print(table)
 
 
+def _print_access_resolution(counts: dict) -> None:
+    """Render access resolution progress as a Rich table."""
+    access = counts.get("access_resolution") or {}
+    if not access:
+        return
+    if all(info.get("total", 0) == 0 for info in access.values()):
+        return
+
+    table = Table(show_header=True, header_style="bold", title="Access Resolution")
+    table.add_column("Entity", style="cyan")
+    table.add_column("Stamped", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("Coverage", justify="right")
+
+    for entity, info in access.items():
+        stamped = info.get("stamped", 0)
+        total = info.get("total", 0)
+        pct = f"{stamped / total * 100:.0f}%" if total > 0 else "—"
+        table.add_row(entity, f"{stamped:,}", f"{total:,}", pct)
+
+    console.print(table)
+
+
 def _print_source_health(health: dict) -> None:
     """Render the Source Health table. Skip entirely if no rows would appear."""
     connector_rows = health.get("connector_rows", [])
@@ -484,6 +512,9 @@ def print_status(data: dict, health: dict) -> None:
 
     # Section 2.5: Per-entity status breakdown
     _print_entity_counts(counts)
+
+    # Section 2.75: Access resolution progress
+    _print_access_resolution(counts)
 
     # Section 3: Data counts table
     table = Table(show_header=True, header_style="bold")

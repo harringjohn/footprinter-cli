@@ -63,10 +63,7 @@ Connector pipeline names (e.g., `google`) only appear when the connector is inst
 | `--pipe` | `-s` | Comma-separated stage names (power-user escape hatch) |
 | `--full` | `-f` | Re-process everything (vs incremental) |
 | `--quiet` | `-q` | Suppress output (for scripts) |
-| `--rebuild-vectors` | — | Rebuild the vector store. Modes: `incremental` (default), `sync` (incremental + verify counts), `full` (delete and rebuild) |
-| `--vector-source` | — | Which vectors to rebuild: `files`, `chats`, or `all` (default: `all`) |
-| `--phase` | — | Run a single rebuild phase: `files`, `messages`, or `chat_info` |
-| `--repair-fts` | — | Drop and rebuild FTS search indexes |
+| `--preview` | — | Pre-scan summary (no ingest) |
 | `--verbose` | `-v` | Verbose logging to file |
 
 ### Examples
@@ -88,13 +85,13 @@ fp ingest refresh google
 fp ingest --pipe local_files,browser
 
 # Rebuild vector store (incremental by default)
-fp ingest --rebuild-vectors
+fp doctor semantic
 
 # Rebuild vector store from scratch
-fp ingest --rebuild-vectors full
+fp doctor semantic full
 
 # Repair corrupted FTS indexes
-fp ingest --repair-fts
+fp doctor search
 ```
 
 ---
@@ -148,17 +145,17 @@ In **full mode** (`--full`), the pipeline drops FTS sync triggers before running
 
 In **incremental mode** (default), FTS triggers remain active — the volume is low enough that per-row updates are safe.
 
-The pipeline runs an FTS health probe at startup. If corruption is detected, it logs a warning with the repair command: `fp ingest --repair-fts`.
+The pipeline runs an FTS health probe at startup. If corruption is detected, it logs a warning with the repair command: `fp doctor search`.
 
 ### FTS Repair
 
-`fp ingest --repair-fts` drops and rebuilds all FTS search indexes from base table data.
+`fp doctor search` drops and rebuilds all FTS search indexes from base table data.
 
 ---
 
 ### Vectorization
 
-Vectorization happens at ingest time — files are vectorized in `file_indexer.py` after `insert_file()`, and chat messages are vectorized in `chat_indexer.py` after import. Use `--rebuild-vectors` to rebuild the vector store from scratch.
+Vectorization happens at ingest time — files are vectorized in `file_indexer.py` after `insert_file()`, and chat messages are vectorized in `chat_indexer.py` after import. Use `fp doctor semantic full` to rebuild the vector store from scratch.
 
 ### Chat Deduplication
 

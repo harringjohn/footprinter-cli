@@ -53,12 +53,16 @@ def list_(
     conn: sqlite3.Connection,
     *,
     role: Role = Role.ADMIN,
+    project_id: Optional[int] = None,
+    client_id: Optional[int] = None,
     limit: int = 50,
     page: int = 1,
     status: Optional[str | list[str]] = None,
 ) -> dict:
     """List browser visits with pagination, filtered by role."""
-    response = db.list_visits(conn, limit=limit, page=page, status=status)
+    response = db.list_visits(
+        conn, project_id=project_id, client_id=client_id, limit=limit, page=page, status=status
+    )
     if role.sees_all:
         return response
     filtered, suppressed = filter_results_list("visit", response["visits"])

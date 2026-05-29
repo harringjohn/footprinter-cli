@@ -281,7 +281,7 @@ def _search_files(
     if status == _DEGRADED:
         notes.append("Results are keyword-based (semantic search unavailable)")
     if dropped > 0:
-        notes.append(f"Dropped {dropped} results with missing file_id. Run --rebuild-vectors to fix.")
+        notes.append(f"Dropped {dropped} results with missing file_id. Run 'fp doctor semantic' to fix.")
 
     return trimmed, notes, suppressed, status
 

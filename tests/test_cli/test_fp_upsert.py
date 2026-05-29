@@ -422,7 +422,7 @@ class TestUpsertFoldersCsv:
         assert result["would_assign"] == 1
         assert result["already_matched"] == 0
 
-    # -- path resolution (FPR-1792) ----------------------------------------
+    # -- path resolution ----------------------------------------
 
     @patch("footprinter.cli.upsert.open_db")
     def test_csv_bare_relative_path_resolves(self, mock_open_db, tmp_path):

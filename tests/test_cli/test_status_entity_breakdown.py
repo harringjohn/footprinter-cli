@@ -52,6 +52,7 @@ def _build_data(entity_breakdown: dict) -> dict:
             "recent_uploads": [],
             "last_run": None,
             "entity_breakdown": entity_breakdown,
+            "access_resolution": {},
         },
         "last_run": None,
     }

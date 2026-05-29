@@ -167,7 +167,7 @@ conn.execute(
     "VALUES ('Dead Project', 'removed')"
 )
 
-# Folders: 3 rows (2 listed, 1 unlisted) — critical for FPR-1717
+# Folders: 3 rows (2 listed, 1 unlisted) — critical for status migration
 conn.execute(
     "INSERT INTO folders (path, relative_path, name, source, status) "
     "VALUES ('/tmp/upgrade-test/docs', 'docs', 'docs', 'local', 'listed')"
@@ -181,7 +181,7 @@ conn.execute(
     "VALUES ('/tmp/upgrade-test/old', 'old', 'old', 'local', 'unlisted')"
 )
 
-# Files: 5 rows (3 listed, 1 unlisted, 1 removed) — critical for FPR-1717
+# Files: 5 rows (3 listed, 1 unlisted, 1 removed) — critical for status migration
 conn.execute(
     "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
     "VALUES ('readme.md', '/tmp/upgrade-test/docs/readme.md', 'local', 'listed', 'text', 1024)"

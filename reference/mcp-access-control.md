@@ -470,12 +470,11 @@ fp mcp reset <scope>                 # Remove policy for a scope (fall back to i
 fp mcp reset --all                   # Clear all policies and re-seed defaults
 ```
 
-### Bulk policy changes (`fp mcp bulk`)
+### Dry-run preview (`fp mcp set --dry-run`)
 
 ```bash
-fp mcp bulk --folder <path> --visibility hidden       # Hide a folder
-fp mcp bulk --project <id> --permission allow         # Allow read for a project
-fp mcp bulk --folder <path> --permission deny --dry-run  # Preview
+fp mcp set folder:<path> --visibility hidden --dry-run    # Preview without applying
+fp mcp set project:<id> --permission deny --dry-run       # Preview for a project
 ```
 
 ### Scope Syntax
