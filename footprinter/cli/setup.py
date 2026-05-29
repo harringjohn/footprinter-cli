@@ -4,7 +4,6 @@ Interactive setup wizard for Footprinter.
 Guides new users through configuration in ~3 minutes.
 Usage:
     fp setup                  # Run interactive wizard
-    fp setup --check          # Validate existing configuration
     fp setup --hooks          # Install git hooks (sets core.hooksPath)
     fp setup --reset          # Clear data and re-run wizard
 """
@@ -85,8 +84,6 @@ QUICK_START_CANDIDATES = ["~/Documents", "~/Desktop", "~/Work", "~/Projects"]
 
 # Directories offered as optional extras (not defaults)
 OPTIONAL_DIRECTORIES = ["~/.claude"]
-
-KNOWN_BROWSERS = ["safari", "chrome"]
 
 # Vectorization defaults — file types that benefit from semantic embedding
 DEFAULT_FILE_TYPES = [".md", ".txt", ".pdf", ".docx"]
@@ -189,7 +186,6 @@ def register(subparsers) -> None:
         epilog=(
             "examples:\n"
             "  fp setup                   Run the interactive wizard\n"
-            "  fp setup --check           Validate existing configuration\n"
             "  fp setup mcp --claude      Configure MCP for Claude Desktop\n"
             "  fp setup folders add ~/Work/newdir\n"
             "\n"
@@ -199,11 +195,6 @@ def register(subparsers) -> None:
     )
     parser.set_defaults(func=_handle_setup)
 
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Validate existing configuration and exit",
-    )
     if _hooks_available():
         parser.add_argument(
             "--hooks",
@@ -368,8 +359,6 @@ def _handle_setup_inner(args) -> None:
 
     if getattr(args, "hooks", False):
         sys.exit(install_git_hooks())
-    elif getattr(args, "check", False):
-        sys.exit(check_existing_config())
     else:
         run_interactive_wizard()
 
@@ -384,11 +373,6 @@ def main():
     parser = argparse.ArgumentParser(
         prog="fp setup",
         description="Interactive setup wizard for Footprinter",
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Validate existing configuration and exit",
     )
     if _hooks_available():
         parser.add_argument(
@@ -433,146 +417,8 @@ def main():
 
     if getattr(args, "hooks", False):
         sys.exit(install_git_hooks())
-    elif args.check:
-        sys.exit(check_existing_config())
     else:
         run_interactive_wizard()
-
-
-def check_existing_config() -> int:
-    """Validate existing config and print results.
-
-    Returns:
-        0 if config is valid, 1 otherwise.
-    """
-    try:
-        config = get_config()
-    except ConfigError as e:
-        console.print(f"[red]Config error:[/red] {e}")
-        return 1
-
-    errors, warnings = validate_config(config)
-    if errors:
-        console.print("[red]Configuration errors:[/red]")
-        for err in errors:
-            console.print(f"  - {err}")
-        return 1
-
-    console.print("[green]Configuration is valid.[/green]")
-    if warnings:
-        console.print("[yellow]Warnings:[/yellow]")
-        for w in warnings:
-            console.print(f"  - {w}")
-
-    # Architecture check
-    arch_warning = check_architecture()
-    if arch_warning:
-        console.print()
-        console.print(f"[yellow]Architecture warning:[/yellow] {arch_warning}")
-
-    # Core dependency check — only surface errors
-    core_deps = check_core_deps()
-    missing_core = [name for name, avail in core_deps if not avail]
-    if missing_core:
-        console.print()
-        console.print(f"[red]Missing core dependencies:[/red] {', '.join(missing_core)}")
-        console.print("Reinstall with: pip install footprinter-cli")
-
-    # Optional features table
-    features = check_optional_features(config)
-    console.print()
-    feat_table = Table(title="Optional Features", show_header=True, header_style="bold")
-    feat_table.add_column("Feature", style="cyan")
-    feat_table.add_column("Status")
-
-    for name, installed, enabled, hint in features:
-        if not installed:
-            feat_table.add_row(name, f"[yellow]not installed[/yellow] — {hint}")
-        elif enabled:
-            feat_table.add_row(name, "[green]enabled[/green]")
-        else:
-            feat_table.add_row(name, "[dim]installed, not enabled[/dim]")
-
-    console.print(feat_table)
-
-    return 1 if missing_core else 0
-
-
-def _is_importable(module_name: str) -> bool:
-    """Return True if *module_name* can be imported."""
-    try:
-        __import__(module_name)
-        return True
-    except ImportError:
-        return False
-
-
-def check_core_deps() -> list[tuple[str, bool]]:
-    """Check core dependencies. Returns ``(name, available)`` pairs.
-
-    Core deps are hard requirements — if any are missing the install is broken.
-    """
-    return [
-        ("PyYAML", _is_importable("yaml")),
-        ("Rich", _is_importable("rich")),
-    ]
-
-
-def check_optional_features(
-    config: dict,
-) -> list[tuple[str, bool, bool | None, str]]:
-    """Check optional features against install state *and* config.
-
-    Returns ``(name, installed, enabled, hint)`` for each feature.
-    ``enabled`` is ``None`` when not applicable (shouldn't happen currently).
-    """
-    features: list[tuple[str, bool, bool | None, str]] = []
-
-    # Semantic Search (chromadb + onnxruntime)
-    sem_installed = _is_importable("chromadb") and _is_importable("onnxruntime")
-    sem_cfg = config.get("semantic", {})
-    sem_enabled = sem_cfg.get("file_vectorization", False) or sem_cfg.get("chat_vectorization", False)
-    features.append(("Semantic Search", sem_installed, sem_enabled, "pip install footprinter-cli[semantic]"))
-
-    # Document Parsing (pypdf + python-docx + openpyxl + python-pptx)
-    parse_installed = all(_is_importable(m) for m in ("pypdf", "docx", "openpyxl", "pptx"))
-    features.append((
-        "Document Parsing", parse_installed, parse_installed or None,
-        "pip install footprinter-cli[parse]",
-    ))
-
-    # Connector-declared features (dynamic)
-    from footprinter.connectors import discover_connectors
-
-    for spec in discover_connectors().values():
-        for feat_name, probe, cfg_section, hint in spec.features:
-            installed = _is_importable(probe)
-            enabled = config.get(cfg_section, {}).get("enabled", False)
-            features.append((feat_name, installed, enabled, hint))
-
-    return features
-
-
-def check_architecture() -> str | None:
-    """Check for architecture mismatches. Returns warning string or None."""
-    import platform
-
-    machine = platform.machine()
-    # Detect Rosetta: arm64 hardware but x86_64 Python.
-    # hw.optional.arm64 returns 1 on Apple Silicon even under Rosetta,
-    # unlike hw.machine which reports x86_64 under Rosetta.
-    if machine == "x86_64":
-        try:
-            hw = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], capture_output=True, text=True)
-            if hw.stdout.strip() == "1":
-                return (
-                    "Python is running as x86_64 on arm64 hardware (Rosetta). "
-                    "Native dependencies may have compatibility issues. "
-                    "Consider recreating venv with native arm64 Python."
-                )
-        except Exception:
-            pass  # Best-effort Rosetta detection; sysctl may not exist on non-macOS
-    return None
 
 
 def install_git_hooks() -> int:
@@ -619,63 +465,6 @@ def install_git_hooks() -> int:
     console.print("  core.hooksPath = [cyan]scripts/hooks[/cyan]")
     console.print(f"  post-merge hook: [cyan]{post_merge.relative_to(root)}[/cyan]")
     return 0
-
-
-def validate_config(config: dict) -> tuple[list[str], list[str]]:
-    """Validate a config dict and return errors and warnings.
-
-    Args:
-        config: Parsed YAML config dict.
-
-    Returns:
-        Tuple of (errors, warnings). Empty errors means valid.
-    """
-    errors = []
-
-    if config is None:
-        errors.append("Config is empty or invalid YAML")
-        return errors, []
-
-    # directories is required and must be a non-empty list
-    dirs = config.get("directories")
-    missing_dirs: list[str] = []
-    if not dirs:
-        errors.append("'directories' is missing or empty")
-    elif not isinstance(dirs, list):
-        errors.append("'directories' must be a list")
-    else:
-        for d in dirs:
-            expanded = os.path.expanduser(d)
-            if not os.path.isdir(expanded):
-                missing_dirs.append(d)
-
-    # browsers must be a list (can be empty)
-    browsers = config.get("browsers")
-    if browsers is None:
-        errors.append("'browsers' key is missing")
-    elif not isinstance(browsers, list):
-        errors.append("'browsers' must be a list")
-    else:
-        for b in browsers:
-            if b not in KNOWN_BROWSERS:
-                errors.append(f"Unknown browser: {b}")
-
-    # Absent directories are a warning, not an error — the bundled example
-    # lists macOS-flavored defaults (~/Work, ~/Personal, ~/.claude) that a
-    # fresh Linux install won't have. Let `fp setup --check` pass and point
-    # the user at what's missing instead of rejecting the whole config.
-    warnings = []
-    if missing_dirs:
-        warnings.append(
-            "Directories not found (will be skipped during indexing): "
-            + ", ".join(missing_dirs)
-        )
-    if "exclusions" not in config:
-        warnings.append("'exclusions' section missing — default exclusions will be used")
-    if "indexing" not in config:
-        warnings.append("'indexing' section missing — default settings will be used")
-
-    return errors, warnings
 
 
 def _print_phase(step: int, total: int, name: str):
@@ -1134,6 +923,8 @@ def _collect_browsers_from_scratch() -> list[str]:
 
 def _check_semantic_deps() -> bool:
     """Check semantic deps and offer pip install if missing. Return True if available."""
+    from footprinter.cli.diagnostics import is_importable as _is_importable
+
     if _is_importable("chromadb") and _is_importable("onnxruntime"):
         return True
 

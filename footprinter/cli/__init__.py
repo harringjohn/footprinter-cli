@@ -39,7 +39,6 @@ def main(argv=None) -> None:
         epilog=(
             "getting started:\n"
             "  fp setup                   Run the configuration wizard\n"
-            "  fp setup --check           Validate existing configuration\n"
             "  fp connect list            Show available data source connectors\n"
             "\n"
             "data commands:\n"

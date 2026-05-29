@@ -24,6 +24,7 @@ class Check:
     name: str
     status: str  # OK, WARN, FAIL
     message: str = ""
+    group: str = ""
 
 
 def _get_python_version() -> tuple:
@@ -53,18 +54,19 @@ def _probe_fda() -> bool:
 def _check_python_version() -> Check:
     major, minor, micro = _get_python_version()
     if (major, minor) >= (3, 11):
-        return Check("python_version", "OK", f"Python {major}.{minor}.{micro}")
+        return Check("python_version", "OK", f"Python {major}.{minor}.{micro}", group="Environment")
     return Check(
         "python_version",
         "FAIL",
         f"Python {major}.{minor}.{micro} — requires 3.11 or later",
+        group="Environment",
     )
 
 
 def _check_platform() -> Check:
     system = platform.system()
     machine = platform.machine()
-    return Check("platform", "OK", f"{system} ({machine})")
+    return Check("platform", "OK", f"{system} ({machine})", group="Environment")
 
 
 def _check_config() -> Check:
@@ -76,15 +78,16 @@ def _check_config() -> Check:
             "config",
             "WARN",
             f"No config at {config_path} — run 'fp setup' to create one",
+            group="Configuration",
         )
     try:
         import yaml
 
         with open(config_path) as f:
             yaml.safe_load(f)
-        return Check("config", "OK", str(config_path))
+        return Check("config", "OK", str(config_path), group="Configuration")
     except Exception as e:
-        return Check("config", "FAIL", f"Config at {config_path} is not valid YAML: {e}")
+        return Check("config", "FAIL", f"Config at {config_path} is not valid YAML: {e}", group="Configuration")
 
 
 def _check_database() -> Check:
@@ -96,56 +99,97 @@ def _check_database() -> Check:
             "database",
             "WARN",
             f"No database at {db_path} — run 'fp ingest' to create one",
+            group="Data Integrity",
         )
     try:
         with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
             conn.execute("SELECT count(*) FROM sqlite_master")
-        return Check("database", "OK", str(db_path))
+        return Check("database", "OK", str(db_path), group="Data Integrity")
     except Exception as e:
-        return Check("database", "FAIL", f"Database at {db_path} is not readable: {e}")
+        return Check("database", "FAIL", f"Database at {db_path} is not readable: {e}", group="Data Integrity")
 
 
 def _check_fda() -> Check:
     if platform.system() != "Darwin":
-        return Check("fda", "OK", "Not macOS — Full Disk Access not applicable")
+        return Check("fda", "OK", "Not macOS — Full Disk Access not applicable", group="Integrations")
     if _probe_fda():
-        return Check("fda", "OK", "Safari History.db is readable")
+        return Check("fda", "OK", "Safari History.db is readable", group="Integrations")
     return Check(
         "fda",
         "WARN",
         "Cannot read Safari History.db — grant Full Disk Access to your terminal in"
         " System Settings > Privacy & Security",
+        group="Integrations",
     )
 
 
-def _check_semantic_deps() -> Check:
-    missing = []
-    for mod in ("chromadb", "onnxruntime"):
-        if _find_spec(mod) is None:
-            missing.append(mod)
-    if not missing:
-        return Check("semantic_deps", "OK", "chromadb and onnxruntime available")
-    return Check(
-        "semantic_deps",
-        "WARN",
-        f"Optional semantic search dependencies not installed: {', '.join(missing)}"
-        " — install with: pipx install --force 'footprinter-cli[full]'",
-    )
+def _check_architecture() -> Check:
+    from footprinter.cli.diagnostics import check_architecture
+
+    warning = check_architecture()
+    if warning:
+        return Check("architecture", "WARN", warning, group="Environment")
+    return Check("architecture", "OK", f"{platform.machine()}", group="Environment")
 
 
-def _check_parse_deps() -> Check:
-    missing = []
-    for mod in ("docx", "pypdf", "openpyxl", "pptx"):
-        if _find_spec(mod) is None:
-            missing.append(mod)
-    if not missing:
-        return Check("parse_deps", "OK", "Document parsing dependencies available")
-    return Check(
-        "parse_deps",
-        "WARN",
-        f"Optional parsing dependencies not installed: {', '.join(missing)}"
-        " — install with: pipx install --force 'footprinter-cli[full]'",
-    )
+def _check_config_content() -> Check:
+    from footprinter.paths import get_config_path
+
+    config_path = get_config_path()
+    if not config_path.exists():
+        return Check("config_content", "OK", "skipped (no config)", group="Configuration")
+    try:
+        from footprinter.source_registry import ConfigError, get_config
+
+        config = get_config()
+    except Exception:
+        return Check("config_content", "OK", "skipped (config not loadable)", group="Configuration")
+
+    from footprinter.cli.diagnostics import validate_config
+
+    errors, warnings = validate_config(config)
+    if errors:
+        return Check("config_content", "FAIL", "; ".join(errors), group="Configuration")
+    if warnings:
+        return Check("config_content", "WARN", "; ".join(warnings), group="Configuration")
+    return Check("config_content", "OK", "Config content valid", group="Configuration")
+
+
+def _check_core_deps() -> Check:
+    from footprinter.cli.diagnostics import check_core_deps
+
+    deps = check_core_deps()
+    missing = [name for name, avail in deps if not avail]
+    if missing:
+        return Check(
+            "core_deps",
+            "FAIL",
+            f"Missing: {', '.join(missing)} — reinstall with: pip install footprinter-cli",
+            group="Configuration",
+        )
+    return Check("core_deps", "OK", "PyYAML and Rich available", group="Configuration")
+
+
+def _check_optional_features() -> list[Check]:
+    try:
+        from footprinter.source_registry import get_config
+
+        config = get_config()
+    except Exception:
+        return []
+
+    from footprinter.cli.diagnostics import check_optional_features
+
+    features = check_optional_features(config)
+    checks = []
+    for name, installed, enabled, hint in features:
+        if not installed:
+            checks.append(Check(name, "WARN", f"not installed — {hint}", group="Optional Features"))
+        elif enabled:
+            checks.append(Check(name, "OK", "enabled", group="Optional Features"))
+        else:
+            checks.append(Check(name, "OK", "installed, not enabled", group="Optional Features"))
+    return checks
 
 
 def _check_mcp_config() -> Check:
@@ -162,14 +206,18 @@ def _check_mcp_config() -> Check:
         config_path = config_dir / "claude_desktop_config.json"
 
     if not config_path.exists():
-        return Check("mcp_config", "OK", "No Claude Desktop config found (optional)")
+        return Check("mcp_config", "OK", "No Claude Desktop config found (optional)", group="Integrations")
 
     try:
         with open(config_path) as f:
             data = json.load(f)
         servers = data.get("mcpServers", {})
         if "footprinter" not in servers:
-            return Check("mcp_config", "OK", "Claude Desktop config exists but no footprinter entry (optional)")
+            return Check(
+                "mcp_config", "OK",
+                "Claude Desktop config exists but no footprinter entry (optional)",
+                group="Integrations",
+            )
 
         entry = servers["footprinter"]
         command = entry.get("command", "")
@@ -180,10 +228,11 @@ def _check_mcp_config() -> Check:
                     "mcp_config",
                     "WARN",
                     f"MCP command not found: {command}",
+                    group="Integrations",
                 )
-        return Check("mcp_config", "OK", "footprinter MCP server configured in Claude Desktop")
+        return Check("mcp_config", "OK", "footprinter MCP server configured in Claude Desktop", group="Integrations")
     except Exception as e:
-        return Check("mcp_config", "WARN", f"Could not read Claude Desktop config: {e}")
+        return Check("mcp_config", "WARN", f"Could not read Claude Desktop config: {e}", group="Integrations")
 
 
 def _check_fts_health() -> Check:
@@ -191,7 +240,7 @@ def _check_fts_health() -> Check:
 
     db_path = get_db_path()
     if not db_path.exists():
-        return Check("fts_health", "OK", "No database — FTS check skipped")
+        return Check("fts_health", "OK", "No database — FTS check skipped", group="Data Integrity")
     try:
         from footprinter.ingest.database import Database
 
@@ -205,23 +254,31 @@ def _check_fts_health() -> Check:
                 "WARN",
                 f"FTS indexes need repair: {', '.join(errors)}"
                 " — run 'fp doctor search'",
+                group="Data Integrity",
             )
-        return Check("fts_health", "OK", "FTS indexes healthy")
+        return Check("fts_health", "OK", "FTS indexes healthy", group="Data Integrity")
     except Exception as e:
-        return Check("fts_health", "WARN", f"FTS health check failed: {e}")
+        return Check("fts_health", "WARN", f"FTS health check failed: {e}", group="Data Integrity")
 
 
 def run_checks() -> list[Check]:
     """Run all diagnostic checks and return the results."""
     return [
+        # Environment
         _check_python_version(),
         _check_platform(),
+        _check_architecture(),
+        # Configuration
         _check_config(),
+        _check_config_content(),
+        _check_core_deps(),
+        # Optional Features
+        *_check_optional_features(),
+        # Data Integrity
         _check_database(),
         _check_fts_health(),
+        # Integrations
         _check_fda(),
-        _check_semantic_deps(),
-        _check_parse_deps(),
         _check_mcp_config(),
     ]
 
@@ -331,7 +388,14 @@ def _handle(args) -> None:
         table.add_column("status", width=6)
         table.add_column("message")
 
+        current_group = None
         for c in checks:
+            if c.group and c.group != current_group:
+                if current_group is not None:
+                    table.add_section()
+                current_group = c.group
+                table.add_row(f"[bold dim]{c.group}[/bold dim]", "", "")
+
             if c.status == "OK":
                 status_cell = f"[green]{c.status}[/green]"
             elif c.status == "WARN":
