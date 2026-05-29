@@ -395,41 +395,8 @@ class TestBulkApplyStatsPluralization:
 
 
 class TestSetConfirmation:
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=True)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_prompts_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False)
-        _set(args)
-
-        mock_confirm.assert_called_once()
-        mock_recalc.assert_called_once()
-
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=False)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_cancelled_skips_recalculate(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False)
-        _set(args)
-
-        mock_confirm.assert_called_once()
-        mock_set.assert_not_called()
-        mock_recalc.assert_not_called()
-
     @patch("footprinter.cli._policy_helpers.Confirm.ask")
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_SMALL_COUNTS)
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_SMALL_COUNTS)
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
@@ -438,14 +405,14 @@ class TestSetConfirmation:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="file:42", visibility="hidden", permission=None, yes=False)
+        args = Namespace(scope="file:42", visibility="hidden", permission=None, yes=False, dry_run=False)
         _set(args)
 
         mock_confirm.assert_not_called()
         mock_recalc.assert_called_once()
 
     @patch("footprinter.cli._policy_helpers.Confirm.ask")
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
@@ -454,7 +421,108 @@ class TestSetConfirmation:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=True)
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=True, dry_run=False)
+        _set(args)
+
+        mock_confirm.assert_not_called()
+        mock_recalc.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Set handler: --dry-run skips recalculate and policy writes
+# ---------------------------------------------------------------------------
+
+
+class TestSetDryRunSkipsRecalculate:
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_dry_run_skips_policy_and_recalculate(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        mock_set_vis.assert_not_called()
+        mock_recalc.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "Dry run" in captured
+
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_non_dry_run_applies_normally(self, mock_db, mock_set_vis, mock_recalc, mock_count):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=False)
+        _set(args)
+
+        mock_set_vis.assert_called_once()
+        mock_recalc.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Set handler: entity count preview
+# ---------------------------------------------------------------------------
+
+
+class TestSetEntityCountPreview:
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 5, "folder": 2})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_preview_shows_pluralized_counts(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        captured = capsys.readouterr().out
+        assert "5 files" in captured
+        assert "2 folders" in captured
+
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 1})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_preview_shows_singular_count(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        captured = capsys.readouterr().out
+        assert "1 file" in captured
+        assert "1 files" not in captured
+
+
+# ---------------------------------------------------------------------------
+# Set handler: no confirmation prompts (non-destructive recalculation)
+# ---------------------------------------------------------------------------
+
+
+class TestSetNoConfirmationPrompt:
+    @patch("footprinter.cli._policy_helpers.Confirm.ask")
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_large_scope_no_confirmation(self, mock_db, mock_set_vis, mock_recalc, mock_count, mock_confirm):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
         _set(args)
 
         mock_confirm.assert_not_called()

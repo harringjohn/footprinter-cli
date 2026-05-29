@@ -5,14 +5,13 @@ Subcommands:
     fp mcp check              Show all policies / resolve combined access
     fp mcp set <scope>        Set visibility and/or permission for a scope
     fp mcp reset <scope>      Remove policy (fall back to inheritance)
-    fp mcp bulk               Bulk policy changes
 """
 
 from rich.table import Table
 
+from footprinter.access_stamper import count_affected_entities
 from footprinter.cli._common import FORMATTER, add_json_flag, console, output_json
 from footprinter.cli._policy_helpers import (
-    bulk_apply,
     check_client,
     check_file_path,
     check_folder,
@@ -191,6 +190,7 @@ def _check(args) -> None:
 def _set(args) -> None:
     visibility = getattr(args, "visibility", None)
     permission = getattr(args, "permission", None)
+    dry_run = getattr(args, "dry_run", False)
 
     if not visibility and not permission:
         console.print("[red]Specify at least one setting:[/red] --visibility or --permission")
@@ -216,20 +216,33 @@ def _set(args) -> None:
         raise SystemExit(1)
 
     try:
-        yes = getattr(args, "yes", False)
-        if not confirm_recalculation(conn, args.scope, yes=yes):
-            console.print("[dim]Cancelled.[/dim]")
+        counts = count_affected_entities(conn, args.scope)
+        total = sum(counts.values())
+        count_parts = [f"{c:,} {t}{'s' if c != 1 else ''}" for t, c in counts.items() if c]
+
+        settings_desc = []
+        if visibility:
+            settings_desc.append(f"visibility=[bold]{visibility}[/bold]")
+        if permission:
+            settings_desc.append(f"permission=[bold]{permission}[/bold]")
+
+        console.print(
+            f"\nScope: [cyan]{args.scope}[/cyan]  ({total:,} entities: {', '.join(count_parts)})"
+            if count_parts
+            else f"\nScope: [cyan]{args.scope}[/cyan]  (0 entities)"
+        )
+        console.print(f"  Setting: {', '.join(settings_desc)}")
+
+        if dry_run:
+            console.print("\n[dim]Dry run — no changes made.[/dim]")
             return
 
-        parts = []
         if visibility:
             set_visibility_policy(conn, args.scope, visibility)
-            parts.append(f"visibility=[bold]{visibility}[/bold]")
         if permission:
             set_permission_policy(conn, args.scope, permission)
-            parts.append(f"permission=[bold]{permission}[/bold]")
 
-        console.print(f"Set [cyan]{args.scope}[/cyan]: {', '.join(parts)}")
+        console.print(f"Set [cyan]{args.scope}[/cyan]: {', '.join(settings_desc)}")
         stats = recalculate_with_progress(conn, args.scope)
         _print_recalc_stats(stats)
     finally:
@@ -418,6 +431,7 @@ def register(subparsers) -> None:
     set_parser.add_argument("scope", help="Policy scope (e.g. global, folder:~/Work, project:3)")
     set_parser.add_argument("--visibility", default=None, help="Visibility: visible, opaque, or hidden")
     set_parser.add_argument("--permission", default=None, help="Permission: allow or deny")
+    set_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
     set_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     set_parser.set_defaults(func=_set)
 

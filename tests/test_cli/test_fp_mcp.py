@@ -321,6 +321,31 @@ class TestMcpSet:
         assert vis["setting"] == "hidden"
         assert perm["setting"] == "deny"
 
+    def test_set_dry_run(self, policy_db):
+        """--dry-run previews without writing policies."""
+        stdout, stderr, code = run_fp(
+            "mcp", "set", "folder:~/Work", "--visibility", "hidden", "--dry-run",
+        )
+        assert code == 0
+        assert "Dry run" in stdout
+
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'"
+        ).fetchone()
+        conn.close()
+        assert row is None, "dry-run should not write policy rows"
+
+    def test_set_dry_run_no_recalculate(self, policy_db):
+        """--dry-run should not trigger recalculation."""
+        stdout, stderr, code = run_fp(
+            "mcp", "set", "global", "--permission", "allow", "--dry-run",
+        )
+        assert code == 0
+        assert "Dry run" in stdout
+        assert "Recalculated" not in stdout
+
 
 # ---------------------------------------------------------------------------
 # Reset: unified policy delete / reseed
