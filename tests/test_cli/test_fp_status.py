@@ -39,6 +39,7 @@ _MINIMAL_COUNTS = {
     "remote_source_accounts": {},
     "recent_uploads": [],
     "last_run": None,
+    "access_resolution": {},
 }
 
 _EMPTY_HEALTH = {
@@ -196,6 +197,7 @@ def _build_data(*, files: dict, folders: dict, remote_source_accounts: dict) -> 
             "recent_files": [],
             "recent_uploads": [],
             "last_run": None,
+            "access_resolution": {},
         },
         "last_run": None,
     }

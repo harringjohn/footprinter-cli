@@ -82,6 +82,36 @@ def get_entity_status_breakdown(conn: sqlite3.Connection) -> dict[str, dict]:
     return breakdown
 
 
+_ACCESS_RESOLUTION_TABLES = ("files", "emails", "chats")
+
+
+def get_access_resolution(conn: sqlite3.Connection) -> dict[str, dict[str, int]]:
+    """Per-entity access resolution counts for ``fp status``.
+
+    Returns ``{entity: {"stamped": int, "total": int}}`` for files, emails,
+    chats.  "stamped" means ``mcp_view IS NOT NULL`` (visibility resolved).
+    Files are filtered to ``status = 'listed'`` only.
+    """
+    result: dict[str, dict[str, int]] = {}
+    for table in _ACCESS_RESOLUTION_TABLES:
+        try:
+            stamped_where = "mcp_view IS NOT NULL"
+            total_where = "1=1"
+            if table == "files":
+                stamped_where += " AND status = 'listed'"
+                total_where = "status = 'listed'"
+            stamped = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {stamped_where}"
+            ).fetchone()[0]
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {total_where}"
+            ).fetchone()[0]
+            result[table] = {"stamped": stamped, "total": total}
+        except sqlite3.OperationalError:
+            pass
+    return result
+
+
 # -- Hidden-client NOT EXISTS clause (reused across source queries) -----------
 _NOT_HIDDEN_CLIENT = (
     "NOT EXISTS (  SELECT 1 FROM clients client  WHERE client.id = {alias}.client_id AND client.mcp_view = 'hidden')"

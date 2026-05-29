@@ -432,6 +432,7 @@ def _minimal_data(**overrides) -> dict:
             "chat_date_range": {"earliest": None, "latest": None},
             "recent_uploads": [],
             "recent_files": [],
+            "access_resolution": {},
         },
         "last_run": None,
     }
@@ -1068,3 +1069,108 @@ class TestDynamicConnectorHealth:
             health = get_source_health({})
 
         assert health.get("connector_rows", []) == []
+
+
+class TestAccessResolution:
+    """Access resolution counts (stamped vs total) in fp status."""
+
+    def test_access_resolution_returns_stamped_and_total(self, status_db):
+        conn, db_path = status_db
+        conn.execute(
+            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+        )
+        conn.execute(
+            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "VALUES ('local', 'b.txt', '/b', 'listed', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO emails (account, message_id, thread_id, received_at, mcp_view) "
+            "VALUES ('test@x.com', 'msg1', 't1', '2026-01-01', 'visible')"
+        )
+        conn.execute(
+            "INSERT INTO emails (account, message_id, thread_id, received_at, mcp_view) "
+            "VALUES ('test@x.com', 'msg2', 't2', '2026-01-01', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO chats (external_id, account, mcp_view) "
+            "VALUES ('c1', 'slack', 'visible')"
+        )
+        conn.commit()
+
+        counts = get_data_counts(db_path)
+        ar = counts["access_resolution"]
+        assert ar["files"] == {"stamped": 1, "total": 2}
+        assert ar["emails"] == {"stamped": 1, "total": 2}
+        assert ar["chats"] == {"stamped": 1, "total": 1}
+
+    def test_access_resolution_files_only_listed(self, status_db):
+        conn, db_path = status_db
+        conn.execute(
+            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+        )
+        conn.execute(
+            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "VALUES ('local', 'b.txt', '/b', 'removed', 'visible')"
+        )
+        conn.commit()
+
+        counts = get_data_counts(db_path)
+        ar = counts["access_resolution"]
+        assert ar["files"]["stamped"] == 1
+        assert ar["files"]["total"] == 1
+
+    def test_access_resolution_empty_db(self, status_db):
+        _, db_path = status_db
+        counts = get_data_counts(db_path)
+        ar = counts["access_resolution"]
+        assert ar["files"] == {"stamped": 0, "total": 0}
+        assert ar["emails"] == {"stamped": 0, "total": 0}
+        assert ar["chats"] == {"stamped": 0, "total": 0}
+
+    def test_json_output_includes_access_resolution(self, status_db):
+        conn, db_path = status_db
+        conn.execute(
+            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+        )
+        conn.commit()
+
+        counts = get_data_counts(db_path)
+        assert "access_resolution" in counts
+        assert "files" in counts["access_resolution"]
+        assert "stamped" in counts["access_resolution"]["files"]
+        assert "total" in counts["access_resolution"]["files"]
+
+    def test_rich_output_shows_access_resolution(self):
+        data = _minimal_data(
+            access_resolution={
+                "files": {"stamped": 8, "total": 10},
+                "emails": {"stamped": 3, "total": 5},
+                "chats": {"stamped": 1, "total": 2},
+            }
+        )
+        health = _minimal_health()
+        output = _capture_print_status(data, health)
+        assert "Access Resolution" in output
+        assert "files" in output.lower()
+        assert "80%" in output
+
+    def test_rich_output_hides_when_empty(self):
+        data = _minimal_data(access_resolution={})
+        health = _minimal_health()
+        output = _capture_print_status(data, health)
+        assert "Access Resolution" not in output
+
+    def test_rich_output_hides_when_all_zero(self):
+        data = _minimal_data(
+            access_resolution={
+                "files": {"stamped": 0, "total": 0},
+                "emails": {"stamped": 0, "total": 0},
+                "chats": {"stamped": 0, "total": 0},
+            }
+        )
+        health = _minimal_health()
+        output = _capture_print_status(data, health)
+        assert "Access Resolution" not in output
