@@ -89,6 +89,7 @@ def main(argv=None) -> None:
     subparsers.required = False
 
     from footprinter.cli import (
+        add,
         api_cmd,
         connect,
         data,
@@ -107,6 +108,7 @@ def main(argv=None) -> None:
     )
 
     for mod in [
+        add,
         ingest,
         mcp_cmd,
         permission_cmd,
