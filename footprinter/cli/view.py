@@ -481,7 +481,7 @@ def register(subparsers) -> None:
             )
         add_verbose_flag(p)
 
-        # --json and --csv are mutually exclusive
+        # --json, --csv, and --template are mutually exclusive
         fmt_group = p.add_mutually_exclusive_group()
         add_json_flag(fmt_group)
         add_csv_flag(fmt_group)
