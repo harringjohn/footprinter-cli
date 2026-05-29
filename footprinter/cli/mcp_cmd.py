@@ -5,14 +5,13 @@ Subcommands:
     fp mcp check              Show all policies / resolve combined access
     fp mcp set <scope>        Set visibility and/or permission for a scope
     fp mcp reset <scope>      Remove policy (fall back to inheritance)
-    fp mcp bulk               Bulk policy changes
 """
 
 from rich.table import Table
 
+from footprinter.access_stamper import count_affected_entities
 from footprinter.cli._common import FORMATTER, add_json_flag, console, output_json
 from footprinter.cli._policy_helpers import (
-    bulk_apply,
     check_client,
     check_file_path,
     check_folder,
@@ -191,6 +190,7 @@ def _check(args) -> None:
 def _set(args) -> None:
     visibility = getattr(args, "visibility", None)
     permission = getattr(args, "permission", None)
+    dry_run = getattr(args, "dry_run", False)
 
     if not visibility and not permission:
         console.print("[red]Specify at least one setting:[/red] --visibility or --permission")
@@ -216,20 +216,33 @@ def _set(args) -> None:
         raise SystemExit(1)
 
     try:
-        yes = getattr(args, "yes", False)
-        if not confirm_recalculation(conn, args.scope, yes=yes):
-            console.print("[dim]Cancelled.[/dim]")
+        counts = count_affected_entities(conn, args.scope)
+        total = sum(counts.values())
+        count_parts = [f"{c:,} {t}{'s' if c != 1 else ''}" for t, c in counts.items() if c]
+
+        settings_desc = []
+        if visibility:
+            settings_desc.append(f"visibility=[bold]{visibility}[/bold]")
+        if permission:
+            settings_desc.append(f"permission=[bold]{permission}[/bold]")
+
+        console.print(
+            f"\nScope: [cyan]{args.scope}[/cyan]  ({total:,} entities: {', '.join(count_parts)})"
+            if count_parts
+            else f"\nScope: [cyan]{args.scope}[/cyan]  (0 entities)"
+        )
+        console.print(f"  Setting: {', '.join(settings_desc)}")
+
+        if dry_run:
+            console.print("\n[dim]Dry run — no changes made.[/dim]")
             return
 
-        parts = []
         if visibility:
             set_visibility_policy(conn, args.scope, visibility)
-            parts.append(f"visibility=[bold]{visibility}[/bold]")
         if permission:
             set_permission_policy(conn, args.scope, permission)
-            parts.append(f"permission=[bold]{permission}[/bold]")
 
-        console.print(f"Set [cyan]{args.scope}[/cyan]: {', '.join(parts)}")
+        console.print(f"Set [cyan]{args.scope}[/cyan]: {', '.join(settings_desc)}")
         stats = recalculate_with_progress(conn, args.scope)
         _print_recalc_stats(stats)
     finally:
@@ -311,33 +324,6 @@ def _reset(args) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bulk handler (both layers)
-# ---------------------------------------------------------------------------
-
-
-def _bulk(args) -> None:
-    conn = get_policy_db()
-    if conn is None:
-        console.print("[yellow]No database found.[/yellow]")
-        raise SystemExit(1)
-
-    try:
-        rc = bulk_apply(
-            conn,
-            folder=getattr(args, "folder", None),
-            project=getattr(args, "project", None),
-            permission=getattr(args, "permission", None),
-            visibility=getattr(args, "visibility", None),
-            dry_run=getattr(args, "dry_run", False),
-            yes=getattr(args, "yes", False),
-        )
-        if rc:
-            raise SystemExit(rc)
-    finally:
-        conn.close()
-
-
-# ---------------------------------------------------------------------------
 # Parser registration
 # ---------------------------------------------------------------------------
 
@@ -350,8 +336,7 @@ def register(subparsers) -> None:
         description=(
             "Start the MCP server or manage access control policies.\n\n"
             "With no subcommand, starts the MCP server for Claude Desktop.\n"
-            "Use check/set/reset to manage unified access policies,\n"
-            "or bulk for batch operations."
+            "Use check/set/reset to manage unified access policies."
         ),
         epilog=(
             "examples:\n"
@@ -359,8 +344,8 @@ def register(subparsers) -> None:
             "  fp mcp check                        Show all policies\n"
             "  fp mcp check ~/Work/file.py          Check combined resolution\n"
             "  fp mcp set global --visibility visible --permission allow\n"
+            "  fp mcp set folder:~/Work --visibility hidden --dry-run\n"
             "  fp mcp reset folder:~/Work           Remove folder policy\n"
-            "  fp mcp bulk --folder ~/Work --permission allow\n"
             "\n"
             "tip: use 'fp mcp <command> --help' for details on any command."
         ),
@@ -410,6 +395,7 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp mcp set global --visibility visible --permission allow\n"
             "  fp mcp set folder:~/Work --visibility hidden\n"
+            "  fp mcp set folder:~/Work --permission deny --dry-run\n"
             "  fp mcp set project:3 --permission deny\n"
             "  fp mcp set source:emails --visibility opaque --permission deny"
         ),
@@ -418,7 +404,8 @@ def register(subparsers) -> None:
     set_parser.add_argument("scope", help="Policy scope (e.g. global, folder:~/Work, project:3)")
     set_parser.add_argument("--visibility", default=None, help="Visibility: visible, opaque, or hidden")
     set_parser.add_argument("--permission", default=None, help="Permission: allow or deny")
-    set_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    set_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
+    set_parser.add_argument("--yes", "-y", action="store_true", help="Accepted for compatibility (no-op; set never prompts)")
     set_parser.set_defaults(func=_set)
 
     # -- reset (unified delete / reseed) --
@@ -441,29 +428,3 @@ def register(subparsers) -> None:
     reset_parser.add_argument("--all", action="store_true", help="Clear ALL policies and re-seed defaults")
     reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     reset_parser.set_defaults(func=_reset)
-
-    # -- bulk --
-    bulk_parser = sub.add_parser(
-        "bulk",
-        help="Bulk policy changes",
-        description=(
-            "Apply permission and/or visibility policies in bulk.\n\n"
-            "Scope by --folder or --project. Set --permission and/or --visibility.\n"
-            "Use --dry-run to preview before applying."
-        ),
-        epilog=(
-            "examples:\n"
-            "  fp mcp bulk --folder ~/Work --permission allow\n"
-            "  fp mcp bulk --project 3 --visibility visible\n"
-            "  fp mcp bulk --folder ~/Work --permission allow --visibility visible\n"
-            "  fp mcp bulk --folder ~/Work --permission deny --dry-run"
-        ),
-        formatter_class=FORMATTER,
-    )
-    bulk_parser.add_argument("--folder", default=None, help="Folder scope (path)")
-    bulk_parser.add_argument("--project", type=int, default=None, help="Project ID scope")
-    bulk_parser.add_argument("--permission", default=None, help="Permission setting: allow or deny")
-    bulk_parser.add_argument("--visibility", default=None, help="Visibility setting: visible, opaque, or hidden")
-    bulk_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
-    bulk_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
-    bulk_parser.set_defaults(func=_bulk)

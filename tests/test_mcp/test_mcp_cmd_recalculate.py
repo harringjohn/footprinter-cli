@@ -141,188 +141,6 @@ class TestResetAllTriggersRecalculate:
 
 
 # ---------------------------------------------------------------------------
-# Bulk handler
-# ---------------------------------------------------------------------------
-
-
-class TestBulkTriggersRecalculate:
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    def test_calls_recalculate_with_folder_scope(self, mock_set_perm, mock_set_vis, mock_recalc, tool_db):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder="~/Work",
-            project=None,
-            permission="allow",
-            visibility="visible",
-            dry_run=False,
-            yes=True,
-        )
-
-        mock_recalc.assert_called_once_with(tool_db, "folder:~/Work")
-
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    def test_skips_recalculate_on_dry_run(self, mock_set_vis, mock_recalc, tool_db):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder="~/Work",
-            project=None,
-            permission=None,
-            visibility="hidden",
-            dry_run=True,
-            yes=True,
-        )
-
-        mock_recalc.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Bulk per-type display & threshold confirmation
-# ---------------------------------------------------------------------------
-
-
-class TestBulkPerTypeDisplay:
-    """bulk_apply() should show per-entity-type counts, not just files."""
-
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value={"file": 5, "folder": 2})
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    def test_bulk_folder_shows_per_type_counts(
-        self, mock_set_perm, mock_set_vis, mock_count, mock_recalc, tool_db, capsys
-    ):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder="~/Work",
-            project=None,
-            permission="allow",
-            visibility="visible",
-            dry_run=False,
-            yes=True,
-        )
-
-        output = capsys.readouterr().out
-        assert "files affected" not in output.lower()
-        assert "file" in output.lower()
-        assert "folder" in output.lower()
-
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch(
-        "footprinter.cli._policy_helpers.count_affected_entities", return_value={"file": 3, "email": 2, "project": 1}
-    )
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    def test_bulk_project_shows_per_type_counts(
-        self, mock_set_perm, mock_set_vis, mock_count, mock_recalc, tool_db, capsys
-    ):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'TestProj', 'python', '/Users/me/Work/test', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder=None,
-            project=1,
-            permission="allow",
-            visibility="visible",
-            dry_run=False,
-            yes=True,
-        )
-
-        output = capsys.readouterr().out
-        assert "files affected" not in output.lower()
-        assert "email" in output.lower()
-
-
-class TestBulkThresholdConfirmation:
-    """bulk_apply() should use CONFIRM_THRESHOLD like confirm_recalculation()."""
-
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_SMALL_COUNTS)
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=True)
-    def test_bulk_small_scope_skips_confirmation(self, mock_confirm, mock_set_perm, mock_recalc, mock_count, tool_db):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'SmallProj', 'python', '/Users/me/Work/small', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder=None,
-            project=1,
-            permission="allow",
-            visibility=None,
-            dry_run=False,
-            yes=False,
-        )
-
-        mock_confirm.assert_not_called()
-
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=True)
-    def test_bulk_large_scope_prompts_confirmation(
-        self, mock_confirm, mock_set_perm, mock_recalc, mock_count, tool_db, capsys
-    ):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO projects (id, project_name, project_type, root_path, status) "
-            "VALUES (1, 'BigProj', 'python', '/Users/me/Work/big', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder=None,
-            project=1,
-            permission="allow",
-            visibility=None,
-            dry_run=False,
-            yes=False,
-        )
-
-        mock_confirm.assert_called_once()
-        output = capsys.readouterr().out
-        assert "files affected" not in output.lower()
-
-
-# ---------------------------------------------------------------------------
 # Stats output
 # ---------------------------------------------------------------------------
 
@@ -361,100 +179,124 @@ class TestPrintRecalcStatsPluralization:
         assert "2 emails" in output
 
 
-class TestBulkApplyStatsPluralization:
-    @patch("footprinter.cli._policy_helpers.recalculate_with_progress", return_value={"file": 1})
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    @patch("footprinter.cli._policy_helpers.set_permission_policy")
-    def test_singular_in_bulk_output(self, mock_set_perm, mock_set_vis, mock_recalc, tool_db, capsys):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder="~/Work",
-            project=None,
-            permission="allow",
-            visibility="visible",
-            dry_run=False,
-            yes=True,
-        )
-
-        output = capsys.readouterr().out
-        assert "1 file" in output
-        assert "1 files" not in output
-
-
 # ---------------------------------------------------------------------------
-# Confirmation UX for unified set
+# Set never prompts (recalculation is non-destructive)
 # ---------------------------------------------------------------------------
 
 
-class TestSetConfirmation:
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=True)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_prompts_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False)
-        _set(args)
-
-        mock_confirm.assert_called_once()
-        mock_recalc.assert_called_once()
-
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=False)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_cancelled_skips_recalculate(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False)
-        _set(args)
-
-        mock_confirm.assert_called_once()
-        mock_set.assert_not_called()
-        mock_recalc.assert_not_called()
-
+class TestSetNeverPrompts:
     @patch("footprinter.cli._policy_helpers.Confirm.ask")
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_SMALL_COUNTS)
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_small_scope_skips_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
+    def test_large_scope_without_yes_never_prompts(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
         from footprinter.cli.mcp_cmd import _set
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="file:42", visibility="hidden", permission=None, yes=False)
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
         _set(args)
 
         mock_confirm.assert_not_called()
         mock_recalc.assert_called_once()
 
-    @patch("footprinter.cli._policy_helpers.Confirm.ask")
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
+
+# ---------------------------------------------------------------------------
+# Set handler: --dry-run skips recalculate and policy writes
+# ---------------------------------------------------------------------------
+
+
+class TestSetDryRunSkipsRecalculate:
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_yes_flag_skips_confirmation(self, mock_db, mock_set, mock_recalc, mock_count, mock_confirm):
+    def test_dry_run_skips_policy_and_recalculate(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
         from footprinter.cli.mcp_cmd import _set
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=True)
+        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        mock_set_vis.assert_not_called()
+        mock_recalc.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "Dry run" in captured
+
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_non_dry_run_applies_normally(self, mock_db, mock_set_vis, mock_recalc, mock_count):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=False)
+        _set(args)
+
+        mock_set_vis.assert_called_once()
+        mock_recalc.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Set handler: entity count preview
+# ---------------------------------------------------------------------------
+
+
+class TestSetEntityCountPreview:
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 5, "folder": 2})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_preview_shows_pluralized_counts(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        captured = capsys.readouterr().out
+        assert "5 files" in captured
+        assert "2 folders" in captured
+
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 1})
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_preview_shows_singular_count(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        _set(args)
+
+        captured = capsys.readouterr().out
+        assert "1 file" in captured
+        assert "1 files" not in captured
+
+
+# ---------------------------------------------------------------------------
+# Set handler: no confirmation prompts (non-destructive recalculation)
+# ---------------------------------------------------------------------------
+
+
+class TestSetNoConfirmationPrompt:
+    @patch("footprinter.cli._policy_helpers.Confirm.ask")
+    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
+    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
+    @patch("footprinter.cli.mcp_cmd.get_policy_db")
+    def test_large_scope_no_confirmation(self, mock_db, mock_set_vis, mock_recalc, mock_count, mock_confirm):
+        from footprinter.cli.mcp_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
         _set(args)
 
         mock_confirm.assert_not_called()
@@ -588,31 +430,3 @@ class TestConfirmRecalculationPluralization:
         assert "150 emails" in output
 
 
-class TestBulkApplyScopePreviewPluralization:
-    @patch(
-        "footprinter.cli._policy_helpers.count_affected_entities",
-        return_value={"file": 1},
-    )
-    @patch("footprinter.cli._policy_helpers.set_visibility_policy")
-    def test_singular_entity_type_no_trailing_s(self, mock_set_vis, mock_count, tool_db, capsys):
-        from footprinter.cli._policy_helpers import bulk_apply
-
-        tool_db.execute(
-            "INSERT INTO files (id, source, name, path, account, status) "
-            "VALUES (1, 'local', 'a.py', '/Users/me/Work/a.py', 'work', 'listed')"
-        )
-        tool_db.commit()
-
-        bulk_apply(
-            tool_db,
-            folder="~/Work",
-            project=None,
-            permission=None,
-            visibility="hidden",
-            dry_run=True,
-            yes=True,
-        )
-
-        output = capsys.readouterr().out
-        assert "1 file" in output
-        assert "1 files" not in output

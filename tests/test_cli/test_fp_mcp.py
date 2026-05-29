@@ -4,9 +4,8 @@ Covers:
   - Parser tree: help exits 0 for all subcommands
   - Server start: bare ``fp mcp`` calls server.main()
   - Unified check: no-args (show all), path, folder, project, client, --json
-  - Set: unified policy setter (--visibility / --permission)
+  - Set: unified policy setter (--visibility / --permission / --dry-run)
   - Reset: unified policy delete / reseed
-  - Bulk: dry-run, validation, folder with --yes
 """
 
 import json
@@ -48,7 +47,6 @@ class TestMcpParserTree:
             ("mcp", "check", "--help"),
             ("mcp", "set", "--help"),
             ("mcp", "reset", "--help"),
-            ("mcp", "bulk", "--help"),
         ],
     )
     def test_help_exits_zero(self, args):
@@ -321,6 +319,31 @@ class TestMcpSet:
         assert vis["setting"] == "hidden"
         assert perm["setting"] == "deny"
 
+    def test_set_dry_run(self, policy_db):
+        """--dry-run previews without writing policies."""
+        stdout, stderr, code = run_fp(
+            "mcp", "set", "folder:~/Work", "--visibility", "hidden", "--dry-run",
+        )
+        assert code == 0
+        assert "Dry run" in stdout
+
+        conn = sqlite3.connect(str(policy_db))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'"
+        ).fetchone()
+        conn.close()
+        assert row is None, "dry-run should not write policy rows"
+
+    def test_set_dry_run_no_recalculate(self, policy_db):
+        """--dry-run should not trigger recalculation."""
+        stdout, stderr, code = run_fp(
+            "mcp", "set", "global", "--permission", "allow", "--dry-run",
+        )
+        assert code == 0
+        assert "Dry run" in stdout
+        assert "Recalculated" not in stdout
+
 
 # ---------------------------------------------------------------------------
 # Reset: unified policy delete / reseed
@@ -404,90 +427,3 @@ class TestMcpReset:
         vis = conn.execute("SELECT 1 FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
         conn.close()
         assert vis is None
-
-
-# ---------------------------------------------------------------------------
-# Bulk
-# ---------------------------------------------------------------------------
-
-
-class TestMcpBulk:
-    """Test fp mcp bulk."""
-
-    def test_bulk_no_target_fails(self, policy_db):
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--permission",
-            "allow",
-        )
-        assert code != 0
-        assert "Specify a target" in stdout + stderr
-
-    def test_bulk_no_setting_fails(self, policy_db):
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--folder",
-            "~/Work",
-        )
-        assert code != 0
-        assert "Specify at least one setting" in stdout + stderr
-
-    def test_bulk_dry_run(self, policy_db):
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--folder",
-            "~/Work",
-            "--visibility",
-            "hidden",
-            "--dry-run",
-        )
-        assert code == 0
-        assert "Dry run" in stdout
-
-    def test_bulk_folder_with_yes(self, policy_db):
-        """bulk with --yes applies without confirmation."""
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--folder",
-            "~/Work",
-            "--visibility",
-            "hidden",
-            "--yes",
-        )
-        assert code == 0
-        assert "Applied" in stdout
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
-        conn.close()
-        assert row is not None
-        assert row["setting"] == "hidden"
-
-    def test_bulk_invalid_permission_fails(self, policy_db):
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--folder",
-            "~/Work",
-            "--permission",
-            "visible",
-        )
-        assert code != 0
-        assert "Invalid permission" in stdout + stderr
-
-    def test_bulk_invalid_visibility_fails(self, policy_db):
-        stdout, stderr, code = run_fp(
-            "mcp",
-            "bulk",
-            "--folder",
-            "~/Work",
-            "--visibility",
-            "allow",
-        )
-        assert code != 0
-        assert "Invalid visibility" in stdout + stderr
