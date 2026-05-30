@@ -527,7 +527,8 @@ class TestUpdateBulkCsv:
 
         assert code == 0
         row = conn.execute("SELECT updated_at FROM files WHERE id = 1").fetchone()
-        assert row[0] != "2000-01-01"
+        assert row[0] is not None
+        assert row[0] > "2000-01-01"
         conn.close()
 
 
