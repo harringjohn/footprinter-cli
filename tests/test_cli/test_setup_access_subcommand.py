@@ -434,7 +434,7 @@ class TestAccessPolicySeedingFailure:
 
         output = buf.getvalue().lower()
         # Should tell the user how to fix it
-        assert "fp setup" in output or "fp mcp" in output
+        assert "fp setup" in output or "fp permission" in output
 
     def test_conn_closed_on_seed_failure(self, policy_db_env):
         """Connection must be closed even when _seed_access_policies raises."""

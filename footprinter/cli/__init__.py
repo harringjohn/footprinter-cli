@@ -69,10 +69,6 @@ def main(argv=None) -> None:
             "  fp permission reset        Remove policy (fall back to inheritance)\n"
             "  fp permission recalculate  Re-resolve access stamps from the policy chain\n"
             "\n"
-            "servers:\n"
-            "  fp mcp                     Start the MCP server\n"
-            "  fp api                     Start the HTTP API server\n"
-            "\n"
             "diagnostics:\n"
             "  fp doctor                  Check installation health\n"
             "  fp doctor search           Rebuild FTS search indexes\n"
@@ -95,13 +91,11 @@ def main(argv=None) -> None:
 
     from footprinter.cli import (
         add,
-        api_cmd,
         connect,
         data,
         delete,
         doctor,
         ingest,
-        mcp_cmd,
         permission_cmd,
         search,
         setup,
@@ -115,9 +109,7 @@ def main(argv=None) -> None:
     for mod in [
         add,
         ingest,
-        mcp_cmd,
         permission_cmd,
-        api_cmd,
         status,
         search,
         setup,

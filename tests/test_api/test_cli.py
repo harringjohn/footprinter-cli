@@ -1,33 +1,31 @@
-"""Tests for fp api CLI command."""
+"""Tests for fp-api console_script entry point."""
 
-from tests.conftest import run_fp
+import pytest
 
 
-class TestApiCliCommand:
-    """Test the 'fp api' subcommand registration."""
+class TestApiCliEntryPoint:
+    """Test the fp-api console_script entry point."""
 
-    def test_api_registers_subcommand(self):
-        """'api' appears in the CLI subparsers."""
-        # Parse --help to verify 'api' is listed
-        stdout, stderr, code = run_fp("api", "--help")
-        assert code == 0
-        assert "api" in stdout.lower() or "api" in stderr.lower()
+    def test_cli_importable(self):
+        """footprinter.api.server.cli is importable and callable."""
+        from footprinter.api.server import cli
 
-    def test_api_default_host_port(self):
+        assert callable(cli)
+
+    def test_cli_help_exits_zero(self):
+        """fp-api --help exits 0."""
+        from footprinter.api.server import cli
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli(["--help"])
+        assert exc_info.value.code == 0
+
+    def test_cli_default_host_port(self):
         """Default host is 127.0.0.1 and port is 8000."""
-        import argparse
+        from unittest.mock import patch
 
-        from footprinter.cli import api_cmd
+        from footprinter.api.server import cli
 
-        parser = argparse.ArgumentParser()
-        subs = parser.add_subparsers()
-        api_cmd.register(subs)
-
-        args = parser.parse_args(["api"])
-        assert args.host == "127.0.0.1"
-        assert args.port == 8000
-
-    def test_api_help(self):
-        """fp api --help exits 0."""
-        stdout, stderr, code = run_fp("api", "--help")
-        assert code == 0
+        with patch("footprinter.api.server.main") as mock_main:
+            cli([])
+            mock_main.assert_called_once_with(host="127.0.0.1", port=8000)

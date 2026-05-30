@@ -1,11 +1,10 @@
-"""Tests for fp mcp subcommands.
+"""Tests for fp mcp subcommands (REMOVAL CANDIDATE).
 
-Covers:
-  - Parser tree: help exits 0 for all subcommands
-  - Server start: bare ``fp mcp`` calls server.main()
-  - Unified check: no-args (show all), path, folder, project, client, --json
-  - Set: unified policy setter (--visibility / --permission)
-  - Reset: unified policy delete / reseed
+These tests cover functionality that has moved:
+  - Server start → fp-mcp console_script (tested in test_fp_api.py / test_mcp_server.py)
+  - Policy subcommands → fp permission (tested in test_permission.py)
+
+Retained temporarily for regression coverage during the transition.
 """
 
 import json
@@ -409,3 +408,16 @@ class TestMcpReset:
         vis = conn.execute("SELECT 1 FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
         conn.close()
         assert vis is None
+
+
+# ---------------------------------------------------------------------------
+# Regression: fp mcp subcommand removed from CLI
+# ---------------------------------------------------------------------------
+
+
+class TestMcpSubcommandRemoved:
+    """After FPR-1850, 'fp mcp' should no longer be a recognized subcommand."""
+
+    def test_fp_mcp_not_recognized(self):
+        stdout, stderr, code = run_fp("mcp")
+        assert code != 0, "fp mcp should no longer be a recognized subcommand"

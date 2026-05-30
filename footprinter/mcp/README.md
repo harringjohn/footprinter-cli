@@ -151,5 +151,5 @@ footprinter/mcp/
 ## Running Standalone
 
 ```bash
-fp mcp
+fp-mcp
 ```

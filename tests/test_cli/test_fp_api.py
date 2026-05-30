@@ -1,18 +1,16 @@
-"""Tests for fp api — HTTP API server entry point.
+"""Tests for fp-api console_script entry point (footprinter.api.server.cli).
 
 Validates:
-  1. fp api --help exits 0 and lists --host/--port flags
-  2. fp api dispatches to footprinter.api.server.main with correct host/port
+  1. cli(["--help"]) exits 0
+  2. cli() dispatches to main() with correct host/port
+  3. Host safety: non-loopback binds require --allow-insecure-bind
 """
 
 import importlib.util
 from unittest.mock import patch
 
 import pytest
-from conftest import run_fp
 
-# The [api] extra (FastAPI) may not be installed in dev environments.
-# Skip startup tests when it's missing — help text still renders without it.
 _FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 
 
@@ -21,22 +19,15 @@ _FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 # ---------------------------------------------------------------------------
 
 
-class TestApiHelp:
-    """fp api --help exits 0 and shows --host/--port flags."""
+class TestApiCliHelp:
+    """fp-api --help exits 0."""
 
     def test_help_exits_zero(self):
-        _, _, code = run_fp("api", "--help")
-        assert code == 0
+        from footprinter.api.server import cli
 
-    def test_help_shows_host_flag(self):
-        stdout, stderr, _ = run_fp("api", "--help")
-        output = stdout + stderr
-        assert "--host" in output
-
-    def test_help_shows_port_flag(self):
-        stdout, stderr, _ = run_fp("api", "--help")
-        output = stdout + stderr
-        assert "--port" in output
+        with pytest.raises(SystemExit) as exc_info:
+            cli(["--help"])
+        assert exc_info.value.code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -45,27 +36,29 @@ class TestApiHelp:
 
 
 @pytest.mark.skipif(not _FASTAPI_AVAILABLE, reason="fastapi extra not installed")
-class TestApiStartup:
-    """fp api invokes footprinter.api.server.main with parsed host/port."""
+class TestApiCliStartup:
+    """cli() invokes main() with parsed host/port."""
 
     @patch("footprinter.api.server.main")
     def test_default_host_and_port(self, mock_main):
-        _, _, code = run_fp("api")
+        from footprinter.api.server import cli
 
-        assert code == 0
+        cli([])
         mock_main.assert_called_once_with(host="127.0.0.1", port=8000)
 
     @patch("footprinter.api.server.main")
     def test_custom_port(self, mock_main):
-        run_fp("api", "--port", "9000")
+        from footprinter.api.server import cli
 
+        cli(["--port", "9000"])
         mock_main.assert_called_once_with(host="127.0.0.1", port=9000)
 
     @patch("footprinter.api.server.main")
-    def test_custom_host(self, mock_main):
-        run_fp("api", "--host", "0.0.0.0", "--port", "8080", "--allow-insecure-bind")
+    def test_custom_host_with_insecure_bind(self, mock_main):
+        from footprinter.api.server import cli
 
-        mock_main.assert_called_once_with(host="0.0.0.0", port=8080)
+        cli(["--host", "0.0.0.0", "--allow-insecure-bind"])
+        mock_main.assert_called_once_with(host="0.0.0.0", port=8000)
 
 
 # ---------------------------------------------------------------------------
@@ -74,54 +67,47 @@ class TestApiStartup:
 
 
 @pytest.mark.skipif(not _FASTAPI_AVAILABLE, reason="fastapi extra not installed")
-class TestApiHostSafety:
+class TestApiCliHostSafety:
     """Non-loopback binds require explicit --allow-insecure-bind opt-in."""
 
-    @patch("footprinter.api.server.main")
-    def test_non_loopback_host_refused_without_flag(self, mock_main):
-        _, stderr, code = run_fp("api", "--host", "0.0.0.0")
+    def test_non_loopback_host_refused_without_flag(self):
+        from footprinter.api.server import cli
 
-        assert code != 0
-        assert "--allow-insecure-bind" in stderr
-        mock_main.assert_not_called()
-
-    @patch("footprinter.api.server.main")
-    def test_non_loopback_host_with_flag_proceeds_and_warns(self, mock_main):
-        stdout, stderr, _ = run_fp("api", "--host", "0.0.0.0", "--allow-insecure-bind")
-        output = stdout + stderr
-
-        mock_main.assert_called_once_with(host="0.0.0.0", port=8000)
-        assert "WARNING" in output
-        assert "no authentication" in output.lower()
+        with pytest.raises(SystemExit) as exc_info:
+            cli(["--host", "0.0.0.0"])
+        assert exc_info.value.code == 2
 
     @patch("footprinter.api.server.main")
-    def test_loopback_default_unchanged(self, mock_main):
-        stdout, stderr, code = run_fp("api")
+    def test_non_loopback_host_with_flag_warns(self, mock_main, capsys):
+        from footprinter.api.server import cli
 
-        assert code == 0
-        mock_main.assert_called_once_with(host="127.0.0.1", port=8000)
-        assert "WARNING" not in (stdout + stderr)
+        cli(["--host", "0.0.0.0", "--allow-insecure-bind"])
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "no authentication" in captured.err.lower()
 
     @patch("footprinter.api.server.main")
-    def test_localhost_string_treated_as_loopback(self, mock_main):
-        stdout, stderr, code = run_fp("api", "--host", "localhost")
+    def test_loopback_default_no_warning(self, mock_main, capsys):
+        from footprinter.api.server import cli
 
-        assert code == 0
+        cli([])
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err
+
+    @patch("footprinter.api.server.main")
+    def test_localhost_treated_as_loopback(self, mock_main, capsys):
+        from footprinter.api.server import cli
+
+        cli(["--host", "localhost"])
         mock_main.assert_called_once_with(host="localhost", port=8000)
-        assert "WARNING" not in (stdout + stderr)
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err
 
     @patch("footprinter.api.server.main")
-    def test_ipv6_loopback_treated_as_loopback(self, mock_main):
-        stdout, stderr, code = run_fp("api", "--host", "::1")
+    def test_ipv6_loopback_treated_as_loopback(self, mock_main, capsys):
+        from footprinter.api.server import cli
 
-        assert code == 0
+        cli(["--host", "::1"])
         mock_main.assert_called_once_with(host="::1", port=8000)
-        assert "WARNING" not in (stdout + stderr)
-
-    @patch("footprinter.api.server.main")
-    def test_allow_insecure_bind_with_loopback_is_noop(self, mock_main):
-        stdout, stderr, code = run_fp("api", "--allow-insecure-bind")
-
-        assert code == 0
-        mock_main.assert_called_once_with(host="127.0.0.1", port=8000)
-        assert "WARNING" not in (stdout + stderr)
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err

@@ -146,12 +146,17 @@ class TestSnippetGeneration:
         assert server["args"] == ["-m", "footprinter.mcp"]
         assert "cwd" not in server
 
-    def test_fp_snippet_includes_mcp_arg(self, tmp_path):
-        """When fp is on PATH, generated snippet must include args: ["mcp"]."""
-        with patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"):
+    def test_fp_mcp_snippet_has_no_args(self, tmp_path):
+        """When fp-mcp is on PATH, generated snippet has no args."""
+
+        def _which(name):
+            return "/usr/local/bin/fp-mcp" if name == "fp-mcp" else None
+
+        with patch("footprinter.cli.mcp_setup.shutil.which", side_effect=_which):
             snippet = generate_snippet(project_root=tmp_path)
         server = snippet["mcpServers"]["footprinter"]
-        assert server.get("args") == ["mcp"]
+        assert server["command"] == "/usr/local/bin/fp-mcp"
+        assert server.get("args") is None or server.get("args") == []
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +189,7 @@ class TestMCPCommand:
         with patch("footprinter.cli.mcp_setup.shutil.which", return_value=None):
             command, args = get_mcp_command(project_root=tmp_path)
         assert command == str(script)
-        assert args == ["mcp"]
+        assert args == []
 
     def test_falls_back_to_sys_executable(self, tmp_path):
         # No run_mcp.sh present
@@ -209,28 +214,36 @@ class TestMCPCommand:
 # TestMCPCommandFpMcp — 3 tests
 # ---------------------------------------------------------------------------
 class TestMCPCommandFpEntryPoint:
-    """Tests for fp entry point priority (fp-mcp -> fp)."""
+    """Tests for fp-mcp entry point priority (fp-mcp -> run_mcp.sh -> sys.executable)."""
 
-    def test_prefers_fp_when_on_path(self, tmp_path):
-        with patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"):
+    def test_prefers_fp_mcp_when_on_path(self, tmp_path):
+        def _which(name):
+            return "/usr/local/bin/fp-mcp" if name == "fp-mcp" else None
+
+        with patch("footprinter.cli.mcp_setup.shutil.which", side_effect=_which):
             command, args = get_mcp_command(project_root=tmp_path)
-        assert command == "/usr/local/bin/fp"
-        assert args == ["mcp"]
+        assert command == "/usr/local/bin/fp-mcp"
+        assert args == []
 
-    def test_fp_preferred_over_run_script(self, tmp_path):
+    def test_fp_mcp_preferred_over_run_script(self, tmp_path):
         script = tmp_path / "run_mcp.sh"
         script.touch()
-        with patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"):
-            command, args = get_mcp_command(project_root=tmp_path)
-        assert command == "/usr/local/bin/fp"
-        assert args == ["mcp"]
 
-    def test_run_script_when_no_fp(self, tmp_path):
+        def _which(name):
+            return "/usr/local/bin/fp-mcp" if name == "fp-mcp" else None
+
+        with patch("footprinter.cli.mcp_setup.shutil.which", side_effect=_which):
+            command, args = get_mcp_command(project_root=tmp_path)
+        assert command == "/usr/local/bin/fp-mcp"
+        assert args == []
+
+    def test_run_script_when_no_fp_mcp(self, tmp_path):
         script = tmp_path / "run_mcp.sh"
         script.touch()
         with patch("footprinter.cli.mcp_setup.shutil.which", return_value=None):
             command, args = get_mcp_command(project_root=tmp_path)
         assert command == str(script)
+        assert args == []
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +436,7 @@ class TestMultiClientPaths:
     def test_print_snippet_shows_claude_code_mcp_add(self):
         """print_snippet() output contains the claude mcp add command."""
         output = self._capture_snippet()
-        assert "claude mcp add footprinter -- fp mcp" in output
+        assert "claude mcp add footprinter -- fp-mcp" in output
 
     def test_print_snippet_shows_config_paths(self):
         """print_snippet() output contains known config file paths."""

@@ -1,5 +1,5 @@
-"""Shared MCP access-policy helpers used by ``setup.py`` and ``mcp_cmd.py``
-(``fp mcp check/set/reset/bulk``).
+"""Shared access-policy helpers used by ``setup.py`` and ``permission_cmd.py``
+(``fp permission check/set/reset``).
 """
 
 import os
