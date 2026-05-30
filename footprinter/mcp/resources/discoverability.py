@@ -9,7 +9,7 @@ or db layer; resources do not introduce new business logic.
 Role: MCP runs under ``Role.VIEWER`` (hidden-client filtering applied). The
 access-policies resource itself is policy *metadata*, not gated data, so it
 goes through ``db.policies`` directly — mirroring the CLI pattern in
-``footprinter/cli/mcp_cmd.py``.
+``footprinter/cli/permission_cmd.py``.
 """
 
 from footprinter.db import policies as db_policies

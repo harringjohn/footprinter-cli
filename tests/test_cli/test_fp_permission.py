@@ -60,6 +60,19 @@ class TestPermissionParserTree:
         assert "recalculate" in combined
 
 
+class TestResetHelpContent:
+    def test_reset_help_mentions_inheritance(self):
+        stdout, stderr, code = run_fp("permission", "reset", "--help")
+        combined = stdout + stderr
+        assert code == 0
+        assert "inherit" in combined.lower(), f"Expected 'inherit' in reset help, got: {combined}"
+
+    def test_reset_help_mentions_reseed(self):
+        stdout, stderr, code = run_fp("permission", "reset", "--help")
+        combined = stdout + stderr
+        assert "--all" in combined, f"Expected '--all' in reset help, got: {combined}"
+
+
 # ---------------------------------------------------------------------------
 # List subcommand
 # ---------------------------------------------------------------------------
