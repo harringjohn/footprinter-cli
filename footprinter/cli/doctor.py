@@ -244,9 +244,8 @@ def _check_fts_health() -> Check:
     try:
         from footprinter.ingest.database import Database
 
-        db = Database(str(db_path))
-        health = db.check_fts_health()
-        db.close()
+        with Database(str(db_path)) as db:
+            health = db.check_fts_health()
         errors = [t for t, info in health.items() if info["status"] == "error"]
         if errors:
             return Check(
