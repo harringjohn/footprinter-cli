@@ -1,4 +1,4 @@
-"""CLI utilities — _rebuild_vectors with phase isolation and interrupt safety."""
+"""CLI utilities — rebuild_vectors with phase isolation and interrupt safety."""
 
 import logging
 import signal
@@ -25,7 +25,7 @@ def _handle_shutdown(signum, frame):
     logger.warning("Received %s — finishing current batch...", sig_name)
 
 
-def _repair_fts(quiet: bool = False):
+def repair_fts(quiet: bool = False):
     """Drop and rebuild all FTS search indexes from base table data."""
     from rich.console import Console
 
@@ -594,7 +594,7 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _rebuild_vectors(
+def rebuild_vectors(
     quiet: bool = False,
     source: str = "all",
     phase: Optional[str] = None,

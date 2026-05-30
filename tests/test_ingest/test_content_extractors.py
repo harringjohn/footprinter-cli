@@ -483,7 +483,7 @@ class TestVectorizationConfigLoading:
     """Test that vectorization config is read and passed to FullContentExtractor."""
 
     def test_rebuild_vectors_reads_vectorization_config(self):
-        """_rebuild_vectors() passes vectorization config to FullContentExtractor."""
+        """rebuild_vectors() passes vectorization config to FullContentExtractor."""
         from unittest.mock import MagicMock
 
         mock_store = MagicMock()
@@ -523,9 +523,9 @@ class TestVectorizationConfigLoading:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, source="all")
+            rebuild_vectors(quiet=True, source="all")
 
         # Verify FullContentExtractor.from_config was called with the full config
         mock_extractor_cls.from_config.assert_called_once_with(test_config)

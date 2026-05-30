@@ -671,11 +671,11 @@ def _mock_chromadb_for_rebuild():
 
 @pytest.mark.usefixtures("_mock_chromadb_for_rebuild")
 class TestRebuildVectorsFileEnabled:
-    """Test that _rebuild_vectors vectorizes files when the flag is on."""
+    """Test that rebuild_vectors vectorizes files when the flag is on."""
 
     @staticmethod
     def _make_db(extra_sql=None):
-        """Create an in-memory DB with the tables _rebuild_vectors expects."""
+        """Create an in-memory DB with the tables rebuild_vectors expects."""
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         conn.execute(
@@ -701,8 +701,8 @@ class TestRebuildVectorsFileEnabled:
         return conn
 
     def _run_rebuild(self, conn, quiet=True):
-        """Run _rebuild_vectors with mocked VectorStore and DB, return the mock store."""
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+        """Run rebuild_vectors with mocked VectorStore and DB, return the mock store."""
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
         mock_store = MagicMock()
 
@@ -718,7 +718,7 @@ class TestRebuildVectorsFileEnabled:
                     with patch("footprinter.ingest.vector_ops.sqlite3") as mock_sql:
                         mock_sql.connect.return_value = conn
                         mock_sql.Row = sqlite3.Row
-                        _rebuild_vectors(quiet=quiet)
+                        rebuild_vectors(quiet=quiet)
 
         return mock_store
 
