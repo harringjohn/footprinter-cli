@@ -398,9 +398,9 @@ def _check(args) -> None:
         elif folder:
             check_folder(conn, folder, json_output, verbose)
         elif project is not None:
-            check_project(conn, project, json_output)
+            check_project(conn, project, json_output, verbose)
         elif client is not None:
-            check_client(conn, client, json_output)
+            check_client(conn, client, json_output, verbose)
     finally:
         conn.close()
 

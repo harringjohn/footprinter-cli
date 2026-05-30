@@ -818,9 +818,9 @@ class TestCheckRouting:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path=None, folder=None, project=3, client=None, json=False, verbose=False))
+        _check(Namespace(path=None, folder=None, project=3, client=None, json=False, verbose=True))
 
-        mock_check.assert_called_once_with(conn, 3, False)
+        mock_check.assert_called_once_with(conn, 3, False, True)
 
     @patch("footprinter.cli.permission_cmd.check_client", return_value=0)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
@@ -830,9 +830,9 @@ class TestCheckRouting:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path=None, folder=None, project=None, client=5, json=False, verbose=False))
+        _check(Namespace(path=None, folder=None, project=None, client=5, json=False, verbose=True))
 
-        mock_check.assert_called_once_with(conn, 5, False)
+        mock_check.assert_called_once_with(conn, 5, False, True)
 
     def test_check_no_target_exits_1(self):
         from footprinter.cli.permission_cmd import _check
@@ -915,3 +915,124 @@ class TestCheckConnection:
             _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=False, verbose=False))
 
         conn.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: verbose output for project / client
+# ---------------------------------------------------------------------------
+
+
+class TestCheckProjectVerbose:
+    def _make_conn(self, project_row, file_rows):
+        conn = _mock_conn()
+        cursor_one = MagicMock()
+        cursor_one.fetchone.return_value = project_row
+        cursor_all = MagicMock()
+        cursor_all.fetchall.return_value = file_rows
+        conn.execute.side_effect = [cursor_one, cursor_all]
+        return conn
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_project_verbose_json(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_json
+    ):
+        from footprinter.cli._policy_helpers import check_project
+
+        project_row = {"id": 3, "name": "My Project"}
+        file_rows = [{"id": 10, "name": "report.pdf"}, {"id": 11, "name": "notes.md"}]
+        conn = self._make_conn(project_row, file_rows)
+
+        mock_batch_perm.return_value = {10: (True, "baseline"), 11: (False, "policy:5")}
+        mock_batch_vis.return_value = {10: ("full", "baseline"), 11: ("hidden", "policy:5")}
+
+        check_project(conn, 3, json_output=True, verbose=True)
+
+        data = mock_json.call_args[0][0]
+        assert data["project_id"] == 3
+        assert "file_count" in data
+        assert data["file_count"] == 2
+        assert "permission_counts" in data
+        assert "visibility_counts" in data
+        assert "files" in data
+        assert len(data["files"]) == 2
+        assert data["files"][0]["name"] == "report.pdf"
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    def test_check_project_nonverbose_json(self, mock_perm, mock_vis, mock_json):
+        from footprinter.cli._policy_helpers import check_project
+
+        project_row = {"id": 3, "name": "My Project"}
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = project_row
+        conn.execute.return_value = cursor
+
+        check_project(conn, 3, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert "files" not in data
+        assert "file_count" not in data
+
+
+class TestCheckClientVerbose:
+    def _make_conn(self, client_row, project_rows):
+        conn = _mock_conn()
+        cursor_one = MagicMock()
+        cursor_one.fetchone.return_value = client_row
+        cursor_all = MagicMock()
+        cursor_all.fetchall.return_value = project_rows
+        conn.execute.side_effect = [cursor_one, cursor_all]
+        return conn
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_client_verbose_json(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_json
+    ):
+        from footprinter.cli._policy_helpers import check_client
+
+        client_row = {"id": 5, "name": "Acme Corp"}
+        project_rows = [{"id": 20, "name": "Project A"}, {"id": 21, "name": "Project B"}]
+        conn = self._make_conn(client_row, project_rows)
+
+        mock_batch_perm.return_value = {20: (True, "baseline"), 21: (True, "policy:8")}
+        mock_batch_vis.return_value = {20: ("full", "baseline"), 21: ("opaque", "policy:8")}
+
+        check_client(conn, 5, json_output=True, verbose=True)
+
+        data = mock_json.call_args[0][0]
+        assert data["client_id"] == 5
+        assert "project_count" in data
+        assert data["project_count"] == 2
+        assert "permission_counts" in data
+        assert "visibility_counts" in data
+        assert "projects" in data
+        assert len(data["projects"]) == 2
+        assert data["projects"][0]["name"] == "Project A"
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    def test_check_client_nonverbose_json(self, mock_perm, mock_vis, mock_json):
+        from footprinter.cli._policy_helpers import check_client
+
+        client_row = {"id": 5, "name": "Acme Corp"}
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = client_row
+        conn.execute.return_value = cursor
+
+        check_client(conn, 5, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert "projects" not in data
+        assert "project_count" not in data

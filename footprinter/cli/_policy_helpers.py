@@ -281,7 +281,9 @@ def check_folder(conn: sqlite3.Connection, path: str, json_output: bool, verbose
     return 0
 
 
-def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) -> int:
+def check_project(
+    conn: sqlite3.Connection, project_id: int, json_output: bool, verbose: bool = False
+) -> int:
     """Check resolved access for a project by ID."""
     from footprinter.permissions import resolve_permission_with_source
     from footprinter.visibility import resolve_visibility_with_source
@@ -295,6 +297,31 @@ def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) 
     vis_val, vis_src = resolve_visibility_with_source(conn, "project", project_id)
     perm_str = "allow" if perm_val else "deny"
 
+    file_rows = []
+    perm_results = {}
+    vis_results = {}
+    perm_counts = {"allow": 0, "deny": 0}
+    vis_counts = {"full": 0, "opaque": 0, "hidden": 0}
+
+    if verbose:
+        from footprinter.permissions import batch_resolve_permissions
+        from footprinter.visibility import batch_resolve_visibility
+
+        file_rows = conn.execute(
+            "SELECT id, name FROM files WHERE project_id = ? AND status = 'listed'",
+            (project_id,),
+        ).fetchall()
+        ids = [r["id"] for r in file_rows]
+
+        if ids:
+            perm_results = batch_resolve_permissions(conn, "file", ids)
+            vis_results = batch_resolve_visibility(conn, "file", ids)
+            for fid in ids:
+                allowed, _ = perm_results.get(fid, (False, "baseline"))
+                perm_counts["allow" if allowed else "deny"] += 1
+                v_state, _ = vis_results.get(fid, ("opaque", "baseline"))
+                vis_counts[v_state] = vis_counts.get(v_state, 0) + 1
+
     if json_output:
         data = {
             "project_id": project_id,
@@ -302,6 +329,22 @@ def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) 
             "permission": {"resolved": perm_str, "source": perm_src},
             "visibility": {"resolved": vis_val, "source": vis_src},
         }
+        if verbose:
+            data["file_count"] = len(file_rows)
+            data["permission_counts"] = perm_counts
+            data["visibility_counts"] = vis_counts
+            file_details = []
+            for r in file_rows:
+                allowed, p_src = perm_results.get(r["id"], (False, "baseline"))
+                v_state, v_src = vis_results.get(r["id"], ("opaque", "baseline"))
+                file_details.append({
+                    "name": r["name"],
+                    "permission": "allow" if allowed else "deny",
+                    "permission_source": p_src,
+                    "visibility": v_state,
+                    "visibility_source": v_src,
+                })
+            data["files"] = file_details
         output_json(data)
     else:
         console.print(f"\nProject Check: [bold]{row['name']}[/bold]  (id={project_id})")
@@ -309,10 +352,35 @@ def check_project(conn: sqlite3.Connection, project_id: int, json_output: bool) 
         console.print(f"  Permission: [bold]{perm_str}[/bold]   (from {perm_src})")
         console.print(f"  Visibility: [bold]{vis_val}[/bold]   (from {vis_src})")
 
+        if verbose:
+            file_count = len(file_rows)
+            console.print(f"\n  Files: {file_count}")
+            console.print(f"  Permission:  allow: {perm_counts['allow']}   deny: {perm_counts['deny']}")
+            console.print(
+                f"  Visibility:  full: {vis_counts['full']}   "
+                f"opaque: {vis_counts['opaque']}   hidden: {vis_counts['hidden']}"
+            )
+            if file_rows:
+                console.print()
+                table = Table(title="Files")
+                table.add_column("Name", style="cyan")
+                table.add_column("Permission")
+                table.add_column("Source", style="dim")
+                table.add_column("Visibility")
+                table.add_column("Source", style="dim")
+                for r in file_rows:
+                    fid = r["id"]
+                    allowed, p_src = perm_results.get(fid, (False, "baseline"))
+                    v_state, v_src = vis_results.get(fid, ("opaque", "baseline"))
+                    table.add_row(r["name"], "allow" if allowed else "deny", p_src, v_state, v_src)
+                console.print(table)
+
     return 0
 
 
-def check_client(conn: sqlite3.Connection, client_id: int, json_output: bool) -> int:
+def check_client(
+    conn: sqlite3.Connection, client_id: int, json_output: bool, verbose: bool = False
+) -> int:
     """Check resolved access for a client by ID."""
     from footprinter.permissions import resolve_permission_with_source
     from footprinter.visibility import resolve_visibility_with_source
@@ -326,6 +394,31 @@ def check_client(conn: sqlite3.Connection, client_id: int, json_output: bool) ->
     vis_val, vis_src = resolve_visibility_with_source(conn, "client", client_id)
     perm_str = "allow" if perm_val else "deny"
 
+    proj_rows = []
+    perm_results = {}
+    vis_results = {}
+    perm_counts = {"allow": 0, "deny": 0}
+    vis_counts = {"full": 0, "opaque": 0, "hidden": 0}
+
+    if verbose:
+        from footprinter.permissions import batch_resolve_permissions
+        from footprinter.visibility import batch_resolve_visibility
+
+        proj_rows = conn.execute(
+            "SELECT id, name FROM projects WHERE client_id = ?",
+            (client_id,),
+        ).fetchall()
+        ids = [r["id"] for r in proj_rows]
+
+        if ids:
+            perm_results = batch_resolve_permissions(conn, "project", ids)
+            vis_results = batch_resolve_visibility(conn, "project", ids)
+            for pid in ids:
+                allowed, _ = perm_results.get(pid, (False, "baseline"))
+                perm_counts["allow" if allowed else "deny"] += 1
+                v_state, _ = vis_results.get(pid, ("opaque", "baseline"))
+                vis_counts[v_state] = vis_counts.get(v_state, 0) + 1
+
     if json_output:
         data = {
             "client_id": client_id,
@@ -333,12 +426,52 @@ def check_client(conn: sqlite3.Connection, client_id: int, json_output: bool) ->
             "permission": {"resolved": perm_str, "source": perm_src},
             "visibility": {"resolved": vis_val, "source": vis_src},
         }
+        if verbose:
+            data["project_count"] = len(proj_rows)
+            data["permission_counts"] = perm_counts
+            data["visibility_counts"] = vis_counts
+            proj_details = []
+            for r in proj_rows:
+                allowed, p_src = perm_results.get(r["id"], (False, "baseline"))
+                v_state, v_src = vis_results.get(r["id"], ("opaque", "baseline"))
+                proj_details.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "permission": "allow" if allowed else "deny",
+                    "permission_source": p_src,
+                    "visibility": v_state,
+                    "visibility_source": v_src,
+                })
+            data["projects"] = proj_details
         output_json(data)
     else:
         console.print(f"\nClient Check: [bold]{row['name']}[/bold]  (id={client_id})")
         console.print()
         console.print(f"  Permission: [bold]{perm_str}[/bold]   (from {perm_src})")
         console.print(f"  Visibility: [bold]{vis_val}[/bold]   (from {vis_src})")
+
+        if verbose:
+            project_count = len(proj_rows)
+            console.print(f"\n  Projects: {project_count}")
+            console.print(f"  Permission:  allow: {perm_counts['allow']}   deny: {perm_counts['deny']}")
+            console.print(
+                f"  Visibility:  full: {vis_counts['full']}   "
+                f"opaque: {vis_counts['opaque']}   hidden: {vis_counts['hidden']}"
+            )
+            if proj_rows:
+                console.print()
+                table = Table(title="Projects")
+                table.add_column("Name", style="cyan")
+                table.add_column("Permission")
+                table.add_column("Source", style="dim")
+                table.add_column("Visibility")
+                table.add_column("Source", style="dim")
+                for r in proj_rows:
+                    pid = r["id"]
+                    allowed, p_src = perm_results.get(pid, (False, "baseline"))
+                    v_state, v_src = vis_results.get(pid, ("opaque", "baseline"))
+                    table.add_row(r["name"], "allow" if allowed else "deny", p_src, v_state, v_src)
+                console.print(table)
 
     return 0
 
