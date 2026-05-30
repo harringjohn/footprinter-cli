@@ -54,12 +54,12 @@ VIEWER requests pass through three layers before content is returned. Layer 0 is
 │  ─────────────────────────────────────────────────────────────  │
 │  hidden          │ Item excluded from results (doesn't exist)    │
 │  opaque          │ Minimal metadata: id, content_type, source    │
-│  visible         │ Full metadata returned                        │
+│  full            │ Full metadata returned                        │
 │                                                                  │
 │  Semantics: MOST-RESTRICTIVE-WINS                               │
 │  If ANY matching policy is hidden → hidden                      │
 │  If ANY matching policy is opaque → opaque                      │
-│  Otherwise → visible                                             │
+│  Otherwise → full                                                │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ (only if visible)
@@ -235,7 +235,7 @@ folder:~/Work/clients/      | opaque
 The resolution engine checks policies at each scope in the hierarchy for the entity type. All matching policies are collected, then most-restrictive-wins applies:
 
 ```
-hidden > opaque > visible
+hidden > opaque > full
 ```
 
 If no policies match at any scope, the hardcoded baseline applies: `BASELINE_VISIBILITY = 'opaque'` (in `footprinter/visibility.py`).
@@ -374,7 +374,7 @@ For single-item reads, `gate_access()` enforces all three layers in sequence —
 
 For VIEWER callers, items must be `listed` AND pass visibility checks. ADMIN callers bypass both status and visibility (and can use `include_unlisted`/`include_removed` on discovery tools).
 
-| Tool | removed / unlisted (VIEWER) | hidden | opaque | visible + listed |
+| Tool | removed / unlisted (VIEWER) | hidden | opaque | full + listed |
 |------|----------------------------|--------|--------|-----------------|
 | `footprinter_status` | Excluded from counts | N/A (aggregates) | N/A (aggregates) | Aggregate counts |
 | `footprinter_search` | Excluded | Excluded | Excluded (FTS), minimal fields (list) | Full metadata |
@@ -426,7 +426,7 @@ Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. 
 
 - Both opaque and denied items are **excluded entirely** from semantic results
 - Rationale: semantic matches are content-derived — appearing in results for a query reveals information about the content
-- The same `visible + allow` filter applies when the FTS5 keyword fallback is active (ML dependencies unavailable)
+- The same `full + allow` filter applies when the FTS5 keyword fallback is active (ML dependencies unavailable)
 - Unlike metadata search tools, semantic search tools do not report suppression counts — excluded items are silently omitted
 
 ### Metadata Search vs Semantic Search
@@ -435,8 +435,8 @@ Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. 
 |---------------------|-------------------|-----------------|-----------------|
 | `hidden`            | (any)             | Excluded        | Excluded        |
 | `opaque`            | (not evaluated)   | Minimal metadata | Excluded       |
-| `visible`           | `deny`            | Full metadata, no content | Excluded |
-| `visible`           | `allow`           | Full metadata + content | Full result + snippet |
+| `full`              | `deny`            | Full metadata, no content | Excluded |
+| `full`              | `allow`           | Full metadata + content | Full result + snippet |
 
 ---
 
@@ -488,7 +488,7 @@ All `set`, `reset`, and `check` commands accept scope strings:
 
 ```bash
 # Global
-fp permission set global --visibility visible --access allow
+fp permission set global --visibility full --access allow
 
 # Source type
 fp permission set source:emails --access deny
@@ -511,14 +511,14 @@ fp permission set email:10 --access deny
 |---------|-------|---------|
 | `allow` | `permission_policies` | Grant read access |
 | `deny` | `permission_policies` | Block read access |
-| `visible` | `visibility_policies` | Full metadata in results |
+| `full` | `visibility_policies` | Full metadata in results |
 | `opaque` | `visibility_policies` | Minimal metadata only |
 | `hidden` | `visibility_policies` | Excluded from results |
 
 ### Seed Defaults (Open Access)
 
 On fresh install, `fp setup` wizard automatically seeds:
-- `visibility_policies`: `global` = `visible`
+- `visibility_policies`: `global` = `full`
 - `permission_policies`: `global` = `allow`
 
 All indexed data is visible and readable by AI assistants by default. Use `fp permission set global --access deny` to restrict access.
@@ -535,7 +535,7 @@ Two layers control this:
 |-------|----------|---------|--------|
 | **Hardcoded baseline** | `BASELINE_PERMISSION = True` | Allow | When zero policy rows exist, all reads are permitted |
 | **Hardcoded baseline** | `BASELINE_VISIBILITY = 'opaque'` | Opaque | When zero policy rows exist, metadata is restricted to minimal fields (conservative) |
-| **Seeded policies** | *(created by `fp setup`)* | Allow + Visible | Explicit `global` rows that override baselines |
+| **Seeded policies** | *(created by `fp setup`)* | Allow + Full | Explicit `global` rows that override baselines |
 
 The distinction matters:
 
@@ -567,8 +567,8 @@ fp permission set "folder:~/Personal/identity/" --visibility hidden
 ### Allow Work Files, Deny Personal
 
 ```bash
-# Everything visible, deny reads by default, allow work files
-fp permission set global --visibility visible --access deny
+# Everything full visibility, deny reads by default, allow work files
+fp permission set global --visibility full --access deny
 fp permission set "folder:~/Work/" --access allow
 ```
 
