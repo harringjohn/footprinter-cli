@@ -1,4 +1,4 @@
-"""Status reporting — terminal status display and stage detail formatting."""
+"""Pipeline results display — stage detail formatting and completion summary."""
 
 from typing import Dict, List
 
