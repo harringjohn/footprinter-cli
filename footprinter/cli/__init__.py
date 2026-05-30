@@ -92,7 +92,6 @@ def main(argv=None) -> None:
     from footprinter.cli import (
         add,
         connect,
-        data,
         delete,
         doctor,
         ingest,
@@ -102,7 +101,6 @@ def main(argv=None) -> None:
         status,
         uninstall,
         update,
-        upsert,
         view,
     )
 
@@ -116,8 +114,6 @@ def main(argv=None) -> None:
         connect,
         view,
         update,
-        upsert,
-        data,
         delete,
         uninstall,
         doctor,

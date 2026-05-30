@@ -1,4 +1,4 @@
-"""fp ingest — pipeline execution, import, and refresh.
+"""fp ingest — pipeline execution and refresh.
 
 Thin routing layer that delegates to existing orchestrator/analysis classes.
 All heavy imports are deferred inside handler functions to keep ``fp --help`` fast.
@@ -31,8 +31,7 @@ def _build_parser(subparsers, name):
             "  fp ingest --full                       All sources (full re-process)\n"
             "  fp ingest refresh local                Re-scan local files (incremental)\n"
             "  fp ingest refresh all --full            Re-scan all sources (full)\n"
-            "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
-            "  fp ingest import export.zip            Import a chat export"
+            "  fp ingest --pipe local_files,browser   Specific internal pipes"
         ),
         formatter_class=FORMATTER,
     )
@@ -66,25 +65,6 @@ def _build_parser(subparsers, name):
 
     # Sub-subparsers for ingest actions
     subs = parser.add_subparsers(dest="ingest_action", metavar="COMMAND", title="commands (one required)")
-
-    # import
-    import_p = subs.add_parser(
-        "import",
-        help="Import a chat export",
-        description=(
-            "Import a Claude or ChatGPT chat export.\n\n"
-            "Accepts .zip files or extracted directories. Duplicate\n"
-            "imports are detected and skipped."
-        ),
-        epilog=("examples:\n  fp ingest import ~/Downloads/claude-export.zip\n  fp ingest import ./extracted-chats/"),
-        formatter_class=FORMATTER,
-    )
-    import_p.add_argument("path", help="Path to .zip file or extracted directory")
-    import_p.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress progress UI and summary output",
-    )
 
     # refresh
     refresh_p = subs.add_parser(
@@ -134,7 +114,6 @@ def _handle_ingest(args) -> None:
         return
 
     handlers = {
-        "import": _ingest_import,
         "refresh": _ingest_refresh,
     }
     handler = handlers.get(action)
@@ -444,45 +423,6 @@ def _ingest_pipeline(args) -> None:
 
         file_ids = _extract_touched_file_ids(results) if pipes is not None else None
         run_vectorization_stage(quiet=quiet, file_ids=file_ids)
-
-
-def _ingest_import(args) -> None:
-    """Import a chat export file."""
-    from pathlib import Path
-
-    from footprinter.ingest.chat_indexer import ChatIndexer
-    from footprinter.ingest.database import Database
-    from footprinter.paths import get_db_path
-
-    quiet = getattr(args, "quiet", False)
-
-    try:
-        db = Database(str(get_db_path()))
-        manager = ChatIndexer(db)
-        result = manager.upload(Path(args.path), console=None if quiet else console)
-
-        status = result.get("status", "unknown")
-        if not quiet:
-            if status == "duplicate":
-                prev = result.get("previous_upload", {})
-                console.print(
-                    f"[yellow]Already imported[/yellow] (uploaded {prev.get('uploaded_at', 'unknown')})"
-                )
-            else:
-                added = result.get("chats_added", 0)
-                updated = result.get("chats_updated", 0)
-                messages = result.get("messages_imported", 0)
-                errors = result.get("errors", 0)
-                console.print(
-                    f"[green]Imported[/green] {added + updated} chats"
-                    f" ({added} new, {updated} updated), {messages} messages"
-                )
-                if errors:
-                    console.print(f"[yellow]Warning:[/yellow] {errors} chats failed to import")
-    except Exception as e:
-        if not quiet:
-            console.print(f"[red]Import failed:[/red] {e}")
-        sys.exit(1)
 
 
 def _ingest_refresh(args) -> None:

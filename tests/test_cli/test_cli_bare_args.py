@@ -95,17 +95,6 @@ class TestBareConnectSubcommands:
 # ===========================================================================
 
 
-class TestBareDataCommand:
-    """fp data (no action) should show help with import action."""
-
-    def test_data_bare_shows_help(self):
-        stdout, stderr, code = run_fp("data")
-        output = stdout + stderr
-        assert code == 0
-        assert "import" in output.lower()
-        assert _RAW_ERROR not in output
-
-
 # ===========================================================================
 # 3. Search — bare invocation
 # ===========================================================================
@@ -133,7 +122,6 @@ class TestBareSearchCommand:
 # error path, not full execution.
 _BARE_INVOCATIONS = [
     # Top-level commands (fp <command>)
-    ("data",),
     ("search",),
     # Connect subcommands (fp connect <verb>)
     ("connect", "install"),

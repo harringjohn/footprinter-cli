@@ -66,7 +66,6 @@ class TestOpenDb:
 # Dispatcher modules that use dest="noun" for sub-subparsers
 DISPATCHER_MODULES = [
     "footprinter.cli.view",
-    "footprinter.cli.upsert",
     "footprinter.cli.delete",
 ]
 
@@ -215,7 +214,6 @@ class TestEntityExplicitFields:
 # All CLI modules with register() functions
 ALL_CLI_MODULES = [
     "footprinter.cli.view",
-    "footprinter.cli.upsert",
     "footprinter.cli.delete",
     "footprinter.cli.connect",
     "footprinter.cli.doctor",
@@ -277,7 +275,6 @@ class TestUsageFormat:
 # Modules with verb-level subparsers that should have titled groups
 VERB_MODULES = [
     "footprinter.cli.view",
-    "footprinter.cli.upsert",
     "footprinter.cli.delete",
     "footprinter.cli.connect",
     "footprinter.cli.setup",

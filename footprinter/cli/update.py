@@ -18,19 +18,90 @@ import csv
 import json
 import sqlite3
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.table import Table
 
 from footprinter.cli._common import (
     FORMATTER,
+    VALID_STATUSES_BY_ENTITY,
     add_json_flag,
     console,
     open_db,
     output_json,
 )
-from footprinter.cli.data import DATA_SOURCE_SPECS
-from footprinter.cli.upsert import VALID_STATUSES_BY_ENTITY
+
+# ---------------------------------------------------------------------------
+# Data-source entity registry (relocated from data.py)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DataSourceSpec:
+    """Specification for a data-source entity's import operations."""
+
+    table: str
+    writable_columns: list[str]
+    order_by: str
+    has_status: bool
+    valid_values: dict[str, str] = field(default_factory=dict)
+
+
+DATA_SOURCE_SPECS: dict[str, DataSourceSpec] = {
+    "files": DataSourceSpec(
+        table="files",
+        writable_columns=["status", "project_id", "client_id"],
+        order_by="id",
+        has_status=True,
+        valid_values={
+            "status": "listed, unlisted, removed",
+        },
+    ),
+    "folders": DataSourceSpec(
+        table="folders",
+        writable_columns=["status", "project_id", "client_id"],
+        order_by="id",
+        has_status=True,
+        valid_values={
+            "status": "listed, unlisted, removed",
+        },
+    ),
+    "emails": DataSourceSpec(
+        table="emails",
+        writable_columns=["status", "project_id", "client_id"],
+        order_by="id",
+        has_status=True,
+        valid_values={
+            "status": "listed, unlisted, removed",
+        },
+    ),
+    "chats": DataSourceSpec(
+        table="chats",
+        writable_columns=["status", "project_id", "client_id"],
+        order_by="id",
+        has_status=True,
+        valid_values={
+            "status": "listed, unlisted, removed",
+        },
+    ),
+    "messages": DataSourceSpec(
+        table="messages",
+        writable_columns=[],
+        order_by="id",
+        has_status=False,
+        valid_values={},
+    ),
+    "visits": DataSourceSpec(
+        table="visits",
+        writable_columns=["status", "project_id", "client_id"],
+        order_by="id",
+        has_status=True,
+        valid_values={
+            "status": "listed, unlisted, removed",
+        },
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Entity dispatch table
