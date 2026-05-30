@@ -46,7 +46,7 @@ _VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 # ---------------------------------------------------------------------------
 
 
-def _print_stats(stats: dict[str, int], elapsed: float) -> None:
+def _print_recalc_stats(stats: dict[str, int], elapsed: float | None = None) -> None:
     if not stats:
         return
     parts = [
@@ -55,21 +55,8 @@ def _print_stats(stats: dict[str, int], elapsed: float) -> None:
         if count
     ]
     if parts:
-        console.print(
-            f"  [dim]Recalculated: {', '.join(parts)} in {elapsed:.1f}s[/dim]"
-        )
-
-
-def _print_recalc_stats(stats: dict[str, int]) -> None:
-    if not stats:
-        return
-    parts = [
-        f"{count} {etype}{'s' if count != 1 else ''}"
-        for etype, count in stats.items()
-        if count
-    ]
-    if parts:
-        console.print(f"  [dim]Recalculated: {', '.join(parts)}[/dim]")
+        suffix = f" in {elapsed:.1f}s" if elapsed is not None else ""
+        console.print(f"  [dim]Recalculated: {', '.join(parts)}{suffix}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +74,7 @@ def _recalculate(args) -> None:
         t0 = time.monotonic()
         stats = recalculate_with_progress(conn, scope)
         elapsed = time.monotonic() - t0
-        _print_stats(stats, elapsed)
+        _print_recalc_stats(stats, elapsed)
     finally:
         conn.close()
 
