@@ -2730,7 +2730,7 @@ class TestCheckSemanticDeps:
         result = _check_semantic_deps()
         assert result is True
         mock_run.assert_called_once_with(
-            [sys.executable, "-m", "pip", "install", "footprinter-cli[semantic]"],
+            [sys.executable, "-m", "pip", "install", "footprinter-cli[full]"],
             capture_output=True,
             text=True,
         )

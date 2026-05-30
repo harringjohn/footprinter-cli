@@ -298,7 +298,7 @@ def _print_completion_summary(console, results: List[Dict], *, show_next_steps: 
     if show_next_steps:
         console.print()
         console.print("[dim]Next steps:[/dim]")
-        console.print("[dim]  fp mcp                  Configure Claude Desktop[/dim]")
+        console.print("[dim]  fp setup mcp --claude    Configure Claude Desktop[/dim]")
         console.print("[dim]  fp status              Show data counts[/dim]")
         console.print()
 

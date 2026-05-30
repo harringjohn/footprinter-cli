@@ -125,7 +125,7 @@ def check_optional_features(
         "Semantic Search",
         sem_installed,
         sem_enabled,
-        "pip install footprinter-cli[semantic]",
+        "pip install footprinter-cli[full]",
     ))
 
     parse_installed = all(

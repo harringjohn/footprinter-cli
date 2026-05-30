@@ -19,5 +19,5 @@ def get_embedding_function():
         ImportError: If chromadb is not installed.
     """
     if not _SEMANTIC_AVAILABLE:
-        raise ImportError("chromadb is required for embeddings. Install with: pip install footprinter-cli[semantic]")
+        raise ImportError("chromadb is required for embeddings. Install with: pip install footprinter-cli[full]")
     return ONNXMiniLM_L6_V2()

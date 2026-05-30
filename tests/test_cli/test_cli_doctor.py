@@ -247,7 +247,7 @@ class TestDoctorWarnMessageRendering:
 
         stdout, stderr, code = run_fp("doctor")
         output = stdout + stderr
-        assert "footprinter-cli[semantic]" in output
+        assert "footprinter-cli[full]" in output
 
     def test_parse_extra_renders_in_warn_hint(self, tmp_path, monkeypatch):
         self._force_missing(monkeypatch, "docx", "pypdf", "openpyxl", "pptx")
@@ -268,8 +268,8 @@ class TestDoctorWarnMessageRendering:
 
         semantic_check = next(c for c in data if c["name"] == "Semantic Search")
         assert semantic_check["status"] == "WARN"
-        assert "footprinter-cli[semantic]" in semantic_check["message"]
-        assert "\\[semantic]" not in semantic_check["message"]
+        assert "footprinter-cli[full]" in semantic_check["message"]
+        assert "\\[full]" not in semantic_check["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +723,7 @@ class TestDoctorOptionalFeatures:
         from footprinter.cli import diagnostics
 
         monkeypatch.setattr(diagnostics, "check_optional_features", lambda cfg: [
-            ("Semantic Search", True, False, "pip install footprinter-cli[semantic]"),
+            ("Semantic Search", True, False, "pip install footprinter-cli[full]"),
             ("Document Parsing", False, None, "pip install footprinter-cli[parse]"),
         ])
         monkeypatch.setattr(
