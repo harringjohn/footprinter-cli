@@ -98,7 +98,7 @@ def _run_rebuild(
     store_inst=None,
     chroma_exists=False,
 ):
-    """Run _rebuild_vectors with full mocking. Returns (mock_store_instance, mock_conn, mock_cursor)."""
+    """Run rebuild_vectors with full mocking. Returns (mock_store_instance, mock_conn, mock_cursor)."""
     mock_vs_cls, mock_inst = _mock_store()
     if store_inst:
         mock_inst = store_inst
@@ -120,12 +120,12 @@ def _run_rebuild(
     ):
         mock_sqlite.connect.return_value = mock_conn
 
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
         kwargs = dict(quiet=quiet, source=source, phase=phase)
         if mode is not None:
             kwargs["mode"] = mode
-        _rebuild_vectors(**kwargs)
+        rebuild_vectors(**kwargs)
 
     return mock_inst, mock_conn, mock_cursor
 
@@ -239,9 +239,9 @@ class TestPhaseIsolation:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, phase="files")
+            rebuild_vectors(quiet=True, phase="files")
 
         mock_rmtree.assert_not_called()
         mock_vs_cls.reset_instance.assert_not_called()
@@ -296,7 +296,7 @@ class TestSignalHandling:
             mock_ext.return_value = mock_ext_inst
 
             cli_mod._shutdown = False
-            cli_mod._rebuild_vectors(quiet=True, source="files")
+            cli_mod.rebuild_vectors(quiet=True, source="files")
 
         # Should have stopped before processing all 10 files
         assert call_count[0] < 10, "Shutdown flag did not stop file processing"
@@ -370,9 +370,9 @@ class TestWriteDecoupling:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, source="chats", phase="messages")
+            rebuild_vectors(quiet=True, source="chats", phase="messages")
 
         # SQLite UPDATE for vectorized_at should NOT have been called
         update_calls = [
@@ -444,9 +444,9 @@ class TestProgressOutput:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=False, source="all")
+            rebuild_vectors(quiet=False, source="all")
 
         # Check that pre-flight summary was printed
         printed = [str(c) for c in mock_print.call_args_list]
@@ -492,9 +492,9 @@ class TestPreflightValidation:
         ):
             mock_sqlite.connect.side_effect = track_connect
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, source="all", mode="full")
+            rebuild_vectors(quiet=True, source="all", mode="full")
 
         assert "db_connect" in call_order, "DB was never connected"
         assert "rmtree" in call_order, "Chroma was never deleted"
@@ -615,11 +615,11 @@ class TestCheckIntegrity:
 
 
 class TestCliPhaseArgument:
-    """--phase should be wired through to _rebuild_vectors."""
+    """--phase should be wired through to rebuild_vectors."""
 
     def test_phase_argument_parsed(self):
         """fp doctor semantic --phase chat_info should pass phase."""
-        with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
+        with patch("footprinter.ingest.vector_ops.rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
             run_fp("doctor", "semantic", "--phase", "chat_info")
@@ -630,7 +630,7 @@ class TestCliPhaseArgument:
 
     def test_phase_default_is_none(self):
         """Without --phase, phase should be None."""
-        with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
+        with patch("footprinter.ingest.vector_ops.rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
             run_fp("doctor", "semantic")
@@ -673,9 +673,9 @@ def test_rebuild_vectors_both_disabled_does_not_delete_chroma():
         patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=False),
         patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
     ):
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
-        _rebuild_vectors(quiet=True, source="all")
+        rebuild_vectors(quiet=True, source="all")
 
     # get_chroma_path should never be called (early return before delete)
     mock_chroma_path.assert_not_called()
@@ -706,9 +706,9 @@ def test_rebuild_vectors_source_files_both_disabled_no_delete():
         patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
         patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
     ):
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
-        _rebuild_vectors(quiet=True, source="files")
+        rebuild_vectors(quiet=True, source="files")
 
     # source=files + file_vec=False → early exit, no delete
     mock_chroma_path.assert_not_called()
@@ -767,9 +767,9 @@ class TestIncrementalMode:
             ]
             mock_ext.from_config.return_value = mock_ext_inst
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, source="files", mode="incremental")
+            rebuild_vectors(quiet=True, source="files", mode="incremental")
 
         assert mock_inst.upsert_file.called, "New file was not vectorized in incremental mode"
 
@@ -801,9 +801,9 @@ class TestIncrementalMode:
             ]
             mock_ext.from_config.return_value = mock_ext_inst
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, source="files", mode="incremental")
+            rebuild_vectors(quiet=True, source="files", mode="incremental")
 
         assert mock_inst.upsert_file.called, "Modified file was not re-vectorized in incremental mode"
 
@@ -948,9 +948,9 @@ class TestIncrementalMode:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True, mode="full")
+            rebuild_vectors(quiet=True, mode="full")
 
         # Chroma MUST be deleted in full mode
         mock_rmtree.assert_called_once()
@@ -983,9 +983,9 @@ class TestIncrementalMode:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=False, mode="sync")
+            rebuild_vectors(quiet=False, mode="sync")
 
         # Should have printed sync verification output
         printed = [str(c) for c in mock_print.call_args_list]
@@ -997,7 +997,7 @@ class TestIncrementalMode:
         assert len(sync_lines) > 0, f"Sync mode did not log verification results. Printed: {printed}"
 
     def test_default_mode_is_incremental(self):
-        """_rebuild_vectors() with no mode should behave as incremental (no chroma delete)."""
+        """rebuild_vectors() with no mode should behave as incremental (no chroma delete)."""
         mock_vs_cls, mock_inst = _mock_store()
         mock_conn, _ = _make_mock_conn()
         mock_chroma_path = MagicMock()
@@ -1015,9 +1015,9 @@ class TestIncrementalMode:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=True)
+            rebuild_vectors(quiet=True)
 
         # Default mode should NOT delete chroma
         mock_rmtree.assert_not_called()
@@ -1025,7 +1025,7 @@ class TestIncrementalMode:
 
     def test_cli_argument_parsing(self):
         """CLI doctor semantic should parse mode values correctly."""
-        with patch("footprinter.ingest.vector_ops._rebuild_vectors") as mock_rebuild:
+        with patch("footprinter.ingest.vector_ops.rebuild_vectors") as mock_rebuild:
             from conftest import run_fp
 
             # bare doctor semantic → incremental
@@ -1084,9 +1084,9 @@ class TestIncrementalMode:
         ):
             mock_sqlite.connect.return_value = mock_conn
 
-            from footprinter.ingest.vector_ops import _rebuild_vectors
+            from footprinter.ingest.vector_ops import rebuild_vectors
 
-            _rebuild_vectors(quiet=False, mode="incremental")
+            rebuild_vectors(quiet=False, mode="incremental")
 
         printed = [str(c) for c in mock_print.call_args_list]
         # Should show separate counts for categories (new, modified, removed)
@@ -1534,7 +1534,7 @@ def _run_rebuild_with_real_path(
     file_vec=True,
     chat_vec=True,
 ):
-    """Run _rebuild_vectors using a real tmp_path for chroma so stamp files are observable."""
+    """Run rebuild_vectors using a real tmp_path for chroma so stamp files are observable."""
     _, mock_inst = _mock_store()
     mock_cls = MagicMock()
     mock_cls.get_instance.return_value = mock_inst
@@ -1558,10 +1558,10 @@ def _run_rebuild_with_real_path(
     ):
         mock_sqlite.connect.return_value = mock_conn
 
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
         kwargs = dict(quiet=quiet, source="all", phase=phase, mode=mode)
-        _rebuild_vectors(**kwargs)
+        rebuild_vectors(**kwargs)
 
     return chroma_path
 

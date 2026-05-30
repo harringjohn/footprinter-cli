@@ -10,13 +10,31 @@ import pytest
 
 
 class TestCliModuleExports:
-    """cli.py should only export _rebuild_vectors."""
+    """vector_ops.py should export rebuild_vectors and repair_fts as public API."""
 
-    def test_cli_module_exports_surviving(self):
-        """_rebuild_vectors should be importable and callable."""
-        from footprinter.ingest.vector_ops import _rebuild_vectors
+    def test_rebuild_vectors_is_public(self):
+        """rebuild_vectors should be importable and callable (no underscore prefix)."""
+        from footprinter.ingest.vector_ops import rebuild_vectors
 
-        assert callable(_rebuild_vectors)
+        assert callable(rebuild_vectors)
+
+    def test_repair_fts_is_public(self):
+        """repair_fts should be importable and callable (no underscore prefix)."""
+        from footprinter.ingest.vector_ops import repair_fts
+
+        assert callable(repair_fts)
+
+    def test_private_names_removed(self):
+        """_rebuild_vectors and _repair_fts should no longer exist."""
+        import importlib
+
+        mod = importlib.import_module("footprinter.ingest.vector_ops")
+        assert not hasattr(mod, "_rebuild_vectors"), (
+            "_rebuild_vectors still exists — should be renamed to rebuild_vectors"
+        )
+        assert not hasattr(mod, "_repair_fts"), (
+            "_repair_fts still exists — should be renamed to repair_fts"
+        )
 
     def test_dispatch_refresh_removed(self):
         """_dispatch_refresh should no longer exist in cli.py."""
@@ -41,12 +59,12 @@ class TestOrchestratorNoReexports:
     """orchestrator.py should NOT re-export cli names (scaffolding removed)."""
 
     def test_orchestrator_does_not_reexport_rebuild_vectors(self):
-        """_rebuild_vectors should NOT be importable from orchestrator."""
+        """rebuild_vectors should NOT be importable from orchestrator."""
         import importlib
 
         orch = importlib.import_module("footprinter.ingest.orchestrator")
-        assert not hasattr(orch, "_rebuild_vectors"), (
-            "orchestrator still re-exports _rebuild_vectors — remove __getattr__"
+        assert not hasattr(orch, "rebuild_vectors"), (
+            "orchestrator still re-exports rebuild_vectors — remove __getattr__"
         )
 
     def test_orchestrator_does_not_reexport_dispatch_refresh(self):

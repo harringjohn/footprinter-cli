@@ -304,7 +304,7 @@ class TestSingleton:
         first = VectorStore.get_instance(chroma_path=str(chroma_dir))
         assert VectorStore._instance is first
 
-        # Simulate _rebuild_vectors deleting chroma in another process
+        # Simulate rebuild_vectors deleting chroma in another process
         shutil.rmtree(chroma_dir)
         assert not chroma_dir.exists()
 

@@ -392,12 +392,12 @@ class TestDoctorSubcommands:
 
 
 class TestDoctorSearch:
-    @patch("footprinter.ingest.vector_ops._repair_fts")
+    @patch("footprinter.ingest.vector_ops.repair_fts")
     def test_calls_repair_fts(self, mock_repair):
         run_fp("doctor", "search")
         mock_repair.assert_called_once()
 
-    @patch("footprinter.ingest.vector_ops._repair_fts")
+    @patch("footprinter.ingest.vector_ops.repair_fts")
     def test_passes_quiet(self, mock_repair):
         run_fp("doctor", "search", "--quiet")
         _, kwargs = mock_repair.call_args
@@ -410,48 +410,48 @@ class TestDoctorSearch:
 
 
 class TestDoctorSemantic:
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_calls_rebuild_vectors(self, mock_rebuild):
         run_fp("doctor", "semantic")
         mock_rebuild.assert_called_once()
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_default_mode_incremental(self, mock_rebuild):
         run_fp("doctor", "semantic")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("mode") == "incremental"
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_full_mode(self, mock_rebuild):
         run_fp("doctor", "semantic", "full")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("mode") == "full"
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_sync_mode(self, mock_rebuild):
         run_fp("doctor", "semantic", "sync")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("mode") == "sync"
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_vector_source_flag(self, mock_rebuild):
         run_fp("doctor", "semantic", "--vector-source", "files")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("source") == "files"
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_phase_flag(self, mock_rebuild):
         run_fp("doctor", "semantic", "--phase", "chat_info")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("phase") == "chat_info"
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_quiet_flag(self, mock_rebuild):
         run_fp("doctor", "semantic", "--quiet")
         _, kwargs = mock_rebuild.call_args
         assert kwargs.get("quiet") is True
 
-    @patch("footprinter.ingest.vector_ops._rebuild_vectors")
+    @patch("footprinter.ingest.vector_ops.rebuild_vectors")
     def test_all_flags_combined(self, mock_rebuild):
         run_fp("doctor", "semantic", "full", "--vector-source", "chats", "--phase", "messages", "--quiet")
         _, kwargs = mock_rebuild.call_args

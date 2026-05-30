@@ -272,7 +272,7 @@ class TestCliRepairFtsFlag:
         """fp doctor search is accepted by the argparser and routes to handler."""
         from unittest.mock import patch
 
-        with patch("footprinter.ingest.vector_ops._repair_fts") as mock_repair:
+        with patch("footprinter.ingest.vector_ops.repair_fts") as mock_repair:
             from tests.conftest import run_fp
 
             stdout, stderr, code = run_fp("doctor", "search")

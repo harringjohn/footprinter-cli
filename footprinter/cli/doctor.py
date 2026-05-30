@@ -357,15 +357,15 @@ def register(subparsers) -> None:
 
 
 def _handle_search(args) -> None:
-    from footprinter.ingest.vector_ops import _repair_fts
+    from footprinter.ingest.vector_ops import repair_fts
 
-    _repair_fts(quiet=getattr(args, "quiet", False))
+    repair_fts(quiet=getattr(args, "quiet", False))
 
 
 def _handle_semantic(args) -> None:
-    from footprinter.ingest.vector_ops import _rebuild_vectors
+    from footprinter.ingest.vector_ops import rebuild_vectors
 
-    _rebuild_vectors(
+    rebuild_vectors(
         quiet=getattr(args, "quiet", False),
         source=getattr(args, "vector_source", "all"),
         phase=getattr(args, "phase", None),
