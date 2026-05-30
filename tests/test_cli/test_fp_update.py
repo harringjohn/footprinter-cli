@@ -46,7 +46,8 @@ def _csv_test_db():
     conn.row_factory = sqlite3.Row
     conn.execute(
         "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-        "project_id INTEGER, client_id INTEGER)"
+        "project_id INTEGER, client_id INTEGER, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
     )
     conn.execute(
         "CREATE TABLE ingests ("
@@ -440,8 +441,8 @@ class TestUpdateBulkCsv:
 
     def test_bulk_csv_updates_rows(self, tmp_path):
         conn = _csv_test_db()
-        conn.execute("INSERT INTO files VALUES (1, 'listed', NULL, NULL)")
-        conn.execute("INSERT INTO files VALUES (2, 'listed', NULL, NULL)")
+        conn.execute("INSERT INTO files (id, status, project_id, client_id) VALUES (1, 'listed', NULL, NULL)")
+        conn.execute("INSERT INTO files (id, status, project_id, client_id) VALUES (2, 'listed', NULL, NULL)")
         conn.commit()
 
         csv_path = _write_csv(tmp_path, [
@@ -499,7 +500,7 @@ class TestUpdateBulkCsv:
     def test_bulk_csv_zero_clears_fk(self, tmp_path):
         """Sentinel value '0' for project_id/client_id clears to NULL."""
         conn = _csv_test_db()
-        conn.execute("INSERT INTO files VALUES (1, 'listed', 5, 2)")
+        conn.execute("INSERT INTO files (id, status, project_id, client_id) VALUES (1, 'listed', 5, 2)")
         conn.commit()
 
         csv_path = _write_csv(tmp_path, ["id,project_id", "1,0"])
@@ -510,6 +511,24 @@ class TestUpdateBulkCsv:
         assert code == 0
         row = conn.execute("SELECT project_id FROM files WHERE id = 1").fetchone()
         assert row[0] is None
+        conn.close()
+
+    def test_bulk_csv_stamps_updated_at(self, tmp_path):
+        conn = _csv_test_db()
+        conn.execute(
+            "INSERT INTO files (id, status, updated_at) VALUES (1, 'listed', '2000-01-01')"
+        )
+        conn.commit()
+
+        csv_path = _write_csv(tmp_path, ["id,status", "1,unlisted"])
+
+        with patch("footprinter.cli.update.open_db", return_value=_open_db_stub(conn)):
+            _, _, code = run_fp("update", "files", csv_path)
+
+        assert code == 0
+        row = conn.execute("SELECT updated_at FROM files WHERE id = 1").fetchone()
+        assert row[0] is not None
+        assert row[0] > "2000-01-01"
         conn.close()
 
 

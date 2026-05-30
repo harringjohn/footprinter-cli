@@ -618,6 +618,8 @@ def _handle_bulk_csv(args) -> None:
                     skipped += 1
                     continue
 
+                set_parts.append("updated_at = CURRENT_TIMESTAMP")
+
                 update_sql = (
                     f"UPDATE {spec.table} SET {', '.join(set_parts)} "  # noqa: S608
                     f"WHERE id = ?"
