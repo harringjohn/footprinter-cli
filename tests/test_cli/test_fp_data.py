@@ -6,7 +6,7 @@ Validates:
   3. fp data import <noun> <file> executes directly
   4. writable_columns exclude visibility/access (policy-only columns)
 
-Export and template functionality moved to fp view format flags (FPR-1863).
+Export and template functionality moved to fp view format flags.
 """
 
 from contextlib import contextmanager

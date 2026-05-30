@@ -1,4 +1,4 @@
-"""Tests for fp view --project and --client filter flags (FPR-1853).
+"""Tests for fp view --project and --client filter flags.
 
 Validates:
   1. --project filters files, folders, and emails by project_id

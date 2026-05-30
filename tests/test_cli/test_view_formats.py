@@ -1,4 +1,4 @@
-"""Tests for fp view --csv, --json, and --template format flags (FPR-1863).
+"""Tests for fp view --csv, --json, and --template format flags.
 
 Validates:
   1. --csv outputs full export columns (not just display columns)
