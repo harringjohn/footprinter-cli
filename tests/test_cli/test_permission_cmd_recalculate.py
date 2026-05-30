@@ -184,3 +184,55 @@ class TestRecalculateStats:
         output = capsys.readouterr().out
         assert "2 emails" in output
         assert "0 file" not in output
+
+
+# ---------------------------------------------------------------------------
+# _print_recalc_stats unit tests (FPR-1873)
+# ---------------------------------------------------------------------------
+
+
+class TestPrintRecalcStats:
+    def test_with_elapsed_shows_timing(self, capsys):
+        from footprinter.cli.permission_cmd import _print_recalc_stats
+
+        _print_recalc_stats({"file": 5, "email": 2}, elapsed=1.234)
+
+        output = capsys.readouterr().out
+        assert "5 files" in output
+        assert "2 emails" in output
+        assert "in 1.2s" in output
+
+    def test_without_elapsed_omits_timing(self, capsys):
+        from footprinter.cli.permission_cmd import _print_recalc_stats
+
+        _print_recalc_stats({"file": 5, "email": 2})
+
+        output = capsys.readouterr().out
+        assert "5 files" in output
+        assert "2 emails" in output
+        assert " in " not in output
+
+    def test_empty_stats_prints_nothing(self, capsys):
+        from footprinter.cli.permission_cmd import _print_recalc_stats
+
+        _print_recalc_stats({})
+
+        output = capsys.readouterr().out
+        assert output == ""
+
+    def test_all_zero_prints_nothing(self, capsys):
+        from footprinter.cli.permission_cmd import _print_recalc_stats
+
+        _print_recalc_stats({"file": 0})
+
+        output = capsys.readouterr().out
+        assert output == ""
+
+    def test_singular_form(self, capsys):
+        from footprinter.cli.permission_cmd import _print_recalc_stats
+
+        _print_recalc_stats({"file": 1})
+
+        output = capsys.readouterr().out
+        assert "1 file" in output
+        assert "1 files" not in output
