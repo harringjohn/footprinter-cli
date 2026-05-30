@@ -1,10 +1,8 @@
-"""fp mcp — MCP server and access policy management.
+"""fp mcp — MCP server and access policy management (REMOVAL CANDIDATE).
 
-Subcommands:
-    fp mcp                    Start the MCP server
-    fp mcp check              Show all policies / resolve combined access
-    fp mcp set <scope>        Set visibility and/or permission for a scope
-    fp mcp reset <scope>      Remove policy (fall back to inheritance)
+Server launcher superseded by fp-mcp console_script (FPR-1850).
+Policy subcommands superseded by fp permission (FPR-1868).
+This module is no longer registered in cli/__init__.py.
 """
 
 from rich.table import Table

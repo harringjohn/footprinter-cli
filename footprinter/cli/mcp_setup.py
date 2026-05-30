@@ -94,7 +94,7 @@ def get_mcp_command(project_root: Path = None) -> tuple[str, list[str]]:
     if fp_mcp_cmd:
         return fp_mcp_cmd, []
 
-    # 2. Fall back to run_mcp.sh (dev environments)
+    # 2. Fall back to run_mcp.sh (dev environments — script launches MCP directly, no args)
     run_script = root / "run_mcp.sh"
     if run_script.exists():
         return str(run_script), []
