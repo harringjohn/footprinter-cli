@@ -201,7 +201,8 @@ class TestChatIndexerRespectsFlag:
             "VALUES (1, 'chat-1', 'test', 'Test Chat', 1)"
         )
         db.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, metadata, vectorize) VALUES (1, 1, 'user', 'Exclude this', ?, 0)",
+            "INSERT INTO messages (id, chat_id, role, content, metadata, vectorize)"
+            " VALUES (1, 1, 'user', 'Exclude this', ?, 0)",
             (json.dumps({"vectorize": 0}),),
         )
         db.conn.commit()

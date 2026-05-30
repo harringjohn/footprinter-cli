@@ -147,9 +147,9 @@ class TestListShowsAllPolicies:
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
     def test_list_json_mode(self, mock_db, mock_vis, mock_perm, capsys):
-        from footprinter.cli.permission_cmd import _list
-
         import json
+
+        from footprinter.cli.permission_cmd import _list
 
         conn = _mock_conn()
         mock_db.return_value = conn
@@ -172,9 +172,9 @@ class TestListShowsAllPolicies:
 
     @patch("footprinter.cli.permission_cmd.get_policy_db", return_value=None)
     def test_list_no_db_json_returns_empty(self, mock_db, capsys):
-        from footprinter.cli.permission_cmd import _list
-
         import json
+
+        from footprinter.cli.permission_cmd import _list
 
         _list(Namespace(json=True))
 
@@ -873,9 +873,9 @@ class TestCheckNoDb:
 
     @patch("footprinter.cli.permission_cmd.get_policy_db", return_value=None)
     def test_check_no_db_json(self, mock_db, capsys):
-        from footprinter.cli.permission_cmd import _check
-
         import json
+
+        from footprinter.cli.permission_cmd import _check
 
         _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=True, verbose=False))
 

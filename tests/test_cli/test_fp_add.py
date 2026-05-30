@@ -213,7 +213,7 @@ class TestAddBulkCsv:
     @patch("footprinter.cli.add.IngestService")
     @patch("footprinter.cli.add.open_db")
     def test_add_clients_csv_creates_all_new(self, mock_open_db, _mock_ingest, tmp_path):
-        mock_conn = _patched_open_db(mock_open_db)
+        _patched_open_db(mock_open_db)
         csv_path = _write_csv(tmp_path, [
             "name,client_type",
             "Acme,external",
@@ -379,7 +379,7 @@ class TestAddDataBulkCsv:
         with patch(
             "footprinter.cli.add._get_insert_fn",
             return_value=MagicMock(return_value=("inserted", 1)),
-        ) as mock_get_fn:
+        ):
             stdout, _, code = run_fp("add", "files", csv_path, "--json")
 
         assert code == 0
@@ -467,7 +467,7 @@ class TestAddChatImport:
 
         with (
             patch("footprinter.ingest.chat_indexer.ChatIndexer") as MockIndexer,
-            patch("footprinter.ingest.database.Database") as MockDatabase,
+            patch("footprinter.ingest.database.Database"),
             patch("footprinter.paths.get_db_path", return_value=tmp_path / "test.db"),
         ):
             mock_indexer = MockIndexer.return_value

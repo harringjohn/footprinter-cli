@@ -137,8 +137,9 @@ class TestChunkContent:
         """Overlap >= chunk_size would cause an infinite loop; reject it."""
         import pytest
 
-        with pytest.raises(ValueError, match="must be less than chunk_size"):
-            chunk_content("word " * 600, chunk_size=1000, chunk_overlap=1000)
+        with pytest.warns(DeprecationWarning):
+            with pytest.raises(ValueError, match="must be less than chunk_size"):
+                chunk_content("word " * 600, chunk_size=1000, chunk_overlap=1000)
 
     def test_overlap_1_0_uses_legacy_path(self):
         """chunk_overlap=1.0 hits the legacy path (1 char), not 100% fractional."""

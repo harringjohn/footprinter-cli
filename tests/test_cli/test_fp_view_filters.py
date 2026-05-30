@@ -8,7 +8,6 @@ Validates:
   5. Unsupported flag + noun combos are rejected by argparse
 """
 
-import sqlite3
 from contextlib import contextmanager
 from unittest.mock import patch
 

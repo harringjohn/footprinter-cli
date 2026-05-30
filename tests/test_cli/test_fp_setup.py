@@ -14,7 +14,6 @@ import pytest
 
 from tests.conftest import run_fp
 
-
 # ---------------------------------------------------------------------------
 # 1. Parser tree — register() exists and subcommands work
 # ---------------------------------------------------------------------------

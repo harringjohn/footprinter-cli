@@ -8,8 +8,6 @@ import json
 import sqlite3
 from unittest.mock import patch
 
-import pytest
-
 
 def _make_test_db(tmp_path):
     """Create a DB with files, chats, and messages for update CLI tests."""

@@ -502,7 +502,10 @@ class TestContexterSearch:
             )
             table = self._SCOPE_TO_TABLE.get(scope)
             if table:
-                cursor.execute(f"UPDATE {table} SET visibility='full' WHERE visibility IS NULL OR visibility = 'inherit'")
+                cursor.execute(
+                    f"UPDATE {table} SET visibility='full'"
+                    " WHERE visibility IS NULL OR visibility = 'inherit'"
+                )
         conn.commit()
 
     def test_search_files_by_name(self, mcp_db):
@@ -1496,7 +1499,10 @@ class TestContexterSearchFTS5:
             )
             table = self._SCOPE_TO_TABLE.get(scope)
             if table:
-                cursor.execute(f"UPDATE {table} SET visibility='full' WHERE visibility IS NULL OR visibility = 'inherit'")
+                cursor.execute(
+                    f"UPDATE {table} SET visibility='full'"
+                    " WHERE visibility IS NULL OR visibility = 'inherit'"
+                )
         conn.commit()
 
     def test_artifact_search_matches_content_preview(self, mcp_db):
@@ -2551,13 +2557,15 @@ class TestContexterFolder:
         )
         # Visible file
         cursor.execute(
-            "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id, visibility) "
-            "VALUES (1, 'visible.py', 'code', 100, '2024-01-01', 'local', 'listed', 1, 'full')"
+            "INSERT INTO files"
+            " (id, name, content_type, size_bytes, modified_at, source, status, folder_id, visibility)"
+            " VALUES (1, 'visible.py', 'code', 100, '2024-01-01', 'local', 'listed', 1, 'full')"
         )
         # Hidden file (excluded by SQL WHERE)
         cursor.execute(
-            "INSERT INTO files (id, name, content_type, size_bytes, modified_at, source, status, folder_id, visibility) "
-            "VALUES (2, 'hidden.py', 'code', 200, '2024-01-02', 'local', 'listed', 1, 'hidden')"
+            "INSERT INTO files"
+            " (id, name, content_type, size_bytes, modified_at, source, status, folder_id, visibility)"
+            " VALUES (2, 'hidden.py', 'code', 200, '2024-01-02', 'local', 'listed', 1, 'hidden')"
         )
         mcp_db.commit()
 

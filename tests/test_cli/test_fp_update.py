@@ -113,7 +113,7 @@ class TestUpdateSingle:
     @patch("footprinter.cli.update.open_db")
     @patch("footprinter.cli.update._update_entity")
     def test_update_client_by_id(self, mock_update, mock_open_db):
-        mock_conn = _patched_open_db(mock_open_db)
+        _patched_open_db(mock_open_db)
         mock_update.return_value = True
 
         _, _, code = run_fp("update", "client", "5", "--name", "New Name")
@@ -406,7 +406,7 @@ class TestUpdateBulkPathAssign:
     @patch("footprinter.cli.update._get_service")
     @patch("footprinter.cli.update.open_db")
     def test_bulk_assign_files_under_folder(self, mock_open_db, mock_get_svc):
-        mock_conn = _patched_open_db(mock_open_db)
+        _patched_open_db(mock_open_db)
         mock_svc = MagicMock()
         mock_svc.assign.return_value = {"id": 1}
         mock_get_svc.return_value = mock_svc

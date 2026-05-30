@@ -7,7 +7,6 @@ import pytest
 
 from footprinter.ingest.chat_parsers.claude_code_parser import ClaudeCodeParser
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — minimal JSONL matching real Claude Code session structure
 # ---------------------------------------------------------------------------

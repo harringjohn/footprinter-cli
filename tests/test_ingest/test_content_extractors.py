@@ -402,7 +402,8 @@ class TestChunkSizeDefaults:
         """Legacy int overlap (e.g. 150) is auto-converted to fractional."""
         from footprinter.ingest.full_content_extractor import FullContentExtractor
 
-        extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=150)
+        with pytest.warns(DeprecationWarning):
+            extractor = FullContentExtractor(chunk_size=1000, chunk_overlap=150)
         assert extractor.chunk_overlap == 0.15
 
     def test_legacy_int_overlap_emits_deprecation_warning(self):
@@ -570,7 +571,8 @@ class TestVectorizationConfigLoading:
                 "chunk_overlap": 200,
             },
         }
-        ext = FullContentExtractor.from_config(config)
+        with pytest.warns(DeprecationWarning):
+            ext = FullContentExtractor.from_config(config)
         assert ext.chunk_overlap == 0.2
 
     def test_from_config_partial(self):

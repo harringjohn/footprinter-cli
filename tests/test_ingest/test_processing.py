@@ -132,7 +132,7 @@ class TestRunVectorization:
         (tmp_path / "listed.txt").write_text("listed content")
         (tmp_path / "unlisted.txt").write_text("unlisted content")
         listed_id = _insert_file(db, file_path=str(tmp_path / "listed.txt"), status="listed")
-        unlisted_id = _insert_file(db, file_path=str(tmp_path / "unlisted.txt"), status="unlisted")
+        _insert_file(db, file_path=str(tmp_path / "unlisted.txt"), status="unlisted")
 
         mock_store = MagicMock()
         mock_extractor = MagicMock()
@@ -144,9 +144,12 @@ class TestRunVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
-            result = run_vectorization(db)
+            run_vectorization(db)
 
         assert mock_store.upsert_file.call_count == 1
         called_file_id = mock_store.upsert_file.call_args[0][0]
@@ -323,7 +326,10 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
             result = run_vectorization(db, file_ids=[id_a])
 
@@ -375,9 +381,12 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
-            result = run_vectorization(db, file_ids=[listed_id, unlisted_id])
+            run_vectorization(db, file_ids=[listed_id, unlisted_id])
 
         assert mock_store.upsert_file.call_count == 1
         called_file_id = mock_store.upsert_file.call_args[0][0]
@@ -401,9 +410,12 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
-            result = run_vectorization(db, file_ids=[removed_id])
+            run_vectorization(db, file_ids=[removed_id])
 
         mock_store.upsert_file.assert_not_called()
 
@@ -429,9 +441,12 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
-            result = run_vectorization(db, file_ids=[new_id, old_id])
+            run_vectorization(db, file_ids=[new_id, old_id])
 
         assert mock_store.upsert_file.call_count == 1
         called_file_id = mock_store.upsert_file.call_args[0][0]
@@ -441,9 +456,12 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
-            result = run_vectorization(db, full_mode=True, file_ids=[new_id, old_id])
+            run_vectorization(db, full_mode=True, file_ids=[new_id, old_id])
 
         assert mock_store.upsert_file.call_count == 2
 
@@ -454,8 +472,8 @@ class TestScopedVectorization:
         db = _make_db(tmp_path)
         (tmp_path / "a.txt").write_text("alpha")
         (tmp_path / "b.txt").write_text("beta")
-        id_a = _insert_file(db, file_path=str(tmp_path / "a.txt"))
-        id_b = _insert_file(db, file_path=str(tmp_path / "b.txt"))
+        _insert_file(db, file_path=str(tmp_path / "a.txt"))
+        _insert_file(db, file_path=str(tmp_path / "b.txt"))
 
         mock_store = MagicMock()
         mock_extractor = MagicMock()
@@ -467,7 +485,10 @@ class TestScopedVectorization:
         with (
             patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
-            patch("footprinter.ingest.full_content_extractor.FullContentExtractor.from_config", return_value=mock_extractor),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
         ):
             result = run_vectorization(db, file_ids=None)
 

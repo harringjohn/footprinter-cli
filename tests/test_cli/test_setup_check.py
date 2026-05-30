@@ -29,8 +29,9 @@ def test_semantic_installed_not_enabled():
         "semantic": {"file_vectorization": False, "chat_vectorization": False},
     }
 
+    importable = ("chromadb", "onnxruntime", "google.auth")
     with patch(
-        "footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in ("chromadb", "onnxruntime", "google.auth")
+        "footprinter.cli.diagnostics.is_importable", side_effect=lambda m: m in importable
     ):
         features = check_optional_features(config)
 
