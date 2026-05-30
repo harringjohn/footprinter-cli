@@ -61,6 +61,6 @@ class TestSecurityPostureSection:
     def test_shows_deny_by_default_switch(self, security_posture_section):
         """Section should show how to switch to deny-by-default."""
         assert security_posture_section, "Security Posture section not found"
-        assert "fp mcp set global --permission deny" in security_posture_section, (
-            "Section should contain 'fp mcp set global --permission deny' command"
+        assert "fp permission set global --access deny" in security_posture_section, (
+            "Section should contain 'fp permission set global --access deny' command"
         )
