@@ -26,13 +26,17 @@ The `fp` command is installed by `pip install footprinter-cli`. All business log
 | `fp status` | Show data counts and system health |
 | `fp search` | Search across indexed content |
 | `fp connect` | Manage optional integrations |
-| `fp mcp` | MCP server and access policies |
-| `fp api` | Start the HTTP API server |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
+| `fp add` | Create new entity records |
+| `fp update` | Update existing entity records by ID |
 | `fp upsert` | Create or update records, assign relationships, or soft-delete via `--status removed` |
 | `fp data` | Import metadata corrections from CSV |
 | `fp delete` | Hard-delete a super entity (irreversible) |
-| `fp vectorize` | Manage per-record vectorization control |
+| `fp permission` | Manage visibility and access policies |
+| `fp mcp` | Start the MCP server |
+| `fp api` | Start the HTTP API server |
+| `fp doctor` | Check installation health, rebuild search indexes and vector store |
+| `fp uninstall` | Remove Footprinter (MCP entry, user data, package) |
 
 Run `fp <command> --help` for full signatures and arguments.
 
