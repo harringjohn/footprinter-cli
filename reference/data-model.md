@@ -53,13 +53,13 @@ When Footprinter exposes data to AI assistants via MCP (Model Context Protocol),
 1. **Visibility** — controls whether an item appears in results at all:
    - `hidden` — item doesn't exist to the AI (excluded from all results)
    - `opaque` — minimal metadata only (id, type, source)
-   - `visible` — full metadata returned
+   - `full` — full metadata returned
 
 2. **Permissions** — controls whether content can be read (only evaluated for visible items):
    - `allow` — content readable (e.g., `content_preview`, search snippets)
    - `deny` — metadata visible but content blocked
 
-Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp mcp set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
+Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp permission set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
 
 See `reference/mcp-access-control.md` for the full reference: the three-layer model, policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
 
@@ -953,8 +953,8 @@ Current active table for visibility rules controlling MCP metadata access.
 ```
 scope                                  | setting
 ---------------------------------------|--------
-global                                 | visible
-source:files                           | visible
+global                                 | full
+source:files                           | full
 account:personal                       | hidden
 folder:~/Personal/identity/ | hidden
 folder:~/Work/clients/acme/ | opaque
