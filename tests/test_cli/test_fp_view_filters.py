@@ -84,6 +84,34 @@ def _seeded_view_db():
         "'2026-01-03', 2, 1)"
     )
 
+    # Chats: 2 in project 1 / client 1, 1 in project 2 / client 2
+    conn.execute(
+        "INSERT INTO chats (id, external_id, account, title, status, project_id, client_id) "
+        "VALUES (1, 'chat-ext-1', 'claude', 'Acme Architecture Review', 'listed', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO chats (id, external_id, account, title, status, project_id, client_id) "
+        "VALUES (2, 'chat-ext-2', 'claude', 'Acme Sprint Planning', 'listed', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO chats (id, external_id, account, title, status, project_id, client_id) "
+        "VALUES (3, 'chat-ext-3', 'claude', 'Beta Onboarding', 'listed', 2, 2)"
+    )
+
+    # Visits: 2 in project 1 / client 1, 1 in project 2 / client 2
+    conn.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser, status, project_id, client_id) "
+        "VALUES (1, 'https://acme.com/docs', 'Acme Docs', '2026-01-01 10:00:00', 'chrome', 'listed', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser, status, project_id, client_id) "
+        "VALUES (2, 'https://acme.com/api', 'Acme API', '2026-01-02 10:00:00', 'chrome', 'listed', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO visits (id, url, title, visit_time, browser, status, project_id, client_id) "
+        "VALUES (3, 'https://beta.io/start', 'Beta Start', '2026-01-03 10:00:00', 'chrome', 'listed', 2, 2)"
+    )
+
     conn.commit()
     return conn
 
@@ -182,6 +210,82 @@ class TestClientFilterEmails:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Chat filtering (FPR-1871)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectFilterChats:
+    """fp view chats --project <id> filters by project_id."""
+
+    def test_filters_by_project(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, _, code = run_fp("view", "chats", "--project", "1")
+
+        assert code == 0
+        assert "Acme Architecture Review" in stdout
+        assert "Acme Sprint Planning" in stdout
+        assert "Beta Onboarding" not in stdout
+
+    def test_nonexistent_project_errors(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("view", "chats", "--project", "999")
+
+        assert code == 1
+        output = stdout + stderr
+        assert "999" in output
+        assert "not found" in output.lower()
+
+
+class TestClientFilterChats:
+    """fp view chats --client <id> filters by client_id."""
+
+    def test_filters_by_client(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, _, code = run_fp("view", "chats", "--client", "1")
+
+        assert code == 0
+        assert "Acme Architecture Review" in stdout
+        assert "Acme Sprint Planning" in stdout
+        assert "Beta Onboarding" not in stdout
+
+
+# ---------------------------------------------------------------------------
+# 2c. Visit filtering (FPR-1871)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectFilterVisits:
+    """fp view visits --project <id> filters by project_id."""
+
+    def test_filters_by_project(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, _, code = run_fp("view", "visits", "--project", "1")
+
+        assert code == 0
+        assert "Acme Docs" in stdout
+        assert "Acme API" in stdout
+        assert "Beta Start" not in stdout
+
+
+class TestClientFilterVisits:
+    """fp view visits --client <id> filters by client_id."""
+
+    def test_filters_by_client(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, _, code = run_fp("view", "visits", "--client", "1")
+
+        assert code == 0
+        assert "Acme Docs" in stdout
+        assert "Acme API" in stdout
+        assert "Beta Start" not in stdout
+
+
+# ---------------------------------------------------------------------------
 # 3. Composition with other flags
 # ---------------------------------------------------------------------------
 
@@ -219,14 +323,6 @@ class TestFilterComposition:
 
 class TestUnsupportedFlagRejection:
     """Flags not registered on a noun are rejected by argparse."""
-
-    def test_chats_rejects_project_flag(self):
-        _, _, code = run_fp("view", "chats", "--project", "1")
-        assert code == 2
-
-    def test_visits_rejects_project_flag(self):
-        _, _, code = run_fp("view", "visits", "--project", "1")
-        assert code == 2
 
     def test_files_rejects_client_flag(self):
         _, _, code = run_fp("view", "files", "--client", "1")
