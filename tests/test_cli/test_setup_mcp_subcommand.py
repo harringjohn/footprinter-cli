@@ -209,15 +209,14 @@ class TestUserFacingStrings:
             "mcp_setup.py module docstring description still references 'Claude Desktop'"
         )
 
-    def test_orchestrator_hint_uses_fp_mcp(self):
-        """Status module help hint should say 'fp mcp'."""
+    def test_orchestrator_hint_uses_fp_setup_mcp(self):
+        """Status module help hint should say 'fp setup mcp --claude'."""
         from pathlib import Path
 
         status_path = Path(__file__).parent.parent.parent / "footprinter" / "ingest" / "status.py"
         content = status_path.read_text()
 
-        assert "fp mcp" in content
-        assert "fp-setup-claude" not in content
+        assert "fp setup mcp --claude" in content
 
 
 class TestMcpSnippetDisplay:
