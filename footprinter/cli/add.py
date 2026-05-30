@@ -157,11 +157,10 @@ def _handle_single(args) -> None:
     if "status" in kwargs:
         valid = VALID_STATUSES_BY_ENTITY.get(entity_type)
         if valid and kwargs["status"] not in valid:
+            valid_str = ", ".join(sorted(valid))
             if getattr(args, "json", False):
-                valid_str = ", ".join(sorted(valid))
                 output_json({"error": f"Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}"})
             else:
-                valid_str = ", ".join(sorted(valid))
                 console.print(f"[red]Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}[/red]")
             sys.exit(1)
         if kwargs["status"] == "removed":
