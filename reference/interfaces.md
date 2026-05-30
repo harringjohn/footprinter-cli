@@ -33,8 +33,8 @@ The `fp` command is installed by `pip install footprinter-cli`. All business log
 | `fp data` | Import metadata corrections from CSV |
 | `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp permission` | Manage visibility and access policies |
-| `fp mcp` | Start the MCP server |
-| `fp api` | Start the HTTP API server |
+| `fp-mcp` | Start the MCP server (standalone binary) |
+| `fp-api` | Start the HTTP API server (standalone binary) |
 | `fp doctor` | Check installation health, rebuild search indexes and vector store |
 | `fp uninstall` | Remove Footprinter (MCP entry, user data, package) |
 
@@ -69,7 +69,7 @@ Additional data sources are installed as connector packages via `fp connect inst
 
 ### MCP
 
-The MCP server gives AI assistants (Claude Desktop, Claude Code) structured access to your indexed data. It passes `Role.VIEWER` — read-only access with visibility filtering. Start it via `fp mcp` (usually spawned automatically by the AI client).
+The MCP server gives AI assistants (Claude Desktop, Claude Code) structured access to your indexed data. It passes `Role.VIEWER` — read-only access with visibility filtering. Start it via `fp-mcp` (usually spawned automatically by the AI client).
 
 #### Setup
 
@@ -98,7 +98,9 @@ FastAPI routers on localhost. Thin HTTP translation: parse request, call service
 
 ```bash
 # Start the HTTP API server
-fp api
+fp-api
+fp-api --port 9000
+fp-api --host 0.0.0.0 --allow-insecure-bind
 ```
 
 ### Python Import

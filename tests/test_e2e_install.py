@@ -47,7 +47,7 @@ class TestEntryPointsResolve:
         stdout, stderr, code = run_fp("--help")
         assert code == 0
         output = stdout + stderr
-        for sub in ["ingest", "search", "status", "setup", "mcp"]:
+        for sub in ["ingest", "search", "status", "setup"]:
             assert sub in output, f"'{sub}' not in fp --help output"
 
 
@@ -56,7 +56,6 @@ LEGACY_ENTRY_POINTS = [
     "fp-orchestrator",
     "fp-status",
     "fp-search",
-    "fp-mcp",
     "fp-dashboard",
     "fp-app",
     "fp-chat",
@@ -66,7 +65,7 @@ LEGACY_ENTRY_POINTS = [
 
 
 class TestLegacyEntryPointsAbsent:
-    """All 10 legacy entry points must not exist in pyproject.toml scripts."""
+    """All 9 legacy entry points must not exist in pyproject.toml scripts."""
 
     @pytest.fixture()
     def scripts(self):
@@ -79,6 +78,26 @@ class TestLegacyEntryPointsAbsent:
     @pytest.mark.parametrize("name", LEGACY_ENTRY_POINTS)
     def test_legacy_entry_point_absent(self, scripts, name):
         assert name not in scripts, f"Legacy entry point '{name}' should not exist in [project.scripts]"
+
+
+class TestServerConsoleScripts:
+    """fp-mcp and fp-api must be registered as console_scripts in pyproject.toml."""
+
+    @pytest.fixture()
+    def scripts(self):
+        import tomllib
+
+        toml_text = (PROJECT_ROOT / "pyproject.toml").read_text()
+        data = tomllib.loads(toml_text)
+        return data.get("project", {}).get("scripts", {})
+
+    def test_fp_mcp_registered(self, scripts):
+        assert "fp-mcp" in scripts, "fp-mcp not in [project.scripts]"
+        assert "footprinter.mcp.server" in scripts["fp-mcp"]
+
+    def test_fp_api_registered(self, scripts):
+        assert "fp-api" in scripts, "fp-api not in [project.scripts]"
+        assert "footprinter.api.server" in scripts["fp-api"]
 
 
 class TestSemanticExtraPin:

@@ -106,8 +106,7 @@ All commands use the `fp` entry point.
 | `fp status` | System health and data counts |
 | `fp search` | Search across all indexed sources |
 | `fp connect` | Manage optional integrations |
-| `fp mcp` | MCP server and access policies |
-| `fp api` | Start the HTTP API server |
+| `fp permission` | Manage access policies (visibility, permissions) |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
 | `fp upsert` | Create/update records, assign relationships, or soft-delete via `--status removed` |
 | `fp data` | Import metadata corrections from CSV |

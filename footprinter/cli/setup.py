@@ -866,7 +866,7 @@ def collect_vectorization_answers(
         "  plugins (e.g. Gmail) use the same flag to store body previews.\n"
         "  [bold]Local only[/bold]: previews are written to a local SQLite database\n"
         "  on your machine. Nothing is uploaded or shared, and the MCP client only sees\n"
-        "  content when you grant explicit permission via fp mcp.\n"
+        "  content when you grant explicit permission via fp permission.\n"
         "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]"
     )
     content_snippets = Confirm.ask("  Enable file content snippets?", default=snippets_default)

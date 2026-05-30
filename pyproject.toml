@@ -69,6 +69,8 @@ Changelog = "https://github.com/harringjohn/footprinter-cli/blob/main/CHANGELOG.
 
 [project.scripts]
 fp = "footprinter.cli:main"
+fp-mcp = "footprinter.mcp.server:main"
+fp-api = "footprinter.api.server:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]

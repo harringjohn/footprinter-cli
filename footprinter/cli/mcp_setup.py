@@ -27,7 +27,7 @@ console = Console()
 # Known MCP-compatible clients and their config locations.
 MCP_CLIENT_CONFIGS = [
     {"name": "Claude Desktop", "path": "~/Library/Application Support/Claude/claude_desktop_config.json"},
-    {"name": "Claude Code", "command": "claude mcp add footprinter -- fp mcp"},
+    {"name": "Claude Code", "command": "claude mcp add footprinter -- fp-mcp"},
     {"name": "Cursor", "path": "~/.cursor/mcp.json"},
     {"name": "VS Code", "path": ".vscode/mcp.json (per-project)"},
     {"name": "Gemini CLI", "path": "~/.gemini/settings.json"},
@@ -79,7 +79,7 @@ def detect_config_path() -> Optional[Path]:
 def get_mcp_command(project_root: Path = None) -> tuple[str, list[str]]:
     """Get the command and args to launch the MCP server.
 
-    Priority: fp entry point → run_mcp.sh → sys.executable -m footprinter.mcp.
+    Priority: fp-mcp binary → run_mcp.sh → sys.executable -m footprinter.mcp.
 
     Args:
         project_root: Override project root (default: auto-detected).
@@ -89,15 +89,15 @@ def get_mcp_command(project_root: Path = None) -> tuple[str, list[str]]:
     """
     root = project_root or _repo_root()
 
-    # 1. Prefer fp entry point (most portable for pip installs)
-    fp_cmd = shutil.which("fp")
-    if fp_cmd:
-        return fp_cmd, ["mcp"]
+    # 1. Prefer fp-mcp entry point (most portable for pip installs)
+    fp_mcp_cmd = shutil.which("fp-mcp")
+    if fp_mcp_cmd:
+        return fp_mcp_cmd, []
 
-    # 2. Fall back to run_mcp.sh (dev environments)
+    # 2. Fall back to run_mcp.sh (dev environments — script launches MCP directly, no args)
     run_script = root / "run_mcp.sh"
     if run_script.exists():
-        return str(run_script), ["mcp"]
+        return str(run_script), []
 
     # 3. Fall back to current Python + module
     return sys.executable, ["-m", "footprinter.mcp"]

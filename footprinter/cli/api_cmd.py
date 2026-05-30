@@ -1,4 +1,8 @@
-"""fp api — start the HTTP API server."""
+"""fp api — start the HTTP API server (REMOVAL CANDIDATE).
+
+Superseded by footprinter.api.server:cli() and the fp-api console_script
+(FPR-1850). This module is no longer registered in cli/__init__.py.
+"""
 
 import sys
 

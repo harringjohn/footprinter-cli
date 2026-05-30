@@ -442,7 +442,7 @@ Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. 
 
 ## CLI Management
 
-The `fp permission` command is the primary surface for managing visibility and permission policies. The same subcommands are also available under `fp mcp` as aliases. Policy changes automatically trigger recalculation for affected entities.
+The `fp permission` command is the primary surface for managing visibility and permission policies. Policy changes automatically trigger recalculation for affected entities.
 
 ### List all policies (`fp permission list`)
 

@@ -1,11 +1,12 @@
-"""Tests for fp mcp subcommands.
+"""Tests for fp mcp subcommands (REMOVAL CANDIDATE).
 
-Covers:
-  - Parser tree: help exits 0 for all subcommands
-  - Server start: bare ``fp mcp`` calls server.main()
-  - Unified check: no-args (show all), path, folder, project, client, --json
-  - Set: unified policy setter (--visibility / --permission)
-  - Reset: unified policy delete / reseed
+These tests cover functionality that has moved:
+  - Server start → fp-mcp console_script (tested in test_fp_api.py / test_mcp_server.py)
+  - Policy subcommands → fp permission (tested in test_permission.py)
+
+Retained temporarily for regression coverage during the transition.
+The pre-FPR-1850 test classes are skipped since fp mcp is no longer a
+registered subcommand. Only TestMcpSubcommandRemoved is active.
 """
 
 import json
@@ -14,6 +15,8 @@ from unittest.mock import patch
 
 import pytest
 from conftest import run_fp
+
+_SKIP_REASON = "fp mcp subcommand removed in FPR-1850; tested via fp permission and fp-mcp"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -37,6 +40,7 @@ def policy_db(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpParserTree:
     """All fp mcp subcommands respond to --help with exit 0."""
 
@@ -59,6 +63,7 @@ class TestMcpParserTree:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpServerStart:
     """Bare ``fp mcp`` starts the MCP server."""
 
@@ -74,6 +79,7 @@ class TestMcpServerStart:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpCheckShowAll:
     """fp mcp check (no args) shows all policies from both tables."""
 
@@ -117,6 +123,7 @@ class TestMcpCheckShowAll:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpCheck:
     """Test fp mcp check (combined resolution with target)."""
 
@@ -241,6 +248,7 @@ class TestMcpCheck:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpSet:
     """Test fp mcp set <scope> --visibility <val> --permission <val>."""
 
@@ -332,6 +340,7 @@ class TestMcpSet:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason=_SKIP_REASON)
 class TestMcpReset:
     """Test fp mcp reset <scope> and fp mcp reset --all."""
 
@@ -409,3 +418,17 @@ class TestMcpReset:
         vis = conn.execute("SELECT 1 FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
         conn.close()
         assert vis is None
+
+
+# ---------------------------------------------------------------------------
+# Regression: fp mcp subcommand removed from CLI
+# ---------------------------------------------------------------------------
+
+
+class TestMcpSubcommandRemoved:
+    """After FPR-1850, 'fp mcp' should no longer be a recognized subcommand."""
+
+    def test_fp_mcp_not_recognized(self):
+        """Bare 'fp mcp' exits non-zero now that the subcommand is removed."""
+        stdout, stderr, code = run_fp("mcp")
+        assert code != 0, "fp mcp should no longer be a recognized subcommand"
