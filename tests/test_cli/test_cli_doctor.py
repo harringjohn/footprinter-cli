@@ -587,8 +587,7 @@ class TestDoctorJsonGroupField:
 
 class TestDoctorArchitecture:
     def test_rosetta_detected_warns(self, monkeypatch):
-        from footprinter.cli import doctor
-        from footprinter.cli import diagnostics
+        from footprinter.cli import diagnostics, doctor
 
         monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
             "Python is running as x86_64 on arm64 hardware (Rosetta). "
@@ -602,8 +601,7 @@ class TestDoctorArchitecture:
         assert result.group == "Environment"
 
     def test_native_arm64_ok(self, monkeypatch):
-        from footprinter.cli import doctor
-        from footprinter.cli import diagnostics
+        from footprinter.cli import diagnostics, doctor
 
         monkeypatch.setattr(diagnostics, "check_architecture", lambda: None)
 
@@ -619,8 +617,7 @@ class TestDoctorArchitecture:
 
 class TestDoctorCoreDeps:
     def test_all_core_deps_present_ok(self, monkeypatch):
-        from footprinter.cli import doctor
-        from footprinter.cli import diagnostics
+        from footprinter.cli import diagnostics, doctor
 
         monkeypatch.setattr(diagnostics, "check_core_deps", lambda: [
             ("PyYAML", True), ("Rich", True),
@@ -631,8 +628,7 @@ class TestDoctorCoreDeps:
         assert result.group == "Configuration"
 
     def test_missing_core_dep_fails(self, monkeypatch):
-        from footprinter.cli import doctor
-        from footprinter.cli import diagnostics
+        from footprinter.cli import diagnostics, doctor
 
         monkeypatch.setattr(diagnostics, "check_core_deps", lambda: [
             ("PyYAML", False), ("Rich", True),
@@ -719,8 +715,7 @@ class TestDoctorConfigContent:
 
 class TestDoctorOptionalFeatures:
     def test_optional_features_returns_check_list(self, monkeypatch):
-        from footprinter.cli import doctor
-        from footprinter.cli import diagnostics
+        from footprinter.cli import diagnostics, doctor
 
         monkeypatch.setattr(diagnostics, "check_optional_features", lambda cfg: [
             ("Semantic Search", True, False, "pip install footprinter-cli[full]"),

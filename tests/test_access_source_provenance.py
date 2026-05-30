@@ -221,7 +221,8 @@ class TestEnrichSourceDisplay:
         }
         enrich_verbose_access([row], "file")
         keys = list(row.keys())
-        assert keys[-6:] == ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
+        expected = ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
+        assert keys[-6:] == expected
 
     def test_enrich_folder_without_access(self):
         from footprinter.cli._common import enrich_verbose_access
@@ -229,7 +230,8 @@ class TestEnrichSourceDisplay:
         row = {"id": 30, "name": "widget", "visibility": "full"}
         enrich_verbose_access([row], "folder")
         keys = list(row.keys())
-        assert keys[-6:] == ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
+        expected = ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
+        assert keys[-6:] == expected
         assert row["access"] == "—"
         assert row["access_source"] == "—"
 

@@ -152,11 +152,11 @@ def _handle_single(args) -> None:
         valid = VALID_STATUSES_BY_ENTITY.get(entity_type)
         if valid and kwargs["status"] not in valid:
             if getattr(args, "json", False):
-                output_json({"error": f"Invalid status '{kwargs['status']}' for {entity_type}. Valid: {', '.join(sorted(valid))}"})
+                valid_str = ", ".join(sorted(valid))
+                output_json({"error": f"Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}"})
             else:
-                console.print(
-                    f"[red]Invalid status '{kwargs['status']}' for {entity_type}. Valid: {', '.join(sorted(valid))}[/red]"
-                )
+                valid_str = ", ".join(sorted(valid))
+                console.print(f"[red]Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}[/red]")
             sys.exit(1)
         if kwargs["status"] == "removed":
             kwargs["status_reason"] = "cli:update"

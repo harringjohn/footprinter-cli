@@ -9,7 +9,6 @@ from footprinter.ingest.adapters.chat import ChatAdapter
 from footprinter.ingest.adapters.protocol import PipeContext, PipeResult, PipeStatus
 from footprinter.ingest.database import Database
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers (reused from parser tests)
 # ---------------------------------------------------------------------------

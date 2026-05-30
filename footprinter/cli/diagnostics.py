@@ -7,7 +7,6 @@ import platform
 import subprocess
 from pathlib import Path
 
-
 KNOWN_BROWSERS = ["safari", "chrome"]
 
 

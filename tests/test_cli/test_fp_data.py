@@ -9,11 +9,11 @@ Validates:
 Export and template functionality moved to fp view format flags (FPR-1863).
 """
 
-import sqlite3
 from contextlib import contextmanager
 from unittest.mock import patch
 
 from conftest import run_fp
+
 from footprinter.cli.data import DATA_SOURCE_SPECS
 
 

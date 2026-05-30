@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 
 from footprinter.cli._common import FORMATTER, add_json_flag, console, open_db, output_json
 
-
 # ---------------------------------------------------------------------------
 # Data-source entity registry
 # ---------------------------------------------------------------------------

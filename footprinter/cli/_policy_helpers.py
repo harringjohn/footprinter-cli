@@ -15,12 +15,8 @@ from footprinter.access_stamper import (
 from footprinter.cli._common import connect_db, console, output_json
 from footprinter.cli._prompt import SafeConfirm as Confirm
 from footprinter.db.policies import (
-    PERMISSION_SETTINGS,
-    VISIBILITY_SETTINGS,
     seed_access_policies,  # noqa: F401 — re-exported; setup.py imports from here
-    set_permission_policy,
-    set_visibility_policy,
-)
+    )
 from footprinter.paths import get_db_path
 from footprinter.utils.paths import abbreviate_home
 

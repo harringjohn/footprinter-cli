@@ -9,9 +9,7 @@ Data CSV:   ``fp add files data.csv``
 Chat import: ``fp add chats export.zip``
 """
 
-import csv
 import importlib
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -160,11 +158,11 @@ def _handle_single(args) -> None:
         valid = VALID_STATUSES_BY_ENTITY.get(entity_type)
         if valid and kwargs["status"] not in valid:
             if getattr(args, "json", False):
-                output_json({"error": f"Invalid status '{kwargs['status']}' for {entity_type}. Valid: {', '.join(sorted(valid))}"})
+                valid_str = ", ".join(sorted(valid))
+                output_json({"error": f"Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}"})
             else:
-                console.print(
-                    f"[red]Invalid status '{kwargs['status']}' for {entity_type}. Valid: {', '.join(sorted(valid))}[/red]"
-                )
+                valid_str = ", ".join(sorted(valid))
+                console.print(f"[red]Invalid status '{kwargs['status']}' for {entity_type}. Valid: {valid_str}[/red]")
             sys.exit(1)
         if kwargs["status"] == "removed":
             kwargs["status_reason"] = "cli:add"
@@ -273,7 +271,7 @@ def _handle_bulk(args) -> None:
                 kwargs.pop("slug", None)
 
                 try:
-                    result = service.upsert(conn, role=Role.ADMIN, **kwargs)
+                    service.upsert(conn, role=Role.ADMIN, **kwargs)
                     created += 1
                 except ValueError as e:
                     errors += 1

@@ -46,7 +46,6 @@ from footprinter.cli.ingest import _run_with_logging
 from footprinter.ingest.orchestrator import DataPipelineOrchestrator
 from footprinter.paths import (
     get_bundled_path,
-    get_chroma_path,
     get_config_path,
     get_db_path,
     get_log_path,

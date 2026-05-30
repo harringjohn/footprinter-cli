@@ -385,7 +385,7 @@ class TestAccessColumnMigration:
         """A fresh database should use 'full' as the visibility value, not 'visible'."""
         from footprinter.db.policies import VISIBILITY_SETTINGS, seed_visibility_defaults
         from footprinter.ingest.database import Database
-        from footprinter.visibility import VisibilityState, is_readable
+        from footprinter.visibility import is_readable
 
         assert "full" in VISIBILITY_SETTINGS
         assert "visible" not in VISIBILITY_SETTINGS

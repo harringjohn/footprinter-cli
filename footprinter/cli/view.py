@@ -157,36 +157,88 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
         {"name": "Mobile App", "client": "Internal Tools", "description": "Mobile app", "status": "listed"},
     ],
     "file": [
-        {"id": "1", "name": "readme.md", "path": "/Users/me/Work/readme.md", "source": "local", "status": "listed", "content_type": "markdown", "size_bytes": "1024", "modified_at": "2026-01-15T10:00:00Z", "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow"},
-        {"id": "2", "name": "notes.txt", "path": "/Users/me/Work/notes.txt", "source": "local", "status": "hidden", "content_type": "text", "size_bytes": "512", "modified_at": "2026-02-01T10:00:00Z", "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit"},
+        {
+            "id": "1", "name": "readme.md", "path": "/Users/me/Work/readme.md",
+            "source": "local", "status": "listed", "content_type": "markdown",
+            "size_bytes": "1024", "modified_at": "2026-01-15T10:00:00Z",
+            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+        },
+        {
+            "id": "2", "name": "notes.txt", "path": "/Users/me/Work/notes.txt",
+            "source": "local", "status": "hidden", "content_type": "text",
+            "size_bytes": "512", "modified_at": "2026-02-01T10:00:00Z",
+            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+        },
     ],
     "folder": [
-        {"id": "1", "path": "/Users/me/Work", "relative_path": "Work", "name": "Work", "source": "local", "status": "listed", "project_id": "1", "client_id": "", "visibility": "full", "access": "allow"},
-        {"id": "2", "path": "/Users/me/Personal", "relative_path": "Personal", "name": "Personal", "source": "local", "status": "listed", "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit"},
+        {
+            "id": "1", "path": "/Users/me/Work", "relative_path": "Work", "name": "Work",
+            "source": "local", "status": "listed", "project_id": "1", "client_id": "",
+            "visibility": "full", "access": "allow",
+        },
+        {
+            "id": "2", "path": "/Users/me/Personal", "relative_path": "Personal",
+            "name": "Personal", "source": "local", "status": "listed",
+            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+        },
     ],
     "email": [
-        {"id": "1", "message_id": "msg-001@example.com", "account": "work", "subject": "Project Update", "from_address": "sender@example.com", "received_at": "2026-02-01T09:00:00Z", "status": "listed", "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow"},
-        {"id": "2", "message_id": "msg-002@example.com", "account": "personal", "subject": "Newsletter", "from_address": "news@example.com", "received_at": "2026-02-02T09:00:00Z", "status": "listed", "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit"},
+        {
+            "id": "1", "message_id": "msg-001@example.com", "account": "work",
+            "subject": "Project Update", "from_address": "sender@example.com",
+            "received_at": "2026-02-01T09:00:00Z", "status": "listed",
+            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+        },
+        {
+            "id": "2", "message_id": "msg-002@example.com", "account": "personal",
+            "subject": "Newsletter", "from_address": "news@example.com",
+            "received_at": "2026-02-02T09:00:00Z", "status": "listed",
+            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+        },
     ],
     "chat": [
-        {"id": "1", "external_id": "conv-001", "account": "personal", "title": "Architecture Chat", "message_count": "5", "status": "listed", "created_at": "2026-01-10T08:00:00Z", "updated_at": "2026-01-10T09:00:00Z", "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow"},
-        {"id": "2", "external_id": "conv-002", "account": "personal", "title": "Random Chat", "message_count": "3", "status": "listed", "created_at": "2026-01-11T08:00:00Z", "updated_at": "2026-01-11T09:00:00Z", "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit"},
+        {
+            "id": "1", "external_id": "conv-001", "account": "personal",
+            "title": "Architecture Chat", "message_count": "5", "status": "listed",
+            "created_at": "2026-01-10T08:00:00Z", "updated_at": "2026-01-10T09:00:00Z",
+            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+        },
+        {
+            "id": "2", "external_id": "conv-002", "account": "personal",
+            "title": "Random Chat", "message_count": "3", "status": "listed",
+            "created_at": "2026-01-11T08:00:00Z", "updated_at": "2026-01-11T09:00:00Z",
+            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+        },
     ],
     "visit": [
-        {"id": "1", "url": "https://example.com", "title": "Example", "visit_time": "2026-03-01T12:00:00Z", "browser": "safari", "status": "listed", "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow"},
-        {"id": "2", "url": "https://news.com", "title": "News", "visit_time": "2026-03-02T12:00:00Z", "browser": "chrome", "status": "listed", "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit"},
+        {
+            "id": "1", "url": "https://example.com", "title": "Example",
+            "visit_time": "2026-03-01T12:00:00Z", "browser": "safari",
+            "status": "listed", "project_id": "1", "client_id": "1",
+            "visibility": "full", "access": "allow",
+        },
+        {
+            "id": "2", "url": "https://news.com", "title": "News",
+            "visit_time": "2026-03-02T12:00:00Z", "browser": "chrome",
+            "status": "listed", "project_id": "", "client_id": "",
+            "visibility": "inherit", "access": "inherit",
+        },
     ],
 }
 
+_POLICY_VALUES = "hidden, opaque, full, inherit"
+_ACCESS_VALUES = "allow, deny, inherit"
+_STATUS_VALUES = "listed, unlisted, removed"
+
 #: Valid-values notes per entity type — printed to stderr by --template.
 VALID_VALUES_NOTES: dict[str, dict[str, str]] = {
-    "client": {"client_type": "external, internal, personal", "status": "listed, unlisted, removed"},
-    "project": {"status": "listed, unlisted, removed"},
-    "file": {"status": "listed, unlisted, removed", "visibility": "hidden, opaque, full, inherit", "access": "allow, deny, inherit"},
-    "folder": {"status": "listed, unlisted, removed", "visibility": "hidden, opaque, full, inherit", "access": "allow, deny, inherit"},
-    "email": {"status": "listed, unlisted, removed", "visibility": "hidden, opaque, full, inherit", "access": "allow, deny, inherit"},
-    "chat": {"status": "listed, unlisted, removed", "visibility": "hidden, opaque, full, inherit", "access": "allow, deny, inherit"},
-    "visit": {"status": "listed, unlisted, removed", "visibility": "hidden, opaque, full, inherit", "access": "allow, deny, inherit"},
+    "client": {"client_type": "external, internal, personal", "status": _STATUS_VALUES},
+    "project": {"status": _STATUS_VALUES},
+    "file": {"status": _STATUS_VALUES, "visibility": _POLICY_VALUES, "access": _ACCESS_VALUES},
+    "folder": {"status": _STATUS_VALUES, "visibility": _POLICY_VALUES, "access": _ACCESS_VALUES},
+    "email": {"status": _STATUS_VALUES, "visibility": _POLICY_VALUES, "access": _ACCESS_VALUES},
+    "chat": {"status": _STATUS_VALUES, "visibility": _POLICY_VALUES, "access": _ACCESS_VALUES},
+    "visit": {"status": _STATUS_VALUES, "visibility": _POLICY_VALUES, "access": _ACCESS_VALUES},
 }
 
 
