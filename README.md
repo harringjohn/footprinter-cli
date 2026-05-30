@@ -113,7 +113,7 @@ All commands use the `fp` entry point.
 | `fp data` | Import metadata corrections from CSV |
 | `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp vectorize` | Manage per-record vectorization control |
-| `fp doctor` | Post-install health check (Python version, install location, FDA, MCP wiring) |
+| `fp doctor` | Post-install health check (Python version, platform, FDA, MCP wiring) |
 | `fp uninstall` | Remove Footprinter — MCP entry, user data, package |
 
 Run `fp <command> --help` for full usage.
