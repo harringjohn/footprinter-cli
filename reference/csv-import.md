@@ -39,6 +39,6 @@ Header (template): `project_name,project_type,client,description`
 | `description` | no | Free-form description. |
 | `root_path` | no | Filesystem path to the project root. |
 | `github_url` | no | GitHub repository URL. |
-| `status` | no | One of `listed`, `unlisted`, `removed`, `paused`, `completed`, `abandoned`, `archived`, `merged`. Defaults to `listed`. |
+| `status` | no | One of `listed`, `unlisted`, `removed`. Defaults to `listed`. |
 
 If a row sets the `client` column to a name that does not exist in the database, that row is skipped with an error and the rest of the file continues to import.

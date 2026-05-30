@@ -177,7 +177,7 @@ Items have a `visibility` column that controls what VIEWER sees:
 |---|---|
 | `hidden` | Item excluded entirely from results |
 | `opaque` | Minimal fields only (id, type, source) |
-| `visible` | Full metadata returned |
+| `full` | Full metadata returned |
 
 Items also have a `access` column for content access:
 
