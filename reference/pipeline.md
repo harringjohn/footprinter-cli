@@ -33,6 +33,7 @@ The orchestrator runs stages in a fixed order. Each stage is independent and can
 
 | Stage | Description | Tables |
 |-------|-------------|--------|
+| `folder_stats` | Refresh `direct_file_count` and `total_size_bytes` on folders | folders |
 | `access_resolution` | Stamp visibility + permissions on ingested entities | files, emails, chats, folders, projects, clients (visibility, access) |
 
 Runs last in every pipeline (`local`, `all`, and connector pipelines). Incremental mode only stamps entities added since the last run. Full mode (`--full`) recalculates everything. First run acts as a backfill for existing databases.
@@ -118,8 +119,8 @@ The ingest system has two user-facing concepts and one internal concept:
 
 | Concept | CLI interface | What it accepts | Defined in |
 |---------|--------------|-----------------|------------|
-| **Refresh source** | `fp ingest refresh <source>` | Convenience aliases mapping to pipes (e.g., `local` → local_folders + local_files; connectors add their own, such as `drive` → drive_folders + drive_files) | `get_refresh_sources()` in `registry.py` |
-| **Pipe** | `--pipe` (power-user) | Individual processing units. Core pipes include `local_folders`, `local_files`, `browser`, `chat`; connectors add their own (e.g. `gmail` from the Google connector) | `CORE_SOURCES` + `CONNECTOR_SOURCES` in `registry.py` |
+| **Refresh source** | `fp ingest refresh <source>` | Convenience aliases mapping to pipes (e.g., `local` → local_folders + local_files; connectors add their own, such as `drive` → drive_folders + drive_files) | `get_refresh_pipes()` in `registry.py` |
+| **Pipe** | `--pipe` (power-user) | Individual processing units. Core pipes include `local_folders`, `local_files`, `browser`, `chat`; connectors add their own (e.g. `gmail` from the Google connector) | `CORE_PIPES` + connector-registered pipes in `registry.py` |
 | **Pipeline** *(internal)* | — | Named pipe groups (e.g., `local`, `all`; connectors register their own, such as `google`) resolved by the orchestrator | `get_pipelines()` in `registry.py` |
 
 **`fp ingest refresh <source>`** is the primary way to target a specific data source. **`--pipe`** is a power-user escape hatch for running individual processing units directly. **Pipelines** are an internal orchestrator concept — they determine which pipes run together but are not exposed as CLI flags.
