@@ -803,9 +803,9 @@ def _check_semantic_deps() -> bool:
         return True
 
     console.print("\n  [yellow]Semantic search requires chromadb and onnxruntime.[/yellow]")
-    if Confirm.ask("  Install now? (pip install footprinter-cli[semantic])", default=True):
+    if Confirm.ask("  Install now? (pip install footprinter-cli[full])", default=True):
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "footprinter-cli[semantic]"],
+            [sys.executable, "-m", "pip", "install", "footprinter-cli[full]"],
             capture_output=True,
             text=True,
         )

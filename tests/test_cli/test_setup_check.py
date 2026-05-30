@@ -77,7 +77,7 @@ def test_semantic_not_installed():
 
     semantic = next(f for f in features if f[0] == "Semantic Search")
     assert semantic[1] is False, "installed should be False"
-    assert "footprinter-cli[semantic]" in semantic[3], "hint should mention extras group"
+    assert "footprinter-cli[full]" in semantic[3], "hint should mention extras group"
 
 
 # ---------------------------------------------------------------------------

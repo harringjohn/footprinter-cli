@@ -470,7 +470,7 @@ def _print_source_health(health: dict) -> None:
         if not semantic.get("installed"):
             health_table.add_row(
                 "Semantic Search",
-                "[yellow]missing deps[/yellow] — pip install footprinter-cli[semantic]",
+                "[yellow]missing deps[/yellow] — pip install footprinter-cli[full]",
             )
         elif not semantic.get("available"):
             health_table.add_row(
