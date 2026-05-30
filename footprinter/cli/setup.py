@@ -190,13 +190,13 @@ def register(subparsers) -> None:
     # mcp
     _add_mcp_parser(subs, formatter_class=FORMATTER)
 
-    # folders (add/remove only — list is now fp folder list)
+    # folders (add/remove only — list is now fp view folders)
     folders_p = subs.add_parser(
         "folders",
         help="Manage indexed folders",
         description=(
             "Add or remove directories from the indexing configuration.\n\n"
-            "Use 'fp folder list' to view indexed folders."
+            "Use 'fp view folders' to view indexed folders."
         ),
         epilog=("examples:\n  fp setup folders add ~/Work/newproject\n  fp setup folders remove ~/Work/old"),
         formatter_class=FORMATTER,
@@ -1486,7 +1486,7 @@ def _get_indexing_counts() -> dict:
 
 
 def seed_access_policies() -> dict:
-    """Seed default MCP access policies (metadata-only access). Idempotent via INSERT OR IGNORE.
+    """Seed default access policies. Idempotent via INSERT OR IGNORE.
 
     Returns:
         Dict with visibility_seeded and permission_seeded bools, or {} if no DB.
@@ -1500,21 +1500,19 @@ def seed_access_policies() -> dict:
 
         if result.get("visibility_seeded") or result.get("permission_seeded"):
             console.print(
-                "\n[bold]MCP access policies[/bold]: seeded default access (metadata visible, content allowed)"
+                "\n[bold]Access policies[/bold]: seeded defaults (visibility: visible, permission: allow)"
             )
         else:
-            console.print("\n[bold]MCP access policies[/bold]: already configured")
-        console.print("  [dim]Manage with: fp mcp check[/dim]")
+            console.print("\n[bold]Access policies[/bold]: already configured")
+        console.print("  [dim]Manage with: fp permission list[/dim]")
 
-        # Explain what the defaults mean
-        console.print("\n  [dim]Visible[/dim] = the MCP client can see file names, sizes, and paths")
-        console.print("  [dim]Content allowed[/dim] = the MCP client can read file contents when asked")
+        console.print("\n  [dim]Visible[/dim] = AI clients can see file names, sizes, and paths")
+        console.print("  [dim]Permission: allow[/dim] = AI clients can read file contents when asked")
         console.print(
             "  [dim]Security posture: fail-open (all reads allowed). "
             "See reference/mcp-access-control.md § Security Posture.[/dim]"
         )
 
-        # Offer to restrict to metadata-only access
         if Confirm.ask(
             "\n  Restrict to metadata only? (no content reading)",
             default=False,
@@ -1522,9 +1520,9 @@ def seed_access_policies() -> dict:
             from footprinter.db.policies import set_permission_policy
 
             set_permission_policy(conn, "global", "deny")
-            console.print("  [green]Switched to metadata-only access (content denied)[/green]")
+            console.print("  [green]Switched to metadata-only access (permission: deny)[/green]")
         else:
-            console.print("  [dim]Keeping full access (content allowed)[/dim]")
+            console.print("  [dim]Keeping full access (permission: allow)[/dim]")
 
         return result
     except Exception as e:  # Intentional broad catch: policy seeding is best-effort during setup
