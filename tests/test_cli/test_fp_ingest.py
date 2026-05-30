@@ -4,10 +4,9 @@ Validates:
   1. fp ingest --help lists available subcommands and pipeline flags
   2. Pipeline routing: bare ingest, --pipe, --full, --rebuild-vectors
   3. Status subcommand removed (was deprecated in FPR-1861)
-  4. Import: ChatIndexer.upload() routing
-  5. Refresh: validates source, runs correct stages in full_mode
-  6. Gated commands: classify/backfill/purge/report not registered
-  7. fp run removed: backward-compat alias stripped
+  4. Refresh: validates source, runs correct stages in full_mode
+  5. Gated commands: classify/backfill/purge/report not registered
+  6. fp run removed: backward-compat alias stripped
 """
 
 import fcntl
@@ -33,9 +32,10 @@ class TestIngestHelp:
     def test_help_lists_subcommands(self):
         stdout, stderr, code = run_fp("ingest", "--help")
         output = stdout + stderr
-        for name in ("import", "refresh"):
+        for name in ("refresh",):
             assert name in output, f"'{name}' not in fp ingest --help"
-        assert "status" not in output, "'status' should not be in fp ingest --help"
+        for gone in ("status", "import"):
+            assert gone not in output, f"'{gone}' should not be in fp ingest --help"
 
     def test_help_excludes_gated_commands(self):
         """classify/backfill/purge/report are excluded from v1.0."""
@@ -134,57 +134,7 @@ class TestIngestStatusRemoved:
 
 
 # ---------------------------------------------------------------------------
-# 4. Import
-# ---------------------------------------------------------------------------
-
-
-class TestIngestImport:
-    """fp ingest import <path> routes to ChatIndexer.upload()."""
-
-    @patch("footprinter.ingest.chat_indexer.ChatIndexer")
-    @patch("footprinter.ingest.database.Database")
-    @patch("footprinter.paths.get_db_path")
-    def test_import_calls_upload(self, mock_db_path, mock_db_cls, mock_mgr_cls):
-        mock_db_path.return_value = "/tmp/test.db"
-        mock_mgr = MagicMock()
-        mock_mgr.upload.return_value = {
-            "status": "success",
-            "chats_added": 5,
-            "chats_updated": 0,
-            "messages_imported": 50,
-        }
-        mock_mgr_cls.return_value = mock_mgr
-
-        stdout, stderr, code = run_fp("ingest", "import", "/path/to/export.zip")
-
-        assert code == 0
-        mock_mgr.upload.assert_called_once()
-
-    @patch("footprinter.ingest.chat_indexer.ChatIndexer")
-    @patch("footprinter.ingest.database.Database")
-    @patch("footprinter.paths.get_db_path")
-    def test_import_duplicate_shows_warning(self, mock_db_path, mock_db_cls, mock_mgr_cls):
-        mock_db_path.return_value = "/tmp/test.db"
-        mock_mgr = MagicMock()
-        mock_mgr.upload.return_value = {
-            "status": "duplicate",
-            "previous_upload": {"uploaded_at": "2024-01-01"},
-        }
-        mock_mgr_cls.return_value = mock_mgr
-
-        stdout, stderr, code = run_fp("ingest", "import", "/path/to/export.zip")
-
-        assert code == 0
-        output = stdout + stderr
-        assert "already" in output.lower() or "duplicate" in output.lower()
-
-    def test_import_missing_path_exits_nonzero(self):
-        _, _, code = run_fp("ingest", "import")
-        assert code != 0
-
-
-# ---------------------------------------------------------------------------
-# 5. Refresh
+# 4. Refresh
 # ---------------------------------------------------------------------------
 
 

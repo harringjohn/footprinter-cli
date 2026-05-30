@@ -4,7 +4,7 @@ Validates:
   1. footprinter.cli.main is importable and callable
   2. fp --help exits 0 and lists subcommands
   3. fp (no args) shows help and exits 0
-  4. All 12 verb-first subcommands register and respond to --help
+  4. All verb-first subcommands register and respond to --help
 """
 
 import pytest
@@ -19,8 +19,6 @@ ALL_SUBCOMMANDS = [
     "setup",
     "connect",
     "view",
-    "upsert",
-    "data",
     "delete",
     "update",
     "uninstall",
@@ -87,8 +85,6 @@ class TestStubSubcommands:
             "setup": "setup",
             "connect": "connect",
             "view": "view",
-            "upsert": "upsert",
-            "data": "data",
             "delete": "delete",
             "update": "update",
             "permission": "permission_cmd",
