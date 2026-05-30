@@ -585,7 +585,7 @@ def _offer_csv_import(conn) -> None:
         entity_type = "client" if kind == "clients" else "project"
         svc_name = "client_service" if entity_type == "client" else "project_service"
 
-        from footprinter.cli.upsert import CSV_COLUMNS, _process_csv_rows
+        from footprinter.cli.add import CSV_COLUMNS, _process_csv_rows
 
         required_cols, optional_cols, int_cols = CSV_COLUMNS[entity_type]
 

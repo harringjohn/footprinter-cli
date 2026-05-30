@@ -9,6 +9,7 @@ Data CSV:   ``fp add files data.csv``
 Chat import: ``fp add chats export.zip``
 """
 
+import csv
 import importlib
 import sys
 from pathlib import Path
@@ -17,19 +18,61 @@ from rich.table import Table
 
 from footprinter.cli._common import (
     FORMATTER,
+    VALID_STATUSES_BY_ENTITY,
     add_json_flag,
     console,
     open_db,
     output_json,
 )
-from footprinter.cli.upsert import (
-    CSV_COLUMNS,
-    SINGLE_ARGS,
-    VALID_STATUSES_BY_ENTITY,
-    _check_exists,
-    _validate_and_read_csv,
-)
 from footprinter.services.ingest_service import IngestService
+
+# ---------------------------------------------------------------------------
+# Per-entity argument specs for single mode
+# ---------------------------------------------------------------------------
+
+#: Each entry: (cli_flag, argparse_kwargs, service_kwarg_name)
+SINGLE_ARGS: dict[str, list[tuple[str, dict, str]]] = {
+    "client": [
+        ("--name", {"required": True, "help": "Client name"}, "name"),
+        (
+            "--type",
+            {"required": True, "help": "Client type (external, internal, personal)", "dest": "client_type"},
+            "client_type",
+        ),
+        ("--status", {"default": None, "help": "Client status (listed, unlisted, removed)"}, "status"),
+    ],
+    "project": [
+        ("--name", {"required": True, "help": "Project name"}, "name"),
+        ("--client-id", {"default": None, "type": int, "help": "Client ID"}, "client_id"),
+        ("--description", {"default": None, "help": "Project description"}, "description"),
+        (
+            "--status",
+            {
+                "default": None,
+                "help": "Project status (listed, unlisted, removed)",
+            },
+            "status",
+        ),
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Per-entity CSV column specs for bulk mode
+# ---------------------------------------------------------------------------
+
+#: (required_columns, optional_columns, int_columns)
+CSV_COLUMNS: dict[str, tuple[list[str], list[str], list[str]]] = {
+    "client": (
+        ["name", "client_type"],
+        ["slug", "status"],
+        [],
+    ),
+    "project": (
+        ["name"],
+        ["client_id", "client", "description", "status"],
+        ["client_id"],
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Entity dispatch table
@@ -132,6 +175,135 @@ def _normalize_insert_result(result: object) -> tuple[str, int | None]:
     if isinstance(result, int):
         return ("created", result)
     return ("error", None)
+
+
+# ---------------------------------------------------------------------------
+# CSV helpers (relocated from upsert.py)
+# ---------------------------------------------------------------------------
+
+
+def _validate_and_read_csv(
+    csv_path: Path,
+    required_cols: list[str],
+) -> list[dict]:
+    """Read and validate CSV structure. Returns rows or exits on error."""
+    if not csv_path.exists():
+        console.print(f"[red]File not found: {csv_path}[/red]")
+        sys.exit(1)
+
+    with open(csv_path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            console.print("[red]Empty or invalid CSV file.[/red]")
+            sys.exit(1)
+
+        missing = set(required_cols) - set(reader.fieldnames)
+        if missing:
+            console.print(f"[red]Missing required columns: {', '.join(sorted(missing))}[/red]")
+            sys.exit(1)
+
+        return list(reader)
+
+
+def _process_csv_rows(
+    conn,
+    rows: list[dict],
+    service,
+    entity_type: str,
+    required_cols: list[str],
+    optional_cols: list[str],
+    int_cols: list[str],
+) -> tuple[int, int, int, list[dict]]:
+    """Process CSV rows through the service layer.
+
+    Returns (created, updated, errors, error_details).
+    """
+    from footprinter.services.roles import Role
+
+    created = 0
+    updated = 0
+    errors = 0
+    error_details: list[dict] = []
+
+    for i, row in enumerate(rows, 1):
+        kwargs: dict = {}
+        for col in required_cols + optional_cols:
+            val = row.get(col)
+            if val is not None and val != "":
+                kwargs[col] = val
+
+        row_bad = False
+        for col in int_cols:
+            if col in kwargs:
+                try:
+                    kwargs[col] = int(kwargs[col])
+                except (ValueError, TypeError):
+                    errors += 1
+                    error_details.append(
+                        {
+                            "row": i,
+                            "error": f"Invalid {col}: {kwargs[col]!r}",
+                        }
+                    )
+                    row_bad = True
+                    break
+        if row_bad:
+            continue
+
+        missing_vals = [c for c in required_cols if c not in kwargs]
+        if missing_vals:
+            errors += 1
+            error_details.append(
+                {
+                    "row": i,
+                    "error": f"Missing required values: {', '.join(missing_vals)}",
+                }
+            )
+            continue
+
+        if entity_type == "project" and "client" in kwargs and "client_id" not in kwargs:
+            from footprinter.db.clients import find_client_id_by_name
+
+            client_name = kwargs.pop("client")
+            resolved_id = find_client_id_by_name(conn, client_name)
+            if resolved_id is None:
+                errors += 1
+                error_details.append(
+                    {
+                        "row": i,
+                        "error": f"Client not found: {client_name!r}",
+                    }
+                )
+                continue
+            kwargs["client_id"] = resolved_id
+
+        kwargs.pop("client", None)
+        kwargs.pop("slug", None)
+
+        try:
+            result = service.upsert(conn, role=Role.ADMIN, **kwargs)
+            if result["action"] == "created":
+                created += 1
+            else:
+                updated += 1
+        except ValueError as e:
+            errors += 1
+            error_details.append({"row": i, "error": str(e)})
+
+    return created, updated, errors, error_details
+
+
+def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
+    """Check whether a record matching *kwargs* already exists."""
+    if entity_type == "client":
+        from footprinter.db.clients import find_client_id_by_name
+
+        return find_client_id_by_name(conn, kwargs.get("name", "")) is not None
+    if entity_type == "project":
+        from footprinter.db.projects import find_project_id_by_key
+
+        return find_project_id_by_key(conn, name=kwargs.get("name")) is not None
+    return False
 
 
 # ---------------------------------------------------------------------------

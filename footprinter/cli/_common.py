@@ -14,6 +14,8 @@ from typing import Optional, Union
 
 from rich.console import Console
 
+from footprinter.db.clients import VALID_STATUSES as VALID_CLIENT_STATUSES
+from footprinter.db.projects import VALID_STATUSES as VALID_PROJECT_STATUSES
 from footprinter.services import access_service as _access
 from footprinter.services.access_service import (
     resolve_inherit_permission,
@@ -50,6 +52,11 @@ C_INFO = "cyan"
 C_DIM = "dim"
 
 VALID_STATUSES = frozenset({"listed", "unlisted", "removed"})
+
+VALID_STATUSES_BY_ENTITY: dict[str, frozenset[str]] = {
+    "client": VALID_CLIENT_STATUSES,
+    "project": VALID_PROJECT_STATUSES,
+}
 
 ALLOWED_TABLES = frozenset({"clients", "projects"})
 ALLOWED_COLUMNS = frozenset({"name"})
