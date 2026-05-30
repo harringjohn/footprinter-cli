@@ -304,7 +304,7 @@ def test_entity_status_breakdown_coalesces_null_status():
 
     conn.execute(
         "INSERT INTO chats (external_id, account, title, status) "
-        "VALUES ('ext-listed', 'claude', 'visible', 'listed')"
+        "VALUES ('ext-listed', 'claude', 'full', 'listed')"
     )
     conn.execute(
         "INSERT INTO chats (external_id, account, title) "

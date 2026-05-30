@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 #   status        TEXT DEFAULT 'listed'   CHECK (listed|unlisted|removed)
 #   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 #   display_name  TEXT                    (auto-populated via trigger)
-#   mcp_read      TEXT DEFAULT 'inherit'  CHECK (allow|deny|inherit)
-#   mcp_view      TEXT DEFAULT 'inherit'  CHECK (hidden|opaque|visible|inherit)
-#   mcp_read_source TEXT                  (policy scope that set mcp_read)
-#   mcp_view_source TEXT                  (policy scope that set mcp_view)
+#   access        TEXT DEFAULT 'inherit'  CHECK (allow|deny|inherit)
+#   visibility    TEXT DEFAULT 'inherit'  CHECK (hidden|opaque|full|inherit)
+#   access_source TEXT                    (policy scope that set access)
+#   visibility_source TEXT                (policy scope that set visibility)
 #
 # Data-source entities (files, folders, emails, chats, visits, messages)
 # also have audit timestamp columns:
@@ -76,7 +76,7 @@ _INGESTS_DDL = (
 )
 
 
-# All 8 entity tables that carry mcp_read / mcp_view columns.
+# All 8 entity tables that carry access / visibility columns.
 ACCESS_CONTROL_TABLES = (
     "files",
     "folders",
@@ -102,6 +102,8 @@ class SchemaMixin:
         cursor = self.conn.cursor()
 
         self.conn.execute("PRAGMA foreign_keys=ON")
+
+        self._migrate_access_columns()
 
         # ========================================
         # Files Table (unified content metadata)
@@ -159,13 +161,13 @@ class SchemaMixin:
                 status_reason TEXT,
                 status_changed_at DATETIME,
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Display
                 display_name TEXT,
@@ -204,7 +206,7 @@ class SchemaMixin:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_md5 ON files(md5_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_status ON files(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_visibility ON files(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_visibility ON files(visibility)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_client ON files(client_id)")
 
         # ========================================
@@ -257,13 +259,13 @@ class SchemaMixin:
                 -- Client association
                 client_id INTEGER REFERENCES clients(id),
 
-                -- MCP access control
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view_source TEXT,
-                mcp_read_source TEXT,
+                -- Access control
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility_source TEXT,
+                access_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -277,7 +279,7 @@ class SchemaMixin:
         cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_unique_path ON folders(path) WHERE source = 'local'"
         )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_visibility ON folders(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_visibility ON folders(visibility)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_status ON folders(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_client ON folders(client_id)")
 
@@ -302,13 +304,13 @@ class SchemaMixin:
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Origin timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -329,7 +331,7 @@ class SchemaMixin:
         cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_unique ON visits(url, visit_time, browser)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_visits_client ON visits(client_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_visits_status ON visits(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_visits_visibility ON visits(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_visits_visibility ON visits(visibility)")
 
         # ========================================
         # Projects Table
@@ -352,13 +354,13 @@ class SchemaMixin:
                 client_id INTEGER REFERENCES clients(id),
                 client TEXT,
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -368,7 +370,7 @@ class SchemaMixin:
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_visibility ON projects(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_visibility ON projects(visibility)")
 
         # ========================================
         # Chats Table
@@ -400,13 +402,13 @@ class SchemaMixin:
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Client/project association
                 client_id INTEGER REFERENCES clients(id),
@@ -429,7 +431,7 @@ class SchemaMixin:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_conv_status ON chats(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_client ON chats(client_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_project ON chats(project_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_visibility ON chats(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_visibility ON chats(visibility)")
 
         # ========================================
         # Messages Table
@@ -455,13 +457,13 @@ class SchemaMixin:
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Display
                 display_name TEXT,
@@ -476,7 +478,7 @@ class SchemaMixin:
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON messages(chat_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_msg_created ON messages(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_visibility ON messages(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_visibility ON messages(visibility)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)")
 
         # ========================================
@@ -510,13 +512,13 @@ class SchemaMixin:
                 status TEXT DEFAULT 'listed'
                     CHECK (status IN ('listed', 'unlisted', 'removed')),
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Timestamps
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -539,7 +541,7 @@ class SchemaMixin:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_thread ON emails(thread_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_emails_client ON emails(client_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_emails_project ON emails(project_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_emails_visibility ON emails(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_emails_visibility ON emails(visibility)")
 
         # ========================================
         # Clients Table
@@ -558,13 +560,13 @@ class SchemaMixin:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 status_changed_at DATETIME,
 
-                -- MCP access control
-                mcp_read TEXT DEFAULT 'inherit'
-                    CHECK (mcp_read IN ('allow', 'deny', 'inherit')),
-                mcp_view TEXT DEFAULT 'inherit'
-                    CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')),
-                mcp_read_source TEXT,
-                mcp_view_source TEXT,
+                -- Access control
+                access TEXT DEFAULT 'inherit'
+                    CHECK (access IN ('allow', 'deny', 'inherit')),
+                visibility TEXT DEFAULT 'inherit'
+                    CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')),
+                access_source TEXT,
+                visibility_source TEXT,
 
                 -- Display
                 display_name TEXT
@@ -574,7 +576,7 @@ class SchemaMixin:
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_slug ON clients(slug)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_type ON clients(client_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_visibility ON clients(mcp_view)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_visibility ON clients(visibility)")
 
         # ========================================
         # Sources Table (runtime registry)
@@ -644,7 +646,7 @@ class SchemaMixin:
             """
             CREATE TABLE IF NOT EXISTS visibility_policies (
                 scope TEXT PRIMARY KEY,
-                setting TEXT NOT NULL CHECK (setting IN ('hidden', 'opaque', 'visible')),
+                setting TEXT NOT NULL CHECK (setting IN ('hidden', 'opaque', 'full')),
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """
@@ -701,7 +703,7 @@ class SchemaMixin:
         # NOT delegated to the content table — making it a reliable
         # honest emptiness probe for external-content tables (unlike
         # `SELECT COUNT(*) FROM <fts>`).  Together this preserves
-        # _fts_backfill_sql's mcp_view filtering and also self-heals
+        # _fts_backfill_sql's visibility filtering and also self-heals
         # any FTS table that exists but has an empty index (e.g. after
         # a future migration drops it, or a manual SQL repair).
         # Each iteration has its own try/except so a single failure
@@ -765,10 +767,60 @@ class SchemaMixin:
         except Exception as e:
             logger.warning(f"Could not seed sources from config: {e}")
 
-    def _ensure_source_columns(self):
-        """Add mcp_view_source/mcp_read_source to entity tables (idempotent upgrade)."""
+    def _migrate_access_columns(self):
+        """Rename mcp_view/mcp_read → visibility/access on existing databases (idempotent)."""
+        cols = [
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info(files)").fetchall()
+        ]
+        if "visibility" in cols:
+            return
+        if "mcp_view" not in cols:
+            return
+
+        for trigger_name in self._FTS_TRIGGER_NAMES:
+            self.conn.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+
         for table in ACCESS_CONTROL_TABLES:
-            for col in ("mcp_view_source", "mcp_read_source"):
+            self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view TO visibility")
+            self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read TO access")
+            try:
+                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view_source TO visibility_source")
+                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read_source TO access_source")
+            except sqlite3.OperationalError:
+                pass
+
+        for table in ACCESS_CONTROL_TABLES:
+            self.conn.execute(f"UPDATE {table} SET visibility = 'full' WHERE visibility = 'visible'")
+        self.conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE setting = 'visible'")
+
+        self.conn.execute("PRAGMA writable_schema = ON")
+        for table in list(ACCESS_CONTROL_TABLES) + ["visibility_policies"]:
+            row = self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()
+            if not row:
+                continue
+            new_sql = row[0]
+            new_sql = new_sql.replace("mcp_view_source", "visibility_source")
+            new_sql = new_sql.replace("mcp_read_source", "access_source")
+            new_sql = new_sql.replace("mcp_view", "visibility")
+            new_sql = new_sql.replace("mcp_read", "access")
+            new_sql = new_sql.replace("'visible'", "'full'")
+            self.conn.execute(
+                "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name=?",
+                (new_sql, table),
+            )
+        self.conn.execute("PRAGMA writable_schema = OFF")
+        v = self.conn.execute("PRAGMA schema_version").fetchone()[0]
+        self.conn.execute(f"PRAGMA schema_version = {v + 1}")
+        self.conn.execute("PRAGMA integrity_check")
+        logger.info("Migrated mcp_view/mcp_read → visibility/access columns")
+
+    def _ensure_source_columns(self):
+        """Add visibility_source/access_source to entity tables (idempotent upgrade)."""
+        for table in ACCESS_CONTROL_TABLES:
+            for col in ("visibility_source", "access_source"):
                 try:
                     self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
                 except sqlite3.OperationalError as e:
@@ -820,7 +872,7 @@ class SchemaMixin:
         for col in defn["columns"]:
             if col in content_cols:
                 select_exprs.append(
-                    f"CASE WHEN COALESCE(mcp_view, 'inherit') IN ('opaque', 'hidden') THEN NULL ELSE {col} END"
+                    f"CASE WHEN COALESCE(visibility, 'inherit') IN ('opaque', 'hidden') THEN NULL ELSE {col} END"
                 )
             else:
                 select_exprs.append(col)
@@ -831,13 +883,13 @@ class SchemaMixin:
     def _fts_col_expr(col: str, prefix: str, content_columns: set[str]) -> str:
         """Return a SQL expression for a column value in FTS triggers.
 
-        Content columns are NULLed when mcp_view is opaque or hidden,
+        Content columns are NULLed when visibility is opaque or hidden,
         preventing sensitive content from entering the FTS index.
         Metadata columns (name, subject, title, etc.) pass through unchanged.
         """
         if col in content_columns:
             return (
-                f"CASE WHEN COALESCE({prefix}.mcp_view, 'inherit') "
+                f"CASE WHEN COALESCE({prefix}.visibility, 'inherit') "
                 f"IN ('opaque', 'hidden') THEN NULL ELSE {prefix}.{col} END"
             )
         return f"{prefix}.{col}"
@@ -855,11 +907,11 @@ class SchemaMixin:
         old_vals = ", ".join(SchemaMixin._fts_col_expr(c, "old", content_cols) for c in cols)
 
         # WHEN clause for _au: only re-index when FTS-tracked columns or
-        # mcp_view change.  mcp_view affects what's stored in FTS for content
-        # columns (opaque/hidden → NULL).  Prevents spurious re-indexing from
-        # non-FTS updates (e.g. display_name) and avoids corruption when
-        # AFTER INSERT triggers do UPDATE on the same row.
-        when_cols = list(cols) + ["mcp_view"]
+        # visibility change.  visibility affects what's stored in FTS for
+        # content columns (opaque/hidden → NULL).  Prevents spurious
+        # re-indexing from non-FTS updates (e.g. display_name) and avoids
+        # corruption when AFTER INSERT triggers do UPDATE on the same row.
+        when_cols = list(cols) + ["visibility"]
         when_parts = " OR ".join(f"OLD.{c} IS NOT NEW.{c}" for c in when_cols)
 
         return [

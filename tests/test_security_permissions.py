@@ -112,7 +112,7 @@ class TestEmailAccountPermissions:
         # Email with inherit at item level
         cursor.execute(
             """
-            INSERT INTO emails (id, message_id, thread_id, account, subject, mcp_read, received_at)
+            INSERT INTO emails (id, message_id, thread_id, account, subject, access, received_at)
             VALUES (1, 'msg1', 'thread1', 'work', 'Test subject', 'inherit', '2024-01-01')
         """
         )
@@ -344,7 +344,7 @@ class TestChatVisibility:
         cursor.execute(
             """
             INSERT INTO visibility_policies (scope, setting)
-            VALUES ('account:claude', 'visible')
+            VALUES ('account:claude', 'full')
         """
         )
         test_db.commit()
@@ -364,9 +364,9 @@ class TestChatRead:
         cursor.execute(
             """
             INSERT INTO chats
-            (id, external_id, account, title, created_at, message_count, mcp_view)
+            (id, external_id, account, title, created_at, message_count, visibility)
             VALUES (1, 'conv-uuid-1', 'claude', 'Test Chat',
-                    '2024-01-15', 2, 'visible')
+                    '2024-01-15', 2, 'full')
         """
         )
         cursor.execute(
@@ -384,7 +384,7 @@ class TestChatRead:
         # Use source policy instead of global
         cursor.execute(
             """
-            INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'visible')
+            INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')
         """
         )
         cursor.execute(
@@ -415,8 +415,8 @@ class TestChatRead:
 
         cursor.execute(
             """
-            INSERT INTO chats (id, external_id, account, title, mcp_view, mcp_read)
-            VALUES (1, 'conv-uuid-1', 'claude', 'Secret Chat', 'visible', 'deny')
+            INSERT INTO chats (id, external_id, account, title, visibility, access)
+            VALUES (1, 'conv-uuid-1', 'claude', 'Secret Chat', 'full', 'deny')
         """
         )
         test_db.commit()
@@ -441,7 +441,7 @@ class TestChatRead:
 
         cursor.execute(
             """
-            INSERT INTO chats (id, external_id, account, title, mcp_view)
+            INSERT INTO chats (id, external_id, account, title, visibility)
             VALUES (1, 'conv-uuid-1', 'claude', 'Hidden Chat', 'hidden')
         """
         )
@@ -463,7 +463,7 @@ class TestChatRead:
 
         cursor.execute(
             """
-            INSERT INTO chats (id, external_id, account, title, mcp_view)
+            INSERT INTO chats (id, external_id, account, title, visibility)
             VALUES (1, 'conv-uuid-1', 'claude', 'Opaque Chat', 'opaque')
         """
         )
@@ -527,7 +527,7 @@ class TestSearchChatAccount:
         # Use source policy instead of global
         cursor.execute(
             """
-            INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'visible')
+            INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')
         """
         )
         test_db.commit()
@@ -669,14 +669,14 @@ class TestBatchVisibilityResolution:
         )
         cursor.execute(
             "INSERT INTO visibility_policies (scope, setting)"
-            f" VALUES ('folder:{TEST_HOME}/Work', 'visible')"
+            f" VALUES ('folder:{TEST_HOME}/Work', 'full')"
         )
         batch_db.commit()
 
         from footprinter.visibility import BASELINE_VISIBILITY, batch_resolve_visibility
 
         result = batch_resolve_visibility(batch_db, "file", [1, 2])
-        assert result[1] == ("visible", f"folder:{TEST_HOME}/Work")
+        assert result[1] == ("full", f"folder:{TEST_HOME}/Work")
         assert result[2] == (BASELINE_VISIBILITY, "baseline")
 
     def test_batch_visibility_most_restrictive_wins(self, batch_db):
@@ -687,7 +687,7 @@ class TestBatchVisibilityResolution:
             "INSERT INTO files (id, name, path, project_id, source)"
             " VALUES (1, 'file.txt', '/test/file.txt', 1, 'local')"
         )
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/test', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/test', 'full')")
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'hidden')")
         batch_db.commit()
 
@@ -703,13 +703,13 @@ class TestBatchVisibilityResolution:
         cursor = batch_db.cursor()
         cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (1, 'Test Project', NULL)")
         cursor.execute("INSERT INTO projects (id, name, client_id) VALUES (2, 'Test Project 2', NULL)")
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('project:1', 'full')")
         batch_db.commit()
 
         from footprinter.visibility import BASELINE_VISIBILITY, batch_resolve_visibility
 
         result = batch_resolve_visibility(batch_db, "project", [1, 2])
-        assert result[1] == ("visible", "project:1")
+        assert result[1] == ("full", "project:1")
         assert result[2] == (BASELINE_VISIBILITY, "baseline")
 
 
@@ -852,7 +852,7 @@ class TestGlobalVisibilityFallback:
         cursor.execute(
             """
             INSERT INTO visibility_policies (scope, setting)
-            VALUES ('global', 'visible')
+            VALUES ('global', 'full')
         """
         )
         test_db.commit()
@@ -860,7 +860,7 @@ class TestGlobalVisibilityFallback:
         from footprinter.visibility import resolve_visibility_with_source
 
         result, source = resolve_visibility_with_source(test_db, "email", 1)
-        assert result == "visible"
+        assert result == "full"
         assert source == "global"
 
     def test_specific_policy_overrides_global_visibility(self, test_db):
@@ -875,7 +875,7 @@ class TestGlobalVisibilityFallback:
         cursor.execute(
             """
             INSERT INTO visibility_policies (scope, setting)
-            VALUES ('global', 'visible')
+            VALUES ('global', 'full')
         """
         )
         cursor.execute(

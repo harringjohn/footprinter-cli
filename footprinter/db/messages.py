@@ -60,8 +60,8 @@ def list_messages(
     fetch_sql = f"""
         SELECT message.id, message.chat_id, message.message_id, message.role, message.content, message.created_at,
                chat.title AS chat_title, chat.account AS chat_account,
-               message.mcp_view, message.mcp_read,
-               message.mcp_view_source, message.mcp_read_source
+               message.visibility, message.access,
+               message.visibility_source, message.access_source
         FROM messages message
         JOIN chats chat ON message.chat_id = chat.id
         {where}
@@ -81,10 +81,10 @@ def list_messages(
             "created_at": r["created_at"],
             "chat_title": r["chat_title"],
             "chat_account": r["chat_account"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
         }
         for r in rows
     ]
@@ -108,8 +108,8 @@ def get_message(conn: sqlite3.Connection, message_id: int) -> Optional[dict]:
         """
         SELECT message.id, message.chat_id, message.message_id, message.role, message.content, message.created_at,
                chat.title AS chat_title, chat.account AS chat_account,
-               message.mcp_view, message.mcp_read,
-               message.mcp_view_source, message.mcp_read_source
+               message.visibility, message.access,
+               message.visibility_source, message.access_source
         FROM messages message
         JOIN chats chat ON message.chat_id = chat.id
         WHERE message.id = ?
@@ -129,10 +129,10 @@ def get_message(conn: sqlite3.Connection, message_id: int) -> Optional[dict]:
         "created_at": row["created_at"],
         "chat_title": row["chat_title"],
         "chat_account": row["chat_account"],
-        "mcp_view": row["mcp_view"],
-        "mcp_read": row["mcp_read"],
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"],
+        "access": row["access"],
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
     }
 
 
@@ -169,8 +169,8 @@ def search_messages(
     fetch_sql = """
         SELECT message.id, message.chat_id, message.message_id, message.role, message.content, message.created_at,
                chat.title AS chat_title, chat.account AS chat_account,
-               message.mcp_view, message.mcp_read,
-               message.mcp_view_source, message.mcp_read_source
+               message.visibility, message.access,
+               message.visibility_source, message.access_source
         FROM messages message
         JOIN chats chat ON message.chat_id = chat.id
         WHERE message.content LIKE ?
@@ -190,10 +190,10 @@ def search_messages(
             "created_at": r["created_at"],
             "chat_title": r["chat_title"],
             "chat_account": r["chat_account"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
         }
         for r in rows
     ]

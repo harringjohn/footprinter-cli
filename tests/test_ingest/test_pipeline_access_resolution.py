@@ -122,23 +122,23 @@ class TestAccessResolutionRunner:
 
         assert result.status == PipeStatus.COMPLETED
 
-        # All files should have non-NULL mcp_view
-        rows = conn.execute("SELECT mcp_view, mcp_read FROM files").fetchall()
+        # All files should have non-NULL visibility
+        rows = conn.execute("SELECT visibility, access FROM files").fetchall()
         for row in rows:
-            assert row["mcp_view"] is not None
-            assert row["mcp_read"] is not None
+            assert row["visibility"] is not None
+            assert row["access"] is not None
 
         # Emails
-        rows = conn.execute("SELECT mcp_view, mcp_read FROM emails").fetchall()
+        rows = conn.execute("SELECT visibility, access FROM emails").fetchall()
         for row in rows:
-            assert row["mcp_view"] is not None
-            assert row["mcp_read"] is not None
+            assert row["visibility"] is not None
+            assert row["access"] is not None
 
         # Chats
-        rows = conn.execute("SELECT mcp_view, mcp_read FROM chats").fetchall()
+        rows = conn.execute("SELECT visibility, access FROM chats").fetchall()
         for row in rows:
-            assert row["mcp_view"] is not None
-            assert row["mcp_read"] is not None
+            assert row["visibility"] is not None
+            assert row["access"] is not None
 
     def test_incremental_stamps_only_new_entities(self, conn):
         """Incremental mode only stamps entities newer than last run."""
@@ -162,9 +162,9 @@ class TestAccessResolutionRunner:
         conn.commit()
 
         # Reset visibility to NULL to detect what gets re-stamped
-        conn.execute("UPDATE files SET mcp_view = NULL, mcp_read = NULL")
-        conn.execute("UPDATE emails SET mcp_view = NULL, mcp_read = NULL")
-        conn.execute("UPDATE chats SET mcp_view = NULL, mcp_read = NULL")
+        conn.execute("UPDATE files SET visibility = NULL, access = NULL")
+        conn.execute("UPDATE emails SET visibility = NULL, access = NULL")
+        conn.execute("UPDATE chats SET visibility = NULL, access = NULL")
         conn.commit()
 
         # Add new entities with a later timestamp
@@ -176,12 +176,12 @@ class TestAccessResolutionRunner:
         assert result.status == PipeStatus.COMPLETED
 
         # New file (id=3) should be stamped
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 3").fetchone()
-        assert row["mcp_view"] is not None
+        row = conn.execute("SELECT visibility FROM files WHERE id = 3").fetchone()
+        assert row["visibility"] is not None
 
         # Old file (id=1) should still be NULL (wasn't re-processed)
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] is None
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] is None
 
     def test_incremental_with_no_last_run_stamps_all(self, conn):
         """First incremental run (no last run) behaves like full mode."""
@@ -195,7 +195,7 @@ class TestAccessResolutionRunner:
         assert result.status == PipeStatus.COMPLETED
 
         # All files should be stamped
-        rows = conn.execute("SELECT mcp_view FROM files WHERE mcp_view IS NOT NULL").fetchall()
+        rows = conn.execute("SELECT visibility FROM files WHERE visibility IS NOT NULL").fetchall()
         assert len(rows) == 2  # both seeded files
 
     def test_no_bare_last_run_row_after_run(self, conn):

@@ -79,10 +79,10 @@ class TestMcpCheckShowAll:
 
     def test_check_no_args_shows_policies(self, policy_db):
         """No-args check shows a unified policy table."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check")
         assert code == 0
-        assert "visible" in stdout
+        assert "full" in stdout
         assert "allow" in stdout
 
     def test_check_no_args_empty_db(self, policy_db):
@@ -93,18 +93,18 @@ class TestMcpCheckShowAll:
 
     def test_check_no_args_json(self, policy_db):
         """No-args check --json returns both policy lists."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "--json")
         assert code == 0
         data = json.loads(stdout)
         assert "visibility" in data
         assert "permission" in data
-        assert any(r["setting"] == "visible" for r in data["visibility"])
+        assert any(r["setting"] == "full" for r in data["visibility"])
         assert any(r["setting"] == "deny" for r in data["permission"])
 
     def test_check_no_args_shows_multiple_scopes(self, policy_db):
         """No-args check shows entity-level overrides alongside global."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
         stdout, stderr, code = run_fp("mcp", "check")
         assert code == 0
@@ -129,22 +129,22 @@ class TestMcpCheck:
 
     def test_check_path_simulated(self, policy_db):
         """check with unindexed path shows simulated resolution."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/test.txt")
         assert code == 0
         assert "deny" in stdout
-        assert "visible" in stdout
+        assert "full" in stdout
 
     def test_check_json_output(self, policy_db):
         """check with --json produces valid JSON."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "--json", "/tmp/test.txt")
         assert code == 0
         data = json.loads(stdout)
         assert "permission" in data
         assert "visibility" in data
         assert data["permission"]["resolved"] == "deny"
-        assert data["visibility"]["resolved"] == "visible"
+        assert data["visibility"]["resolved"] == "full"
 
     def test_check_folder_empty(self, policy_db):
         """check --folder with no files."""
@@ -195,7 +195,7 @@ class TestMcpCheck:
         conn.commit()
         conn.close()
 
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/test-folder")
         assert code == 0
         assert "simulated" not in stdout.lower()
@@ -221,7 +221,7 @@ class TestMcpCheck:
 
     def test_check_path_not_found_messaging(self, policy_db):
         """Unindexed path shows clear not-found message with tips."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/definitely-not-indexed")
         assert code == 0
         assert "Not found in files or folders" in stdout
@@ -229,7 +229,7 @@ class TestMcpCheck:
 
     def test_check_path_not_found_json(self, policy_db):
         """Unindexed path in JSON mode shows found_in_db: false."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "check", "--json", "/tmp/definitely-not-indexed")
         assert code == 0
         data = json.loads(stdout)
@@ -246,9 +246,9 @@ class TestMcpSet:
 
     def test_set_both_values(self, policy_db):
         """Set both visibility and permission in one call."""
-        stdout, stderr, code = run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        stdout, stderr, code = run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         assert code == 0
-        assert "visible" in stdout
+        assert "full" in stdout
         assert "allow" in stdout
 
     def test_set_visibility_only(self, policy_db):
@@ -284,10 +284,10 @@ class TestMcpSet:
 
     def test_set_then_check(self, policy_db):
         """Set both, then verify with check."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "check", "/tmp/test.txt")
         assert code == 0
-        assert "visible" in stdout
+        assert "full" in stdout
         assert "deny" in stdout
 
     def test_set_folder_scope(self, policy_db):
@@ -309,7 +309,7 @@ class TestMcpSet:
 
     def test_set_overwrites_existing(self, policy_db):
         """Setting a scope twice overwrites the previous value."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         run_fp("mcp", "set", "global", "--visibility", "hidden", "--permission", "deny")
         conn = sqlite3.connect(str(policy_db))
         conn.row_factory = sqlite3.Row
@@ -355,7 +355,7 @@ class TestMcpReset:
 
     def test_reset_scope_deletes_from_both_tables(self, policy_db):
         """Reset a scope removes it from both visibility and permission tables."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "deny")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "deny")
         stdout, stderr, code = run_fp("mcp", "reset", "global")
         assert code == 0
         conn = sqlite3.connect(str(policy_db))
@@ -381,7 +381,7 @@ class TestMcpReset:
     def test_reset_all_clears_and_reseeds(self, policy_db):
         """reset --all clears all policies and re-seeds defaults."""
         run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden")
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         stdout, stderr, code = run_fp("mcp", "reset", "--all")
         assert code == 0
         assert "Cleared" in stdout
@@ -391,7 +391,7 @@ class TestMcpReset:
         vis = conn.execute("SELECT * FROM visibility_policies").fetchall()
         perm = conn.execute("SELECT * FROM permission_policies").fetchall()
         conn.close()
-        assert len(vis) == 1 and vis[0]["scope"] == "global" and vis[0]["setting"] == "visible"
+        assert len(vis) == 1 and vis[0]["scope"] == "global" and vis[0]["setting"] == "full"
         assert len(perm) == 1 and perm[0]["scope"] == "global" and perm[0]["setting"] == "allow"
 
     def test_reset_no_args_shows_help(self):
@@ -402,7 +402,7 @@ class TestMcpReset:
 
     def test_reset_only_touches_target_scope(self, policy_db):
         """Reset one scope leaves other scopes intact."""
-        run_fp("mcp", "set", "global", "--visibility", "visible", "--permission", "allow")
+        run_fp("mcp", "set", "global", "--visibility", "full", "--permission", "allow")
         run_fp("mcp", "set", "folder:~/Work", "--visibility", "hidden", "--permission", "deny")
         run_fp("mcp", "reset", "folder:~/Work")
         conn = sqlite3.connect(str(policy_db))
@@ -412,7 +412,7 @@ class TestMcpReset:
         vis_folder = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'").fetchone()
         perm_folder = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'folder:~/Work'").fetchone()
         conn.close()
-        assert vis_global["setting"] == "visible"
+        assert vis_global["setting"] == "full"
         assert perm_global["setting"] == "allow"
         assert vis_folder is None
         assert perm_folder is None

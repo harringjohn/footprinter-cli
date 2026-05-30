@@ -216,7 +216,7 @@ class TestAccessPoliciesResource:
         """Seeded policies appear in the resource payload with scope/setting fields."""
         from footprinter.db.policies import set_permission_policy, set_visibility_policy
 
-        set_visibility_policy(tool_db, "global", "visible")
+        set_visibility_policy(tool_db, "global", "full")
         set_permission_policy(tool_db, "global", "deny")
 
         result = self._call(tool_db)

@@ -37,8 +37,8 @@ from footprinter.db.policies import (
     set_visibility_policy,
 )
 
-_VISIBILITY_INPUT = {"full": "visible", "opaque": "opaque", "hidden": "hidden"}
-_VISIBILITY_DISPLAY = {"visible": "full", "opaque": "opaque", "hidden": "hidden"}
+_VISIBILITY_INPUT = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
+_VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 
 
 # ---------------------------------------------------------------------------

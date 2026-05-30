@@ -34,18 +34,18 @@ def db_conn(tmp_path):
     # -- Clients ---------------------------------------------------------------
     conn.execute(
         """INSERT INTO clients (id, name, slug, client_type, status,
-                                mcp_view, mcp_read)
+                                visibility, access)
            VALUES
-               (1, 'Acme Corp',  'acme',   'external', 'listed', 'visible', 'allow'),
+               (1, 'Acme Corp',  'acme',   'external', 'listed', 'full', 'allow'),
                (2, 'Hidden Inc', 'hidden', 'external', 'listed', 'hidden',  'allow')"""
     )
 
     # -- Projects --------------------------------------------------------------
     conn.execute(
         """INSERT INTO projects (id, name, status,
-                                 client_id, mcp_view, mcp_read)
+                                 client_id, visibility, access)
            VALUES
-               (1, 'Alpha', 'listed', 1, 'visible', 'allow'),
+               (1, 'Alpha', 'listed', 1, 'full', 'allow'),
                (2, 'Beta',  'listed', 2, 'hidden',  'allow')"""
     )
 
@@ -53,40 +53,40 @@ def db_conn(tmp_path):
     conn.execute(
         """INSERT INTO files (id, name, path, source, status, content_type, size_bytes,
                               modified_at, account, mime_type, project_id,
-                              mcp_view, mcp_read, content_preview)
+                              visibility, access, content_preview)
            VALUES
                (1, 'readme.md',  '/Users/u/Work/alpha/readme.md',  'local', 'listed', 'markdown', 1000,
-                '2026-01-10', NULL, 'text/markdown', 1, 'visible', 'allow', 'This is a readme'),
+                '2026-01-10', NULL, 'text/markdown', 1, 'full', 'allow', 'This is a readme'),
                (2, 'secret.py',  '/Users/u/Work/beta/secret.py',   'local', 'listed', 'python',   2000,
                 '2026-01-11', NULL, 'text/x-python', 2, 'hidden',  'allow', 'Secret content'),
                (3, 'report.pdf', '/Users/u/Work/alpha/report.pdf', 'local', 'listed', 'pdf',      5000,
-                '2026-01-12', 'work', 'application/pdf', 1, 'visible', 'allow', 'Report content')"""
+                '2026-01-12', 'work', 'application/pdf', 1, 'full', 'allow', 'Report content')"""
     )
 
     # -- Emails ----------------------------------------------------------------
     conn.execute(
         """INSERT INTO emails (id, message_id, thread_id, account, from_address, from_name,
                                to_addresses, subject, body_preview, received_at,
-                               labels, status, mcp_view, mcp_read)
+                               labels, status, visibility, access)
            VALUES
                (1, 'msg-1', 'thr-1', 'work',     'alice@example.com', 'Alice',
                 'bob@example.com', 'Project Update', 'Here is the update...', '2026-01-15T10:00:00',
-                'inbox', 'listed', 'visible', 'allow'),
+                'inbox', 'listed', 'full', 'allow'),
                (2, 'msg-2', 'thr-2', 'work',     'bob@example.com', 'Bob',
                 'alice@example.com', 'Hidden Email', 'Secret stuff', '2026-01-15T11:00:00',
                 'inbox', 'listed', 'hidden', 'allow'),
                (3, 'msg-3', 'thr-3', 'personal', 'eve@example.com', 'Eve',
                 'alice@example.com', 'Weekend Plans', 'Let us meet...', '2026-01-15T12:00:00',
-                'inbox', 'listed', 'visible', 'allow')"""
+                'inbox', 'listed', 'full', 'allow')"""
     )
 
     # -- Chats -----------------------------------------------------------------
     conn.execute(
         """INSERT INTO chats (id, external_id, account, title, message_count,
-                              created_at, mcp_view, mcp_read, status)
+                              created_at, visibility, access, status)
            VALUES
                (1, 'conv-vis',    'claude', 'Visible Chat', 2,
-                '2026-01-10', 'visible', 'allow', 'listed'),
+                '2026-01-10', 'full', 'allow', 'listed'),
                (2, 'conv-hidden', 'claude', 'Hidden Chat',  1,
                 '2026-01-11', 'hidden',  'allow', 'listed'),
                (3, 'conv-opaque', 'claude', 'Opaque Chat',  1,
@@ -95,14 +95,14 @@ def db_conn(tmp_path):
 
     # -- Visits ----------------------------------------------------------------
     conn.execute(
-        """INSERT INTO visits (id, url, title, visit_time, browser, mcp_view, mcp_read)
+        """INSERT INTO visits (id, url, title, visit_time, browser, visibility, access)
            VALUES
                (1, 'https://example.com/page1', 'Example Page',  '2026-01-15 10:00:00', 'safari',
-                'visible', 'allow'),
+                'full', 'allow'),
                (2, 'https://hidden.example.com', 'Hidden Page',  '2026-01-15 11:00:00', 'safari',
                 'hidden', 'allow'),
                (3, 'https://example.com/page2', 'Another Page',  '2026-01-15 12:00:00', 'chrome',
-                'visible', 'allow')"""
+                'full', 'allow')"""
     )
 
     conn.commit()

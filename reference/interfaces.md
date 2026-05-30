@@ -167,7 +167,7 @@ The `Role` enum (`footprinter.services.roles.Role`) determines what a caller can
 
 ### Visibility Filtering (VIEWER)
 
-Items have a `mcp_view` column that controls what VIEWER sees:
+Items have a `visibility` column that controls what VIEWER sees:
 
 | Visibility | Effect |
 |---|---|
@@ -175,7 +175,7 @@ Items have a `mcp_view` column that controls what VIEWER sees:
 | `opaque` | Minimal fields only (id, type, source) |
 | `visible` | Full metadata returned |
 
-Items also have a `mcp_read` column for content access:
+Items also have a `access` column for content access:
 
 | Permission | Effect |
 |---|---|

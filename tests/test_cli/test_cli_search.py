@@ -277,15 +277,15 @@ def _make_fts_db(tmp_path):
         """CREATE TABLE chats (
             id INTEGER PRIMARY KEY, external_id TEXT, title TEXT,
             account TEXT, created_at TEXT, updated_at TEXT, message_count INTEGER,
-            mcp_view TEXT DEFAULT 'inherit',
+            visibility TEXT DEFAULT 'inherit',
             status TEXT DEFAULT 'listed'
         )"""
     )
     conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, content=chats, content_rowid=id)")
     conn.execute(
-        """INSERT INTO chats (id, title, account, created_at, message_count, mcp_view)
+        """INSERT INTO chats (id, title, account, created_at, message_count, visibility)
            VALUES (1, 'Database migration planning',
-                   'claude', '2026-01-10', 5, 'visible')"""
+                   'claude', '2026-01-10', 5, 'full')"""
     )
     conn.execute(
         "INSERT INTO chats_fts (rowid, title)"

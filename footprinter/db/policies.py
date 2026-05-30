@@ -3,7 +3,7 @@
 import sqlite3
 
 PERMISSION_SETTINGS = frozenset({"allow", "deny"})
-VISIBILITY_SETTINGS = frozenset({"visible", "opaque", "hidden"})
+VISIBILITY_SETTINGS = frozenset({"full", "opaque", "hidden"})
 
 SCOPE_PREFIXES = frozenset({"source", "account", "folder", "project", "client", "file", "email", "chat"})
 VALID_SOURCE_TYPES = frozenset({"files", "emails", "chats", "folders", "browser", "projects", "clients"})
@@ -80,9 +80,9 @@ def clear_visibility_policies(conn: sqlite3.Connection) -> int:
 
 
 def seed_visibility_defaults(conn: sqlite3.Connection) -> bool:
-    """Seed ``global=visible`` into visibility_policies. Idempotent."""
+    """Seed ``global=full`` into visibility_policies. Idempotent."""
     cur = conn.cursor()
-    cur.execute("INSERT OR IGNORE INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+    cur.execute("INSERT OR IGNORE INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
     seeded = cur.rowcount > 0
     conn.commit()
     return seeded

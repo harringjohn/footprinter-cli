@@ -89,13 +89,13 @@ def get_access_resolution(conn: sqlite3.Connection) -> dict[str, dict[str, int]]
     """Per-entity access resolution counts for ``fp status``.
 
     Returns ``{entity: {"stamped": int, "total": int}}`` for files, emails,
-    chats.  "stamped" means ``mcp_view IS NOT NULL`` (visibility resolved).
+    chats.  "stamped" means ``visibility IS NOT NULL`` (visibility resolved).
     Files are filtered to ``status = 'listed'`` only.
     """
     result: dict[str, dict[str, int]] = {}
     for table in _ACCESS_RESOLUTION_TABLES:
         try:
-            stamped_where = "mcp_view IS NOT NULL"
+            stamped_where = "visibility IS NOT NULL"
             total_where = "1=1"
             if table == "files":
                 stamped_where += " AND status = 'listed'"
@@ -114,7 +114,7 @@ def get_access_resolution(conn: sqlite3.Connection) -> dict[str, dict[str, int]]
 
 # -- Hidden-client NOT EXISTS clause (reused across source queries) -----------
 _NOT_HIDDEN_CLIENT = (
-    "NOT EXISTS (  SELECT 1 FROM clients client  WHERE client.id = {alias}.client_id AND client.mcp_view = 'hidden')"
+    "NOT EXISTS (  SELECT 1 FROM clients client  WHERE client.id = {alias}.client_id AND client.visibility = 'hidden')"
 )
 
 
@@ -128,12 +128,12 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
     tables: Dict[str, Dict[str, Optional[str]]] = {
         "files": {
             "count": (
-                "SELECT COUNT(*) FROM files WHERE status = 'listed' AND COALESCE(mcp_view, 'inherit') != 'hidden'"
+                "SELECT COUNT(*) FROM files WHERE status = 'listed' AND COALESCE(visibility, 'inherit') != 'hidden'"
             ),
             "latest": (
                 "SELECT MAX(indexed_at) FROM files "
                 "WHERE status = 'listed' "
-                "AND COALESCE(mcp_view, 'inherit') != 'hidden'"
+                "AND COALESCE(visibility, 'inherit') != 'hidden'"
             ),
         },
         "emails": {
@@ -167,7 +167,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
                 "AND NOT EXISTS ("
                 "  SELECT 1 FROM chats chat"
                 "  JOIN clients client ON client.id = chat.client_id"
-                "  WHERE chat.id = message.chat_id AND client.mcp_view = 'hidden'"
+                "  WHERE chat.id = message.chat_id AND client.visibility = 'hidden'"
                 ")"
             ),
             "latest": (
@@ -176,7 +176,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
                 "AND NOT EXISTS ("
                 "  SELECT 1 FROM chats chat"
                 "  JOIN clients client ON client.id = chat.client_id"
-                "  WHERE chat.id = message.chat_id AND client.mcp_view = 'hidden'"
+                "  WHERE chat.id = message.chat_id AND client.visibility = 'hidden'"
                 ")"
             ),
         },
@@ -197,7 +197,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
             "latest": "SELECT MAX(created_at) FROM projects",
         },
         "clients": {
-            "count": ("SELECT COUNT(*) FROM clients WHERE COALESCE(mcp_view, 'inherit') != 'hidden'"),
+            "count": ("SELECT COUNT(*) FROM clients WHERE COALESCE(visibility, 'inherit') != 'hidden'"),
             "latest": None,
         },
     }
@@ -221,7 +221,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         """
         SELECT source, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
         FROM files WHERE status = 'listed'
-        AND COALESCE(mcp_view, 'inherit') != 'hidden'
+        AND COALESCE(visibility, 'inherit') != 'hidden'
         GROUP BY source
     """,
     )
@@ -252,7 +252,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         SELECT COALESCE(client.name, '(unassigned)') AS client_name, COUNT(*) as count
         FROM emails email LEFT JOIN clients client ON email.client_id = client.id
         WHERE email.status = 'listed'
-          AND (client.mcp_view IS NULL OR client.mcp_view != 'hidden')
+          AND (client.visibility IS NULL OR client.visibility != 'hidden')
         GROUP BY client_name
     """,
     )
@@ -265,7 +265,7 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
         SELECT COALESCE(client.name, '(unassigned)') AS client_name, COUNT(*) as count
         FROM chats chat LEFT JOIN clients client ON chat.client_id = client.id
         WHERE chat.status = 'listed'
-          AND (client.mcp_view IS NULL OR client.mcp_view != 'hidden')
+          AND (client.visibility IS NULL OR client.visibility != 'hidden')
         GROUP BY client_name
     """,
     )

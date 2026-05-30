@@ -53,18 +53,18 @@ class TestSchemaSourceColumns:
     def test_source_columns_exist_in_fresh_db(self, conn):
         for table in ACCESS_CONTROL_TABLES:
             cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-            assert "mcp_view_source" in cols, f"{table} missing mcp_view_source"
-            assert "mcp_read_source" in cols, f"{table} missing mcp_read_source"
+            assert "visibility_source" in cols, f"{table} missing visibility_source"
+            assert "access_source" in cols, f"{table} missing access_source"
 
     def test_source_columns_default_null(self, conn):
         conn.execute(
             "INSERT INTO files (id, source, name) VALUES (999, 'local', 'test.txt')"
         )
         row = conn.execute(
-            "SELECT mcp_view_source, mcp_read_source FROM files WHERE id = 999"
+            "SELECT visibility_source, access_source FROM files WHERE id = 999"
         ).fetchone()
-        assert row["mcp_view_source"] is None
-        assert row["mcp_read_source"] is None
+        assert row["visibility_source"] is None
+        assert row["access_source"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -82,9 +82,9 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "source:files")
 
-        row = conn.execute("SELECT mcp_view, mcp_view_source FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
-        assert row["mcp_view_source"] == "source:files"
+        row = conn.execute("SELECT visibility, visibility_source FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
+        assert row["visibility_source"] == "source:files"
 
     def test_stamp_inherit_source_writes_null_source(self, conn):
         _seed_entities(conn)
@@ -95,9 +95,9 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "global")
 
-        row = conn.execute("SELECT mcp_view, mcp_view_source FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
-        assert row["mcp_view_source"] is None
+        row = conn.execute("SELECT visibility, visibility_source FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
+        assert row["visibility_source"] is None
 
     def test_stamp_specific_policy_writes_permission_source(self, conn):
         _seed_entities(conn)
@@ -108,9 +108,9 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "source:files")
 
-        row = conn.execute("SELECT mcp_read, mcp_read_source FROM files WHERE id = 1").fetchone()
-        assert row["mcp_read"] == "deny"
-        assert row["mcp_read_source"] == "source:files"
+        row = conn.execute("SELECT access, access_source FROM files WHERE id = 1").fetchone()
+        assert row["access"] == "deny"
+        assert row["access_source"] == "source:files"
 
     def test_stamp_permission_inherit_writes_null_source(self, conn):
         _seed_entities(conn)
@@ -121,9 +121,9 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "global")
 
-        row = conn.execute("SELECT mcp_read, mcp_read_source FROM files WHERE id = 1").fetchone()
-        assert row["mcp_read"] == "inherit"
-        assert row["mcp_read_source"] is None
+        row = conn.execute("SELECT access, access_source FROM files WHERE id = 1").fetchone()
+        assert row["access"] == "inherit"
+        assert row["access_source"] is None
 
     def test_stamp_project_scope_writes_project_source(self, conn):
         _seed_entities(conn)
@@ -134,12 +134,12 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "project:3")
 
-        row1 = conn.execute("SELECT mcp_view, mcp_view_source FROM files WHERE id = 1").fetchone()
-        assert row1["mcp_view"] == "hidden"
-        assert "project:3" in row1["mcp_view_source"]
+        row1 = conn.execute("SELECT visibility, visibility_source FROM files WHERE id = 1").fetchone()
+        assert row1["visibility"] == "hidden"
+        assert "project:3" in row1["visibility_source"]
 
-        row2 = conn.execute("SELECT mcp_view_source FROM files WHERE id = 2").fetchone()
-        assert row2["mcp_view_source"] is None
+        row2 = conn.execute("SELECT visibility_source FROM files WHERE id = 2").fetchone()
+        assert row2["visibility_source"] is None
 
     def test_stamp_folder_scope_writes_folder_source(self, conn):
         _seed_entities(conn)
@@ -152,10 +152,10 @@ class TestStamperSourcePersistence:
 
         recalculate_access(conn, "folder:/Users/me/Work/")
 
-        row = conn.execute("SELECT mcp_view, mcp_view_source FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
-        assert row["mcp_view_source"] is not None
-        assert "folder:" in row["mcp_view_source"]
+        row = conn.execute("SELECT visibility, visibility_source FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
+        assert row["visibility_source"] is not None
+        assert "folder:" in row["visibility_source"]
 
 
 # ---------------------------------------------------------------------------
@@ -167,28 +167,28 @@ class TestEnrichSourceDisplay:
     def test_enrich_uses_stored_source(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"mcp_read": "allow", "mcp_read_source": "project:3", "mcp_view": "visible"}
+        row = {"access": "allow", "access_source": "project:3", "visibility": "full"}
         enrich_verbose_access([row], "file")
         assert row["access_source"] == "project:3"
 
     def test_enrich_falls_back_to_cached_when_source_absent(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"mcp_read": "allow", "mcp_view": "visible"}
+        row = {"access": "allow", "visibility": "full"}
         enrich_verbose_access([row], "file")
         assert row["access_source"] == "cached"
 
     def test_enrich_falls_back_to_cached_when_source_null(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"mcp_read": "allow", "mcp_read_source": None, "mcp_view": "visible"}
+        row = {"access": "allow", "access_source": None, "visibility": "full"}
         enrich_verbose_access([row], "file")
         assert row["access_source"] == "cached"
 
     def test_enrich_inherit_unchanged(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"mcp_read": "inherit", "mcp_view": "inherit"}
+        row = {"access": "inherit", "visibility": "inherit"}
         enrich_verbose_access([row], "file")
         assert row["access_source"] in ("global", "baseline")
 
@@ -196,14 +196,14 @@ class TestEnrichSourceDisplay:
         from footprinter.cli._common import enrich_verbose_access
 
         row = {
-            "mcp_read": "allow",
-            "mcp_read_source": "source:files",
-            "mcp_view": "hidden",
-            "mcp_view_source": "folder:~/Work/",
+            "access": "allow",
+            "access_source": "source:files",
+            "visibility": "hidden",
+            "visibility_source": "folder:~/Work/",
         }
         enrich_verbose_access([row], "file")
-        assert "mcp_read_source" not in row
-        assert "mcp_view_source" not in row
+        assert "visibility_raw" in row
+        assert "access_raw" in row
         assert "visibility_source" in row
         assert row["visibility_source"] == "folder:~/Work/"
 
@@ -214,22 +214,22 @@ class TestEnrichSourceDisplay:
             "id": 1,
             "name": "a.py",
             "path": "/tmp/a.py",
-            "mcp_view": "visible",
-            "mcp_read": "allow",
-            "mcp_view_source": "source:files",
-            "mcp_read_source": "project:3",
+            "visibility": "full",
+            "access": "allow",
+            "visibility_source": "source:files",
+            "access_source": "project:3",
         }
         enrich_verbose_access([row], "file")
         keys = list(row.keys())
-        assert keys[-6:] == ["mcp_view", "mcp_read", "visibility", "access", "access_source", "visibility_source"]
+        assert keys[-6:] == ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
 
-    def test_enrich_folder_without_mcp_read(self):
+    def test_enrich_folder_without_access(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"id": 30, "name": "widget", "mcp_view": "visible"}
+        row = {"id": 30, "name": "widget", "visibility": "full"}
         enrich_verbose_access([row], "folder")
         keys = list(row.keys())
-        assert keys[-6:] == ["mcp_view", "mcp_read", "visibility", "access", "access_source", "visibility_source"]
+        assert keys[-6:] == ["visibility_raw", "access_raw", "visibility", "access", "access_source", "visibility_source"]
         assert row["access"] == "—"
         assert row["access_source"] == "—"
 
@@ -237,10 +237,10 @@ class TestEnrichSourceDisplay:
         from footprinter.cli._common import enrich_verbose_access
 
         row = {
-            "mcp_view": "opaque",
-            "mcp_view_source": "folder:~/Work",
-            "mcp_read": "allow",
-            "mcp_read_source": "project:3",
+            "visibility": "opaque",
+            "visibility_source": "folder:~/Work",
+            "access": "allow",
+            "access_source": "project:3",
         }
         enrich_verbose_access([row], "file")
         assert row["visibility_source"] == "folder:~/Work"
@@ -249,13 +249,13 @@ class TestEnrichSourceDisplay:
     def test_enrich_visibility_source_inherits_to_baseline(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"mcp_view": "inherit", "mcp_read": "inherit"}
+        row = {"visibility": "inherit", "access": "inherit"}
         enrich_verbose_access([row], "file")
         assert row["visibility_source"] in ("global", "baseline")
 
     def test_enrich_folder_visibility_source_cached(self):
         from footprinter.cli._common import enrich_verbose_access
 
-        row = {"id": 30, "name": "widget", "mcp_view": "visible", "mcp_view_source": "folder:~/Work"}
+        row = {"id": 30, "name": "widget", "visibility": "full", "visibility_source": "folder:~/Work"}
         enrich_verbose_access([row], "folder")
         assert row["visibility_source"] == "folder:~/Work"

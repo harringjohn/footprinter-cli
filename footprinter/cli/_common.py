@@ -275,72 +275,73 @@ def enrich_verbose_access(
 ) -> None:
     """Annotate rows in-place with resolved access fields.
 
-    Replaces raw ``mcp_*`` keys with a six-field access block appended
-    in order: ``mcp_view``, ``mcp_read``, ``visibility``, ``access``,
+    Pops raw ``visibility`` and ``access`` stamped columns, resolves
+    ``inherit`` values, and writes a six-field access block:
+    ``visibility_raw``, ``access_raw``, ``visibility``, ``access``,
     ``access_source``, ``visibility_source``.  Internal provenance columns
-    (``mcp_view_source``, ``mcp_read_source``) are consumed then removed.
+    (``visibility_source``, ``access_source``) are consumed then removed.
 
     No-op if *rows* is empty.
     """
     if not rows:
         return
     for r in rows:
-        mcp_view = r.pop("mcp_view", None)
-        mcp_read_present = "mcp_read" in r
-        mcp_read = r.pop("mcp_read", None)
-        read_source = r.pop("mcp_read_source", None)
-        view_source = r.pop("mcp_view_source", None)
+        raw_vis = r.pop("visibility", None)
+        access_present = "access" in r
+        raw_access = r.pop("access", None)
+        read_source = r.pop("access_source", None)
+        view_source = r.pop("visibility_source", None)
 
-        if not mcp_read_present:
-            access = "—"
+        if not access_present:
+            resolved_access = "—"
             access_source = "—"
-        elif mcp_read not in (None, "inherit"):
-            access = "allow" if mcp_read == "allow" else "deny"
+        elif raw_access not in (None, "inherit"):
+            resolved_access = "allow" if raw_access == "allow" else "deny"
             access_source = read_source if read_source else "cached"
         else:
-            access = resolve_inherit_permission(mcp_read)
-            if mcp_read == "inherit":
+            resolved_access = resolve_inherit_permission(raw_access)
+            if raw_access == "inherit":
                 access_source = "global" if _access.is_global_policy_loaded() else "baseline"
             else:
                 access_source = "default"
 
-        if mcp_view not in (None, "inherit"):
+        if raw_vis not in (None, "inherit"):
             visibility_source = view_source if view_source else "cached"
-        elif mcp_view == "inherit":
+        elif raw_vis == "inherit":
             visibility_source = "global" if _access.is_global_policy_loaded() else "baseline"
         else:
             visibility_source = "default"
 
-        r["mcp_view"] = mcp_view
-        r["mcp_read"] = mcp_read
-        r["visibility"] = resolve_inherit_visibility(mcp_view)
-        r["access"] = access
+        r["visibility_raw"] = raw_vis
+        r["access_raw"] = raw_access
+        r["visibility"] = resolve_inherit_visibility(raw_vis)
+        r["access"] = resolved_access
         r["access_source"] = access_source
         r["visibility_source"] = visibility_source
 
 
 def verbose_access_cells(row: dict) -> list[str]:
-    """Return [mcp_view, mcp_read, visibility, access, source, vis_source] with Rich color markup."""
-    vis_colors = {"visible": "green", "opaque": "yellow", "hidden": "red"}
+    """Return [vis_raw, access_raw, visibility, access, source, vis_source] with Rich color markup."""
+    vis_colors = {"full": "green", "opaque": "yellow", "hidden": "red"}
 
-    mcp_view = row.get("mcp_view")
-    if mcp_view is None:
-        mcp_view_cell = "[dim]—[/dim]"
-    elif mcp_view == "inherit":
-        mcp_view_cell = "[dim]inherit[/dim]"
+    raw_vis = row.get("visibility_raw")
+    if raw_vis is None:
+        vis_raw_cell = "[dim]—[/dim]"
+    elif raw_vis == "inherit":
+        vis_raw_cell = "[dim]inherit[/dim]"
     else:
-        vc = vis_colors.get(mcp_view, "white")
-        mcp_view_cell = f"[{vc}]{mcp_view}[/{vc}]"
+        vc = vis_colors.get(raw_vis, "white")
+        vis_raw_cell = f"[{vc}]{raw_vis}[/{vc}]"
 
-    mcp_read = row.get("mcp_read")
-    if mcp_read is None:
-        mcp_read_cell = "[dim]—[/dim]"
-    elif mcp_read == "inherit":
-        mcp_read_cell = "[dim]inherit[/dim]"
-    elif mcp_read == "allow":
-        mcp_read_cell = "[green]allow[/green]"
+    raw_access = row.get("access_raw")
+    if raw_access is None:
+        access_raw_cell = "[dim]—[/dim]"
+    elif raw_access == "inherit":
+        access_raw_cell = "[dim]inherit[/dim]"
+    elif raw_access == "allow":
+        access_raw_cell = "[green]allow[/green]"
     else:
-        mcp_read_cell = "[red]deny[/red]"
+        access_raw_cell = "[red]deny[/red]"
 
     visibility = row.get("visibility", "opaque")
     vis_color = vis_colors.get(visibility, "white")
@@ -368,7 +369,7 @@ def verbose_access_cells(row: dict) -> list[str]:
     else:
         vis_source_cell = vis_source
 
-    return [mcp_view_cell, mcp_read_cell, vis_cell, access_cell, source_cell, vis_source_cell]
+    return [vis_raw_cell, access_raw_cell, vis_cell, access_cell, source_cell, vis_source_cell]
 
 
 def format_size(size_bytes: int) -> str:

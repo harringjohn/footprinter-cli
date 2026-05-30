@@ -1,7 +1,7 @@
 """Tests for footprinter.db.browser query functions.
 
 Verifies that list_visits() and get_visit() include
-mcp_view and mcp_read in returned dicts and that the
+visibility and access in returned dicts and that the
 standardized default_exclude=["removed"] filter is applied.
 """
 
@@ -12,14 +12,14 @@ def _insert_visits_mixed_status(conn):
     conn.execute(
         """
         INSERT INTO visits (id, url, title, visit_time, browser, status,
-                            mcp_view, mcp_read)
+                            visibility, access)
         VALUES
             (1, 'https://listed.example.com',   'Listed',   '2026-01-15 10:00:00',
-             'safari', 'listed',   'visible', 'allow'),
+             'safari', 'listed',   'full', 'allow'),
             (2, 'https://unlisted.example.com', 'Unlisted', '2026-01-15 11:00:00',
-             'safari', 'unlisted', 'visible', 'allow'),
+             'safari', 'unlisted', 'full', 'allow'),
             (3, 'https://removed.example.com',  'Removed',  '2026-01-15 12:00:00',
-             'safari', 'removed',  'visible', 'allow')
+             'safari', 'removed',  'full', 'allow')
         """
     )
     conn.commit()
@@ -76,10 +76,10 @@ class TestBrowserAccessColumns:
         conn.execute(
             """
             INSERT INTO visits
-                (url, title, visit_time, browser, mcp_view, mcp_read)
+                (url, title, visit_time, browser, visibility, access)
             VALUES
                 ('https://example.com', 'Example', '2025-01-01 12:00:00', 'safari',
-                 'visible', 'allow')
+                 'full', 'allow')
             """
         )
         conn.commit()
@@ -89,15 +89,15 @@ class TestBrowserAccessColumns:
         self._insert_visit(tool_db)
         result = list_visits(tool_db)
         visit = result["visits"][0]
-        assert visit["mcp_view"] == "visible"
-        assert visit["mcp_read"] == "allow"
+        assert visit["visibility"] == "full"
+        assert visit["access"] == "allow"
 
     def test_get_visit_includes_access_columns(self, tool_db):
         visit_id = self._insert_visit(tool_db)
         visit = get_visit(tool_db, visit_id)
         assert visit is not None
-        assert visit["mcp_view"] == "visible"
-        assert visit["mcp_read"] == "allow"
+        assert visit["visibility"] == "full"
+        assert visit["access"] == "allow"
 
     def test_get_visit_excludes_assignment_source(self, tool_db):
         """get_visit() return dict must NOT include assignment_source."""

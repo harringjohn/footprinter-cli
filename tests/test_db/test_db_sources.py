@@ -849,8 +849,8 @@ class TestInsertEmail:
         # Simulate enrichment: set access-control and AI columns
         db.conn.execute("""
             UPDATE emails SET
-                mcp_read = 'allow',
-                mcp_view = 'visible',
+                access = 'allow',
+                visibility = 'full',
                 client_id = 1,
                 project_id = 2
             WHERE message_id = 'msg-reindex-001' AND account = 'personal'
@@ -876,8 +876,8 @@ class TestInsertEmail:
         assert row["subject"] == "Updated Subject"
 
         # Access-control and enrichment columns preserved
-        assert row["mcp_read"] == "allow"
-        assert row["mcp_view"] == "visible"
+        assert row["access"] == "allow"
+        assert row["visibility"] == "full"
         assert row["client_id"] == 1
         assert row["project_id"] == 2
         db.close()

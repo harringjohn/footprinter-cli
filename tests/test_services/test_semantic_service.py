@@ -119,12 +119,12 @@ class TestSemanticServiceFiles:
         assert "readme.md" in file_names
 
     def test_fts5_fallback_snippet_shows_content_when_allowed(self, service_db):
-        """FTS5 fallback snippets show content_preview when mcp_read allows."""
+        """FTS5 fallback snippets show content_preview when access allows."""
         service_db.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
-            "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
+            "size_bytes, modified_at, visibility, access, content_preview) "
             "VALUES (50, 'local', 'budget.xlsx', '/Users/u/docs/budget.xlsx', "
-            "'listed', 'spreadsheet', 8000, '2026-01-15', 'visible', 'allow', "
+            "'listed', 'spreadsheet', 8000, '2026-01-15', 'full', 'allow', "
             "'Q4 revenue figures for review')"
         )
         service_db.commit()
@@ -163,12 +163,12 @@ class TestSemanticServiceD2Access:
         conn.commit()
 
     def test_visible_deny_excluded(self, service_db):
-        """Visible item with mcp_read='deny' excluded from semantic results."""
+        """Visible item with access='deny' excluded from semantic results."""
         # Create a visible+deny chat
         service_db.execute(
             """INSERT INTO chats (id, external_id, account, title, message_count,
-                                  mcp_view, mcp_read)
-               VALUES (10, 'conv-deny', 'claude', 'Denied Chat', 1, 'visible', 'deny')"""
+                                  visibility, access)
+               VALUES (10, 'conv-deny', 'claude', 'Denied Chat', 1, 'full', 'deny')"""
         )
         service_db.commit()
         self._rebuild_fts(service_db)
@@ -316,10 +316,10 @@ class TestSemanticIncludeFlags:
     def _seed_unlisted_chat(self, conn) -> int:
         cur = conn.execute(
             """INSERT INTO chats (external_id, account, title, message_count,
-                                  status, mcp_view, mcp_read)
+                                  status, visibility, access)
                VALUES ('conv-arch', 'claude', 'Archived Chat',
                        1,
-                       'unlisted', 'visible', 'allow')"""
+                       'unlisted', 'full', 'allow')"""
         )
         conn.commit()
         return cur.lastrowid
@@ -327,11 +327,11 @@ class TestSemanticIncludeFlags:
     def _seed_removed_file(self, conn) -> int:
         cur = conn.execute(
             """INSERT INTO files (name, path, source, status, status_reason,
-                                  content_type, size_bytes, mcp_view, mcp_read,
+                                  content_type, size_bytes, visibility, access,
                                   content_preview)
                VALUES ('archived.md', '/Users/u/Work/alpha/archived.md', 'local',
                        'removed', 'deleted_by_user', 'markdown', 50,
-                       'visible', 'allow', 'archived content')"""
+                       'full', 'allow', 'archived content')"""
         )
         conn.commit()
         return cur.lastrowid

@@ -47,10 +47,10 @@ EXPECTED_COLUMNS = {
         "status",
         "status_reason",
         "status_changed_at",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "display_name",
         "vectorize",
     },
@@ -66,10 +66,10 @@ EXPECTED_COLUMNS = {
         "status_changed_at",
         "client_id",
         "client",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "display_name",
     },
     "clients": {
@@ -82,10 +82,10 @@ EXPECTED_COLUMNS = {
         "created_at",
         "updated_at",
         "status_changed_at",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "display_name",
     },
     "folders": {
@@ -105,10 +105,10 @@ EXPECTED_COLUMNS = {
         "direct_file_count",
         "total_file_count",
         "total_size_bytes",
-        "mcp_view",
-        "mcp_read",
-        "mcp_view_source",
-        "mcp_read_source",
+        "visibility",
+        "access",
+        "visibility_source",
+        "access_source",
         "status",
         "status_reason",
         "status_changed_at",
@@ -128,10 +128,10 @@ EXPECTED_COLUMNS = {
         "indexed_at",
         "updated_at",
         "metadata",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "client_id",
         "project_id",
         "metadata_vectorized_at",
@@ -152,10 +152,10 @@ EXPECTED_COLUMNS = {
         "vectorized_chunks",
         "indexed_at",
         "updated_at",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "status",
         "display_name",
         "vectorize",
@@ -179,10 +179,10 @@ EXPECTED_COLUMNS = {
         "updated_at",
         "metadata",
         "status",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "client_id",
         "project_id",
         "created_at",
@@ -198,10 +198,10 @@ EXPECTED_COLUMNS = {
         "indexed_at",
         "updated_at",
         "status",
-        "mcp_read",
-        "mcp_view",
-        "mcp_read_source",
-        "mcp_view_source",
+        "access",
+        "visibility",
+        "access_source",
+        "visibility_source",
         "client_id",
         "project_id",
         "created_at",
@@ -333,6 +333,125 @@ class TestVectorizeColumnMigration:
         assert row_c[0] == 1, "no metadata → default 1"
         assert chat_row[0] == 0, "chat vectorize=0 backfilled"
         assert msg_row[0] == 0, "message vectorize=0 backfilled"
+
+
+class TestAccessColumnMigration:
+    """Verify _migrate_access_columns() renames mcp_view/mcp_read → visibility/access."""
+
+    def test_migration_renames_columns_and_values(self, temp_db):
+        """Simulate old DB with mcp_view/mcp_read, then let init_db() migrate."""
+        from footprinter.ingest.database import Database
+        from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
+
+        db = Database(temp_db)
+        db.conn.execute(
+            "INSERT INTO files (source, name, visibility, access) "
+            "VALUES ('local', 'full.txt', 'full', 'allow')"
+        )
+        db.conn.execute(
+            "INSERT INTO files (source, name, visibility, access) "
+            "VALUES ('local', 'hidden.txt', 'hidden', 'deny')"
+        )
+        db.conn.execute(
+            "INSERT INTO files (source, name, visibility, access) "
+            "VALUES ('local', 'inherit.txt', 'inherit', 'inherit')"
+        )
+        db.conn.commit()
+
+        cursor = db.conn.cursor()
+        cursor.execute("PRAGMA table_info(files)")
+        col_names = {row[1] for row in cursor.fetchall()}
+        assert "visibility" in col_names, "Fresh DB should have 'visibility' column"
+        assert "access" in col_names, "Fresh DB should have 'access' column"
+        assert "mcp_view" not in col_names, "Fresh DB should NOT have 'mcp_view'"
+        assert "mcp_read" not in col_names, "Fresh DB should NOT have 'mcp_read'"
+
+        for table in ACCESS_CONTROL_TABLES:
+            cursor.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in cursor.fetchall()}
+            assert "visibility" in cols, f"{table} missing 'visibility'"
+            assert "access" in cols, f"{table} missing 'access'"
+            assert "visibility_source" in cols, f"{table} missing 'visibility_source'"
+            assert "access_source" in cols, f"{table} missing 'access_source'"
+
+        row = db.conn.execute(
+            "SELECT visibility, access FROM files WHERE name = 'full.txt'"
+        ).fetchone()
+        assert row[0] == "full", f"Expected 'full', got {row[0]!r}"
+        assert row[1] == "allow"
+        db.close()
+
+    def test_fresh_db_uses_full_not_visible(self, temp_db):
+        """A fresh database should use 'full' as the visibility value, not 'visible'."""
+        from footprinter.db.policies import VISIBILITY_SETTINGS, seed_visibility_defaults
+        from footprinter.ingest.database import Database
+        from footprinter.visibility import VisibilityState, is_readable
+
+        assert "full" in VISIBILITY_SETTINGS
+        assert "visible" not in VISIBILITY_SETTINGS
+
+        db = Database(temp_db)
+        seed_visibility_defaults(db.conn)
+        row = db.conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = 'global'"
+        ).fetchone()
+        assert row[0] == "full", f"Expected 'full', got {row[0]!r}"
+
+        assert is_readable("full") is True
+        assert is_readable("opaque") is False
+        db.close()
+
+    def test_old_schema_migration(self, temp_db):
+        """Create DB with old column names, reopen → migration renames them."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+        from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
+
+        db = Database(temp_db)
+        db.close()
+
+        conn2 = _sqlite3.connect(temp_db)
+        conn2.row_factory = _sqlite3.Row
+
+        for table in ACCESS_CONTROL_TABLES:
+            conn2.execute(f"ALTER TABLE {table} RENAME COLUMN visibility TO mcp_view")
+            conn2.execute(f"ALTER TABLE {table} RENAME COLUMN access TO mcp_read")
+            conn2.execute(f"ALTER TABLE {table} RENAME COLUMN visibility_source TO mcp_view_source")
+            conn2.execute(f"ALTER TABLE {table} RENAME COLUMN access_source TO mcp_read_source")
+
+        conn2.execute("PRAGMA ignore_check_constraints = ON")
+        conn2.execute(
+            "INSERT INTO files (source, name, mcp_view, mcp_read) "
+            "VALUES ('local', 'oldfile.txt', 'full', 'allow')"
+        )
+        conn2.execute(
+            "INSERT OR REPLACE INTO visibility_policies (scope, setting) "
+            "VALUES ('global', 'full')"
+        )
+        conn2.execute("PRAGMA ignore_check_constraints = OFF")
+        conn2.commit()
+        conn2.close()
+
+        db2 = Database(temp_db)
+        cursor = db2.conn.cursor()
+        cursor.execute("PRAGMA table_info(files)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "visibility" in cols, "Migration should rename mcp_view → visibility"
+        assert "access" in cols, "Migration should rename mcp_read → access"
+        assert "mcp_view" not in cols
+        assert "mcp_read" not in cols
+
+        row = db2.conn.execute(
+            "SELECT visibility FROM files WHERE name = 'oldfile.txt'"
+        ).fetchone()
+        assert row[0] == "full", f"Migration should convert 'full' → 'full', got {row[0]!r}"
+
+        pol = db2.conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = 'global'"
+        ).fetchone()
+        assert pol[0] == "full", f"Policy migration should convert 'full' → 'full', got {pol[0]!r}"
+        db2.close()
 
 
 class TestCompleteColumnSets:
@@ -597,14 +716,14 @@ class TestMCPColumnNames:
         return {row[1] for row in cursor.fetchall()}
 
     def test_all_tables_have_mcp_columns(self, temp_db):
-        """All 8 entity tables must have mcp_read and mcp_view columns."""
+        """All 8 entity tables must have access and visibility columns."""
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         for table in self._ACCESS_CONTROL_TABLES:
             columns = self._get_columns(db, table)
-            assert "mcp_read" in columns, f"{table} missing mcp_read column"
-            assert "mcp_view" in columns, f"{table} missing mcp_view column"
+            assert "access" in columns, f"{table} missing access column"
+            assert "visibility" in columns, f"{table} missing visibility column"
         db.close()
 
     def test_no_old_claude_columns(self, temp_db):
@@ -1698,41 +1817,41 @@ class TestIngestsDDLConstant:
 # ========================================
 
 # Minimal INSERT SQL for each entity table, satisfying NOT NULL constraints.
-# The status/mcp_read/mcp_view values are placeholders replaced by the tests.
+# The status/access/visibility values are placeholders replaced by the tests.
 _ENTITY_INSERTS = {
     "files": (
-        "INSERT INTO files (source, name, status, mcp_read, mcp_view)"
-        " VALUES ('local', 'x', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO files (source, name, status, access, visibility)"
+        " VALUES ('local', 'x', {status}, {access}, {visibility})"
     ),
     "folders": (
-        "INSERT INTO folders (path, relative_path, name, status, mcp_read, mcp_view)"
-        " VALUES ('/x', 'x', 'x', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO folders (path, relative_path, name, status, access, visibility)"
+        " VALUES ('/x', 'x', 'x', {status}, {access}, {visibility})"
     ),
     "visits": (
-        "INSERT INTO visits (url, visit_time, browser, status, mcp_read, mcp_view)"
-        " VALUES ('http://x', '2025-01-01', 'chrome', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO visits (url, visit_time, browser, status, access, visibility)"
+        " VALUES ('http://x', '2025-01-01', 'chrome', {status}, {access}, {visibility})"
     ),
     "projects": (
-        "INSERT INTO projects (name, status, mcp_read, mcp_view)"
-        " VALUES ('x', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO projects (name, status, access, visibility)"
+        " VALUES ('x', {status}, {access}, {visibility})"
     ),
     "chats": (
-        "INSERT INTO chats (external_id, account, status, mcp_read, mcp_view)"
-        " VALUES ('x', 'a', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO chats (external_id, account, status, access, visibility)"
+        " VALUES ('x', 'a', {status}, {access}, {visibility})"
     ),
     "messages": (
-        "INSERT INTO messages (chat_id, role, status, mcp_read, mcp_view)"
-        " VALUES (0, 'user', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO messages (chat_id, role, status, access, visibility)"
+        " VALUES (0, 'user', {status}, {access}, {visibility})"
     ),
     "emails": (
         "INSERT INTO emails (message_id, thread_id, account, received_at,"
-        " status, mcp_read, mcp_view)"
+        " status, access, visibility)"
         " VALUES ('x', 't', 'a', '2025-01-01',"
-        " {status}, {mcp_read}, {mcp_view})"
+        " {status}, {access}, {visibility})"
     ),
     "clients": (
-        "INSERT INTO clients (name, slug, client_type, status, mcp_read, mcp_view)"
-        " VALUES ('x', 'x', 'org', {status}, {mcp_read}, {mcp_view})"
+        "INSERT INTO clients (name, slug, client_type, status, access, visibility)"
+        " VALUES ('x', 'x', 'org', {status}, {access}, {visibility})"
     ),
 }
 
@@ -1740,7 +1859,7 @@ _ENTITY_TABLES = list(_ENTITY_INSERTS.keys())
 
 
 class TestCheckConstraints:
-    """Verify CHECK constraints on status, mcp_read, mcp_view columns."""
+    """Verify CHECK constraints on status, access, visibility columns."""
 
     def _get_fresh_db(self, temp_db):
         from footprinter.ingest.database import Database
@@ -1755,32 +1874,32 @@ class TestCheckConstraints:
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
             status="'invalid'",
-            mcp_read="'inherit'",
-            mcp_view="'inherit'",
+            access="'inherit'",
+            visibility="'inherit'",
         )
         with pytest.raises(sqlite3.IntegrityError):
             db.conn.execute(sql)
         db.close()
 
     @pytest.mark.parametrize("table", _ENTITY_TABLES)
-    def test_invalid_mcp_read_rejected(self, temp_db, table):
+    def test_invalid_access_rejected(self, temp_db, table):
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
             status="'listed'",
-            mcp_read="'bogus'",
-            mcp_view="'inherit'",
+            access="'bogus'",
+            visibility="'inherit'",
         )
         with pytest.raises(sqlite3.IntegrityError):
             db.conn.execute(sql)
         db.close()
 
     @pytest.mark.parametrize("table", _ENTITY_TABLES)
-    def test_invalid_mcp_view_rejected(self, temp_db, table):
+    def test_invalid_visibility_rejected(self, temp_db, table):
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
             status="'listed'",
-            mcp_read="'inherit'",
-            mcp_view="'bogus'",
+            access="'inherit'",
+            visibility="'bogus'",
         )
         with pytest.raises(sqlite3.IntegrityError):
             db.conn.execute(sql)
@@ -1793,8 +1912,8 @@ class TestCheckConstraints:
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
             status=status,
-            mcp_read="'inherit'",
-            mcp_view="'inherit'",
+            access="'inherit'",
+            visibility="'inherit'",
         )
         db.conn.execute(sql)  # should not raise
         db.close()
@@ -1809,8 +1928,8 @@ class TestCheckConstraints:
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS[table].format(
             status=legacy_status,
-            mcp_read="'inherit'",
-            mcp_view="'inherit'",
+            access="'inherit'",
+            visibility="'inherit'",
         )
         with pytest.raises(sqlite3.IntegrityError):
             db.conn.execute(sql)
@@ -1821,8 +1940,8 @@ class TestCheckConstraints:
         db = self._get_fresh_db(temp_db)
         sql = _ENTITY_INSERTS["files"].format(
             status="NULL",
-            mcp_read="'inherit'",
-            mcp_view="'inherit'",
+            access="'inherit'",
+            visibility="'inherit'",
         )
         db.conn.execute(sql)  # should not raise
         db.close()
@@ -1946,7 +2065,7 @@ class TestSchemaDocumentation:
 
         source = inspect.getsource(schema_module)
         assert "Standard Entity Column Set" in source
-        for keyword in ("status", "created_at", "display_name", "mcp_read", "mcp_view"):
+        for keyword in ("status", "created_at", "display_name", "access", "visibility"):
             assert keyword in source, f"Schema header should document '{keyword}'"
 
 

@@ -182,7 +182,7 @@ def access_db(tmp_path, monkeypatch):
     # enclosing opaque for folder-prefix-only files; assertions against this
     # anchor must go through query-time resolution (``get_visibility``,
     # ``gate_access``, ``resolve_visibility_with_source``) rather than reading
-    # ``files.mcp_view`` directly — longest-prefix override is applied at
+    # ``files.visibility`` directly — longest-prefix override is applied at
     # query time, not stamp time.
     cursor.execute(
         "INSERT INTO files (name, path, source, status, content_type, size_bytes) "
@@ -333,7 +333,7 @@ def populate_access_control_db(db_path):
     conn.execute(
         """INSERT INTO clients (id, name, slug, client_type, status)
            VALUES
-               (1, 'Visible Client', 'visible', 'external', 'listed'),
+               (1, 'Visible Client', 'full', 'external', 'listed'),
                (2, 'Hidden Client', 'hidden', 'external', 'listed'),
                (3, 'Opaque Client', 'opaque', 'external', 'listed')"""
     )
@@ -376,16 +376,16 @@ def populate_access_control_db(db_path):
     # Visibility policies
     conn.execute(
         """INSERT INTO visibility_policies (scope, setting) VALUES
-               ('chat:1', 'visible'),
+               ('chat:1', 'full'),
                ('chat:2', 'hidden'),
                ('chat:3', 'opaque'),
-               ('chat:4', 'visible'),
-               ('file:1', 'visible'),
+               ('chat:4', 'full'),
+               ('file:1', 'full'),
                ('file:2', 'hidden'),
-               ('project:1', 'visible'),
+               ('project:1', 'full'),
                ('project:2', 'hidden'),
                ('project:3', 'opaque'),
-               ('client:1', 'visible'),
+               ('client:1', 'full'),
                ('client:2', 'hidden'),
                ('client:3', 'opaque')"""
     )
@@ -398,18 +398,18 @@ def populate_access_control_db(db_path):
     )
 
     # Stamp cached columns to match policies (simulates access_resolution stage)
-    conn.execute("UPDATE chats SET mcp_view = 'visible' WHERE id = 1")
-    conn.execute("UPDATE chats SET mcp_view = 'hidden' WHERE id = 2")
-    conn.execute("UPDATE chats SET mcp_view = 'opaque' WHERE id = 3")
-    conn.execute("UPDATE chats SET mcp_view = 'visible', mcp_read = 'deny' WHERE id = 4")
-    conn.execute("UPDATE files SET mcp_view = 'visible' WHERE id = 1")
-    conn.execute("UPDATE files SET mcp_view = 'hidden' WHERE id = 2")
-    conn.execute("UPDATE projects SET mcp_view = 'visible' WHERE id = 1")
-    conn.execute("UPDATE projects SET mcp_view = 'hidden' WHERE id = 2")
-    conn.execute("UPDATE projects SET mcp_view = 'opaque' WHERE id = 3")
-    conn.execute("UPDATE clients SET mcp_view = 'visible' WHERE id = 1")
-    conn.execute("UPDATE clients SET mcp_view = 'hidden' WHERE id = 2")
-    conn.execute("UPDATE clients SET mcp_view = 'opaque' WHERE id = 3")
+    conn.execute("UPDATE chats SET visibility = 'full' WHERE id = 1")
+    conn.execute("UPDATE chats SET visibility = 'hidden' WHERE id = 2")
+    conn.execute("UPDATE chats SET visibility = 'opaque' WHERE id = 3")
+    conn.execute("UPDATE chats SET visibility = 'full', access = 'deny' WHERE id = 4")
+    conn.execute("UPDATE files SET visibility = 'full' WHERE id = 1")
+    conn.execute("UPDATE files SET visibility = 'hidden' WHERE id = 2")
+    conn.execute("UPDATE projects SET visibility = 'full' WHERE id = 1")
+    conn.execute("UPDATE projects SET visibility = 'hidden' WHERE id = 2")
+    conn.execute("UPDATE projects SET visibility = 'opaque' WHERE id = 3")
+    conn.execute("UPDATE clients SET visibility = 'full' WHERE id = 1")
+    conn.execute("UPDATE clients SET visibility = 'hidden' WHERE id = 2")
+    conn.execute("UPDATE clients SET visibility = 'opaque' WHERE id = 3")
 
     conn.commit()
     conn.close()

@@ -78,7 +78,7 @@ def get_status(db_path: str = None) -> Dict:
     access = {}
     for table in ("files", "emails", "chats"):
         try:
-            where = "mcp_view IS NOT NULL"
+            where = "visibility IS NOT NULL"
             if table == "files":
                 where += " AND status = 'listed'"
             stamped = cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}").fetchone()[0]

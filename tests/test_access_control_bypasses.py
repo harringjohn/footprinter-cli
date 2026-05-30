@@ -47,11 +47,11 @@ class TestChatSearch:
     """Hidden chats must be excluded from search results."""
 
     def test_filter_removes_hidden_chats(self, bypass_db):
-        # Simulate search results with chat_id and mcp_view from DB
+        # Simulate search results with chat_id and visibility from DB
         results = [
-            {"chat_id": 1, "title": "Visible Chat", "score": 0.9, "mcp_view": "visible"},
-            {"chat_id": 2, "title": "Hidden Chat", "score": 0.8, "mcp_view": "hidden"},
-            {"chat_id": 3, "title": "Opaque Chat", "score": 0.7, "mcp_view": "opaque"},
+            {"chat_id": 1, "title": "Visible Chat", "score": 0.9, "visibility": "full"},
+            {"chat_id": 2, "title": "Hidden Chat", "score": 0.8, "visibility": "hidden"},
+            {"chat_id": 3, "title": "Opaque Chat", "score": 0.7, "visibility": "opaque"},
         ]
 
         filtered, suppressed = filter_results_list("chat", results, id_key="chat_id")

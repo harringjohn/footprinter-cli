@@ -156,12 +156,12 @@ def security_db(tool_db):
     cursor.execute(
         """
         INSERT INTO visibility_policies (scope, setting) VALUES
-            ('file:3', 'visible'),
+            ('file:3', 'full'),
             ('file:4', 'hidden'),
             ('file:5', 'opaque'),
             ('folder:2', 'hidden'),
             ('folder:3', 'opaque'),
-            ('folder:4', 'visible'),
+            ('folder:4', 'full'),
             ('project:3', 'hidden'),
             ('project:4', 'opaque'),
             ('client:2', 'hidden'),
@@ -348,7 +348,7 @@ class TestVisibilityResolve:
         assert visibility_resolve("opaque") == "opaque"
 
     def test_resolve_visible(self):
-        assert visibility_resolve("visible") == "visible"
+        assert visibility_resolve("full") == "full"
 
     def test_resolve_inherit(self):
         assert visibility_resolve("inherit") is None
@@ -397,7 +397,7 @@ class TestGetFileVisibility:
     def test_item_level_visible(self, security_db):
         """Item-level visible policy is applied."""
         # Artifact 3 has visible policy from fixture
-        assert get_visibility(security_db, "file", 3) == "visible"
+        assert get_visibility(security_db, "file", 3) == "full"
 
     def test_folder_level_hidden_wins(self, security_db):
         """Folder-level hidden policy wins."""
@@ -449,10 +449,10 @@ class TestGetFileVisibility:
         cursor = security_db.cursor()
         cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('folder:/test/', 'hidden')")
         cursor.execute(
-            "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('folder:/test/allowed/', 'visible')"
+            "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('folder:/test/allowed/', 'full')"
         )
         security_db.commit()
-        # File 10 path is /test/allowed/file.txt - matches 'visible' prefix
+        # File 10 path is /test/allowed/file.txt - matches 'full' prefix
         # BUT file 10 has folder_id=4 (path /test/project/subfolder)
         # which matches 'hidden' prefix
         # Most restrictive wins: hidden (from folder FK resolution)
@@ -463,10 +463,10 @@ class TestGetFileVisibility:
     def test_source_policy(self, security_db):
         """Source policy is used when no more specific policies match."""
         cursor = security_db.cursor()
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # Artifact 1 has no item/folder/project/client policies
-        assert get_visibility(security_db, "file", 1) == "visible"
+        assert get_visibility(security_db, "file", 1) == "full"
 
     def test_no_policies_uses_baseline(self, security_db):
         """Without any policies, use BASELINE_VISIBILITY."""
@@ -523,10 +523,10 @@ class TestGetChatVisibility:
 
     def test_source_policy(self, security_db):
         cursor = security_db.cursor()
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:chats', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')")
         security_db.commit()
         # Chat 1 has no item policy
-        assert get_visibility(security_db, "chat", 1) == "visible"
+        assert get_visibility(security_db, "chat", 1) == "full"
 
 
 class TestGetFolderVisibility:
@@ -545,7 +545,7 @@ class TestGetFolderVisibility:
 
     def test_item_level_visible(self, security_db):
         # Folder 4 has visible policy from fixture
-        assert get_visibility(security_db, "folder", 4) == "visible"
+        assert get_visibility(security_db, "folder", 4) == "full"
 
     def test_source_policy(self, security_db):
         cursor = security_db.cursor()
@@ -561,7 +561,7 @@ class TestIsReadable:
     """Test the is_readable() helper function."""
 
     def test_visible_is_readable(self):
-        assert is_readable("visible") is True
+        assert is_readable("full") is True
 
     def test_opaque_not_readable(self):
         assert is_readable("opaque") is False
@@ -576,11 +576,11 @@ class TestIsReadable:
 
 
 class TestFilterResult:
-    """Test filter_result() reads mcp_view from the result dict."""
+    """Test filter_result() reads visibility from the result dict."""
 
     def test_hidden_returns_none(self):
         """Hidden items return None."""
-        result = {"id": 4, "name": "hidden.txt", "content_type": ".txt", "source": "local", "mcp_view": "hidden"}
+        result = {"id": 4, "name": "hidden.txt", "content_type": ".txt", "source": "local", "visibility": "hidden"}
         filtered = filter_result("file", result)
         assert filtered is None
 
@@ -592,7 +592,7 @@ class TestFilterResult:
             "content_type": ".txt",
             "source": "local",
             "extra": "data",
-            "mcp_view": "visible",
+            "visibility": "full",
         }
         filtered = filter_result("file", result)
         assert filtered == result
@@ -606,7 +606,7 @@ class TestFilterResult:
             "source": "local",
             "project_id": 10,
             "path": "/secret",
-            "mcp_view": "opaque",
+            "visibility": "opaque",
         }
         filtered = filter_result("file", result)
         assert filtered is not None
@@ -631,7 +631,7 @@ class TestFilterResult:
             "source": "local",
             "project_id": 7,
             "path": "/test",
-            "mcp_view": "inherit",
+            "visibility": "inherit",
         }
         filtered = filter_result("file", result)
         assert filtered is not None
@@ -644,7 +644,7 @@ class TestFilterResult:
         """Inherit with global=visible resolves to visible (full fields)."""
         from footprinter.services import access_service as vf
 
-        vf._global_visibility = "visible"
+        vf._global_visibility = "full"
         try:
             result = {
                 "id": 1,
@@ -652,7 +652,7 @@ class TestFilterResult:
                 "content_type": ".txt",
                 "source": "local",
                 "path": "/test",
-                "mcp_view": "inherit",
+                "visibility": "inherit",
             }
             filtered = filter_result("file", result)
             assert filtered is not None
@@ -670,7 +670,7 @@ class TestFilterResult:
             "client_id": 2,
             "subject": "Secret",
             "from_address": "test@test.com",
-            "mcp_view": "opaque",
+            "visibility": "opaque",
         }
         filtered = filter_result("email", result)
         assert filtered is not None
@@ -689,7 +689,7 @@ class TestFilterResult:
             "project_id": 1,
             "client_id": 4,
             "title": "Secret Chat",
-            "mcp_view": "opaque",
+            "visibility": "opaque",
         }
         filtered = filter_result("chat", result)
         assert filtered is not None
@@ -702,13 +702,13 @@ class TestFilterResult:
 
 
 class TestFilterResultsList:
-    """Test filter_results_list() reads mcp_view from result dicts."""
+    """Test filter_results_list() reads visibility from result dicts."""
 
     def test_filters_hidden_items(self):
         """Hidden items are excluded from results."""
         results = [
-            {"id": 3, "name": "visible", "content_type": ".txt", "source": "local", "mcp_view": "visible"},
-            {"id": 4, "name": "hidden", "content_type": ".txt", "source": "local", "mcp_view": "hidden"},
+            {"id": 3, "name": "full", "content_type": ".txt", "source": "local", "visibility": "full"},
+            {"id": 4, "name": "hidden", "content_type": ".txt", "source": "local", "visibility": "hidden"},
         ]
         filtered, suppressed = filter_results_list("file", results)
         assert len(filtered) == 1
@@ -718,14 +718,14 @@ class TestFilterResultsList:
     def test_filters_opaque_items(self):
         """Opaque items have fields filtered."""
         results = [
-            {"id": 3, "name": "visible", "content_type": ".txt", "source": "local", "mcp_view": "visible"},
+            {"id": 3, "name": "full", "content_type": ".txt", "source": "local", "visibility": "full"},
             {
                 "id": 5,
                 "name": "opaque",
                 "content_type": ".txt",
                 "source": "local",
                 "path": "/secret",
-                "mcp_view": "opaque",
+                "visibility": "opaque",
             },
         ]
         filtered, suppressed = filter_results_list("file", results)
@@ -740,10 +740,10 @@ class TestFilterResultsList:
     def test_mixed_visibility(self):
         """Tests mixed visibility results."""
         results = [
-            {"id": 1, "name": "visible1", "content_type": ".txt", "source": "local", "mcp_view": "visible"},
-            {"id": 3, "name": "visible2", "content_type": ".txt", "source": "local", "mcp_view": "visible"},
-            {"id": 4, "name": "hidden", "content_type": ".txt", "source": "local", "mcp_view": "hidden"},
-            {"id": 5, "name": "opaque", "content_type": ".txt", "source": "local", "mcp_view": "opaque"},
+            {"id": 1, "name": "visible1", "content_type": ".txt", "source": "local", "visibility": "full"},
+            {"id": 3, "name": "visible2", "content_type": ".txt", "source": "local", "visibility": "full"},
+            {"id": 4, "name": "hidden", "content_type": ".txt", "source": "local", "visibility": "hidden"},
+            {"id": 5, "name": "opaque", "content_type": ".txt", "source": "local", "visibility": "opaque"},
         ]
         filtered, suppressed = filter_results_list("file", results)
         assert len(filtered) == 3  # hidden excluded
@@ -755,7 +755,7 @@ class TestFilterResultsList:
         assert 4 not in ids
 
     def test_no_visibility_treated_as_opaque(self):
-        """Items without mcp_view are treated as opaque (fail-closed)."""
+        """Items without visibility are treated as opaque (fail-closed)."""
         results = [
             {"id": 1, "name": "no_vis", "content_type": ".txt", "source": "local"},
         ]
@@ -860,12 +860,12 @@ class TestVisibilityPermissionInteraction:
         """Visible item with deny permission is still blocked."""
         cursor = security_db.cursor()
         cursor.execute("INSERT OR REPLACE INTO permission_policies (scope, setting) VALUES ('file:1', 'deny')")
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('file:1', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('file:1', 'full')")
         security_db.commit()
 
-        assert get_visibility(security_db, "file", 1) == "visible"
+        assert get_visibility(security_db, "file", 1) == "full"
         assert can_read(security_db, "file", 1) is False
-        assert is_readable("visible") is True
+        assert is_readable("full") is True
 
 
 class TestDenyWinsScenarios:
@@ -884,7 +884,7 @@ class TestDenyWinsScenarios:
         """Item visible does not override folder hidden for visibility."""
         cursor = security_db.cursor()
         # Add item visible policy - folder 2 already has hidden from fixture
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('file:8', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('file:8', 'full')")
         security_db.commit()
         # Folder 2 is hidden - most restrictive wins
         assert get_visibility(security_db, "file", 8) == "hidden"
@@ -972,7 +972,7 @@ class TestHierarchyPropagation:
         cursor.execute(
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:folders', 'opaque')"
         )
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # File 1 has folder_id=1, so it should inherit folder's opaque via source:folders
         visibility = get_visibility(security_db, "file", 1)
@@ -984,7 +984,7 @@ class TestHierarchyPropagation:
         cursor.execute(
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:projects', 'hidden')"
         )
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # File 1 has project_id=1, so it should be hidden via source:projects
         visibility = get_visibility(security_db, "file", 1)
@@ -994,17 +994,17 @@ class TestHierarchyPropagation:
         """T3: Baseline visibility should not propagate from parent entities."""
         cursor = security_db.cursor()
         # Only set source:files to visible, let folder/project use baseline
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # File 1 should be visible (baseline from folder/project should not override)
         visibility = get_visibility(security_db, "file", 1)
-        assert visibility == "visible", f"Expected 'visible' but got '{visibility}'"
+        assert visibility == "full", f"Expected 'full' but got '{visibility}'"
 
     def test_most_restrictive_wins_across_hierarchy(self, security_db):
         """T4: Most restrictive policy wins across hierarchy levels."""
         cursor = security_db.cursor()
         # folder:1 = visible, but client:2 = hidden
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('folder:1', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('folder:1', 'full')")
         # Note: file 7 -> project 3 -> client 2 (already has hidden from fixture)
         security_db.commit()
         # Should be hidden because client:2 is hidden (most restrictive)
@@ -1038,7 +1038,7 @@ class TestHierarchyPropagation:
         cursor.execute(
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:folders', 'opaque')"
         )
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
 
         # Single-item resolution
@@ -1058,7 +1058,7 @@ class TestHierarchyPropagation:
         cursor.execute(
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:folders', 'hidden')"
         )
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # File 1 has folder_id=1, should be hidden via folder chain
         visibility = get_visibility(security_db, "file", 1)
@@ -1072,7 +1072,7 @@ class TestHierarchyPropagation:
         cursor.execute(
             "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:folders', 'opaque')"
         )
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         security_db.commit()
         # File 1 has folder_id=1, should be opaque via folder chain
         visibility = get_visibility(security_db, "file", 1)
@@ -1251,11 +1251,11 @@ class TestEmailProjectVisibility:
         """Baseline from project/client should not propagate to email."""
         cursor = security_db.cursor()
         cursor.execute(
-            "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:emails', 'visible')"
+            "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:emails', 'full')"
         )
         security_db.commit()
         # Email 1 has no project_id, should be visible via source:emails
-        assert get_visibility(security_db, "email", 1) == "visible"
+        assert get_visibility(security_db, "email", 1) == "full"
 
     def test_batch_matches_single(self, security_db):
         """Batch resolution should match single-item resolution."""
@@ -1297,10 +1297,10 @@ class TestChatProjectVisibility:
     def test_baseline_does_not_propagate(self, security_db):
         """Baseline from project/client should not propagate to chat."""
         cursor = security_db.cursor()
-        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:chats', 'visible')")
+        cursor.execute("INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')")
         security_db.commit()
         # Conv 1 has no project_id, should be visible via source:chats
-        assert get_visibility(security_db, "chat", 1) == "visible"
+        assert get_visibility(security_db, "chat", 1) == "full"
 
     def test_batch_matches_single(self, security_db):
         """Batch resolution should match single-item resolution."""
@@ -1454,9 +1454,9 @@ class TestGetSourceVisibility:
     def test_returns_visible_policy(self, security_db):
         """Returns visible when source policy is visible."""
         cursor = security_db.cursor()
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'full')")
         security_db.commit()
-        assert get_source_visibility(security_db, "source:browser") == "visible"
+        assert get_source_visibility(security_db, "source:browser") == "full"
 
     def test_returns_hardcoded_baseline_when_no_policies(self, security_db):
         """Returns BASELINE_VISIBILITY when no policies exist at all."""
@@ -1466,16 +1466,16 @@ class TestGetSourceVisibility:
     def test_falls_back_to_global_policy(self, security_db):
         """Falls back to global policy when no source-specific policy exists."""
         cursor = security_db.cursor()
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         security_db.commit()
-        assert get_source_visibility(security_db, "source:browser") == "visible"
+        assert get_source_visibility(security_db, "source:browser") == "full"
 
     def test_source_policy_wins_over_global(self, security_db):
         """Source-specific policy takes precedence over global policy."""
         cursor = security_db.cursor()
         cursor.execute(
             "INSERT INTO visibility_policies (scope, setting)"
-            " VALUES ('global', 'visible'), ('source:browser', 'hidden')"
+            " VALUES ('global', 'full'), ('source:browser', 'hidden')"
         )
         security_db.commit()
         assert get_source_visibility(security_db, "source:browser") == "hidden"
@@ -1576,13 +1576,13 @@ class TestBrowserSearchVisibility:
     def test_visible_returns_full_results(self, browser_db):
         """source:browser=visible returns all fields."""
         cursor = browser_db.cursor()
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:browser', 'full')")
         browser_db.commit()
 
         from footprinter.visibility import get_source_visibility
 
         vis = get_source_visibility(browser_db, "source:browser")
-        assert vis == "visible"
+        assert vis == "full"
 
         # Simulate the search gate logic
         rows = browser_db.execute(
@@ -1633,13 +1633,13 @@ class TestBrowserSearchVisibility:
     def test_global_visible_no_source_returns_full_fields(self, browser_db):
         """Global visible + no source policy = full browser fields returned."""
         cursor = browser_db.cursor()
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         browser_db.commit()
 
         from footprinter.visibility import get_source_visibility
 
         vis = get_source_visibility(browser_db, "source:browser")
-        assert vis == "visible"
+        assert vis == "full"
 
         rows = browser_db.execute(
             "SELECT id, url, title, visit_time, browser FROM visits WHERE url LIKE ?",
@@ -1701,15 +1701,15 @@ class TestPolicyChainUsesFilePrefix:
 
 
 class TestFilterResultsListUsesColumn:
-    """Test that filter_results_list() reads mcp_view from result dicts
+    """Test that filter_results_list() reads visibility from result dicts
     instead of calling get_visibility() per item."""
 
     def test_hidden_excluded_by_column(self):
-        """Items with mcp_view='hidden' in the result dict are excluded."""
+        """Items with visibility='hidden' in the result dict are excluded."""
         results = [
-            {"id": 1, "name": "visible.txt", "mcp_view": "visible", "source": "local"},
-            {"id": 2, "name": "hidden.txt", "mcp_view": "hidden", "source": "local"},
-            {"id": 3, "name": "also_visible.txt", "mcp_view": "visible", "source": "local"},
+            {"id": 1, "name": "visible.txt", "visibility": "full", "source": "local"},
+            {"id": 2, "name": "hidden.txt", "visibility": "hidden", "source": "local"},
+            {"id": 3, "name": "also_visible.txt", "visibility": "full", "source": "local"},
         ]
         filtered, suppressed = filter_results_list("file", results)
         assert suppressed == 1
@@ -1717,12 +1717,12 @@ class TestFilterResultsListUsesColumn:
         assert all(r["id"] != 2 for r in filtered)
 
     def test_opaque_minimized_by_column(self):
-        """Items with mcp_view='opaque' in the result dict get fields stripped."""
+        """Items with visibility='opaque' in the result dict get fields stripped."""
         results = [
             {
                 "id": 1,
                 "name": "opaque.txt",
-                "mcp_view": "opaque",
+                "visibility": "opaque",
                 "content_type": ".txt",
                 "source": "local",
                 "path": "/secret",
@@ -1737,12 +1737,12 @@ class TestFilterResultsListUsesColumn:
         assert filtered[0]["content_type"] == ".txt"
 
     def test_visible_returns_full(self):
-        """Items with mcp_view='visible' return all fields."""
+        """Items with visibility='full' return all fields."""
         results = [
             {
                 "id": 1,
                 "name": "file.txt",
-                "mcp_view": "visible",
+                "visibility": "full",
                 "content_type": ".txt",
                 "source": "local",
                 "path": "/test",
@@ -1755,7 +1755,7 @@ class TestFilterResultsListUsesColumn:
         assert filtered[0]["path"] == "/test"
 
     def test_inherit_without_global_treated_as_opaque(self):
-        """Items with mcp_view='inherit' and no global policy are opaque (baseline)."""
+        """Items with visibility='inherit' and no global policy are opaque (baseline)."""
         from footprinter.services import access_service as vf
 
         vf._global_visibility = None  # no global policy
@@ -1764,7 +1764,7 @@ class TestFilterResultsListUsesColumn:
             {
                 "id": 1,
                 "name": "file.txt",
-                "mcp_view": "inherit",
+                "visibility": "inherit",
                 "content_type": ".txt",
                 "source": "local",
                 "path": "/test",
@@ -1780,16 +1780,16 @@ class TestFilterResultsListUsesColumn:
         assert filtered[0]["source"] == "local"
 
     def test_inherit_with_global_visible_is_full(self):
-        """Items with mcp_view='inherit' and global=visible return all fields."""
+        """Items with visibility='inherit' and global=visible return all fields."""
         from footprinter.services import access_service as vf
 
-        vf._global_visibility = "visible"
+        vf._global_visibility = "full"
         try:
             results = [
                 {
                     "id": 1,
                     "name": "file.txt",
-                    "mcp_view": "inherit",
+                    "visibility": "inherit",
                     "content_type": ".txt",
                     "source": "local",
                     "path": "/test",
@@ -1804,7 +1804,7 @@ class TestFilterResultsListUsesColumn:
             vf._global_visibility = None
 
     def test_missing_column_treated_as_opaque(self):
-        """Items without mcp_view key are treated as opaque (fail-closed)."""
+        """Items without visibility key are treated as opaque (fail-closed)."""
         results = [
             {"id": 1, "name": "file.txt", "content_type": ".txt", "source": "local"},
         ]
@@ -1822,10 +1822,10 @@ class TestFilterResultsListUsesColumn:
         vf._global_visibility = None  # no global policy
 
         results = [
-            {"id": 1, "name": "v1.txt", "mcp_view": "visible", "content_type": ".txt", "source": "local"},
-            {"id": 2, "name": "h1.txt", "mcp_view": "hidden", "content_type": ".txt", "source": "local"},
-            {"id": 3, "name": "o1.txt", "mcp_view": "opaque", "content_type": ".txt", "source": "local"},
-            {"id": 4, "name": "i1.txt", "mcp_view": "inherit", "content_type": ".txt", "source": "local"},
+            {"id": 1, "name": "v1.txt", "visibility": "full", "content_type": ".txt", "source": "local"},
+            {"id": 2, "name": "h1.txt", "visibility": "hidden", "content_type": ".txt", "source": "local"},
+            {"id": 3, "name": "o1.txt", "visibility": "opaque", "content_type": ".txt", "source": "local"},
+            {"id": 4, "name": "i1.txt", "visibility": "inherit", "content_type": ".txt", "source": "local"},
         ]
         filtered, suppressed = filter_results_list("file", results)
         assert suppressed == 1  # hidden excluded
@@ -1844,13 +1844,13 @@ class TestFilterResultsListUsesColumn:
         """Mix of hidden, opaque, visible, and inherit (global=visible) — inherit is visible."""
         from footprinter.services import access_service as vf
 
-        vf._global_visibility = "visible"
+        vf._global_visibility = "full"
         try:
             results = [
-                {"id": 1, "name": "v1.txt", "mcp_view": "visible", "content_type": ".txt", "source": "local"},
-                {"id": 2, "name": "h1.txt", "mcp_view": "hidden", "content_type": ".txt", "source": "local"},
-                {"id": 3, "name": "o1.txt", "mcp_view": "opaque", "content_type": ".txt", "source": "local"},
-                {"id": 4, "name": "i1.txt", "mcp_view": "inherit", "content_type": ".txt", "source": "local"},
+                {"id": 1, "name": "v1.txt", "visibility": "full", "content_type": ".txt", "source": "local"},
+                {"id": 2, "name": "h1.txt", "visibility": "hidden", "content_type": ".txt", "source": "local"},
+                {"id": 3, "name": "o1.txt", "visibility": "opaque", "content_type": ".txt", "source": "local"},
+                {"id": 4, "name": "i1.txt", "visibility": "inherit", "content_type": ".txt", "source": "local"},
             ]
             filtered, suppressed = filter_results_list("file", results)
             assert suppressed == 1  # hidden excluded

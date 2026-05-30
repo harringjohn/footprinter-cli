@@ -176,7 +176,7 @@ def _seed_populated_db(db_path: Path) -> None:
     )
     conn.execute(
         "INSERT INTO chats (external_id, account, title, status) "
-        "VALUES ('c1', 'claude', 'visible', 'listed')"
+        "VALUES ('c1', 'claude', 'full', 'listed')"
     )
     conn.execute(
         "INSERT INTO messages (chat_id, role, content, status) "

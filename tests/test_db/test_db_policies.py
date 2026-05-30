@@ -25,15 +25,15 @@ class TestSetVisibilityPolicy:
     def test_insert_new(self, conn):
         from footprinter.db.policies import set_visibility_policy
 
-        result = set_visibility_policy(conn, "global", "visible")
+        result = set_visibility_policy(conn, "global", "full")
         assert result is True
         row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
-        assert row["setting"] == "visible"
+        assert row["setting"] == "full"
 
     def test_upsert_existing(self, conn):
         from footprinter.db.policies import set_visibility_policy
 
-        set_visibility_policy(conn, "global", "visible")
+        set_visibility_policy(conn, "global", "full")
         set_visibility_policy(conn, "global", "hidden")
         row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
         assert row["setting"] == "hidden"
@@ -48,7 +48,7 @@ class TestSetVisibilityPolicy:
         from footprinter.db.policies import set_visibility_policy
 
         with pytest.raises(ValueError, match="Invalid scope"):
-            set_visibility_policy(conn, "banana", "visible")
+            set_visibility_policy(conn, "banana", "full")
 
     @pytest.mark.parametrize(
         "scope",
@@ -67,7 +67,7 @@ class TestSetVisibilityPolicy:
     def test_valid_scopes_accepted(self, conn, scope):
         from footprinter.db.policies import set_visibility_policy
 
-        set_visibility_policy(conn, scope, "visible")
+        set_visibility_policy(conn, scope, "full")
 
     @pytest.mark.parametrize(
         "scope",
@@ -77,14 +77,14 @@ class TestSetVisibilityPolicy:
         from footprinter.db.policies import set_visibility_policy
 
         with pytest.raises(ValueError, match="Invalid scope"):
-            set_visibility_policy(conn, scope, "visible")
+            set_visibility_policy(conn, scope, "full")
 
 
 class TestDeleteVisibilityPolicy:
     def test_delete_existing(self, conn):
         from footprinter.db.policies import delete_visibility_policy, set_visibility_policy
 
-        set_visibility_policy(conn, "global", "visible")
+        set_visibility_policy(conn, "global", "full")
         result = delete_visibility_policy(conn, "global")
         assert result is True
         row = conn.execute("SELECT * FROM visibility_policies WHERE scope = 'global'").fetchone()
@@ -101,7 +101,7 @@ class TestClearVisibilityPolicies:
     def test_clear_returns_count(self, conn):
         from footprinter.db.policies import clear_visibility_policies, set_visibility_policy
 
-        set_visibility_policy(conn, "global", "visible")
+        set_visibility_policy(conn, "global", "full")
         set_visibility_policy(conn, "folder:~/Work", "hidden")
         count = clear_visibility_policies(conn)
         assert count == 2
@@ -113,7 +113,7 @@ class TestListVisibilityPolicies:
     def test_list_returns_dicts(self, conn):
         from footprinter.db.policies import list_visibility_policies, set_visibility_policy
 
-        set_visibility_policy(conn, "global", "visible")
+        set_visibility_policy(conn, "global", "full")
         set_visibility_policy(conn, "folder:~/Work", "hidden")
         result = list_visibility_policies(conn)
         assert isinstance(result, list)
@@ -229,7 +229,7 @@ class TestSeedDefaults:
         result = seed_visibility_defaults(conn)
         assert result is True
         row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
-        assert row["setting"] == "visible"
+        assert row["setting"] == "full"
 
     def test_seed_visibility_idempotent(self, conn):
         from footprinter.db.policies import seed_visibility_defaults

@@ -1,7 +1,7 @@
 """semantic_service — embedding search with FTS5 fallback and access control.
 
 D2 access rule: semantic matches are content-derived, so visible items also
-require mcp_read='allow' (presence in results reveals content).
+require access='allow' (presence in results reveals content).
 """
 
 import logging
@@ -181,8 +181,8 @@ def _search_chats(
         db_row = vis_lookup.get(r.get("chat_id"))
         r["id"] = r.get("chat_id")
         r["account"] = db_row["account"] if db_row else ""
-        r["mcp_view"] = db_row["mcp_view"] if db_row else "hidden"
-        r["mcp_read"] = db_row["mcp_read"] if db_row else None
+        r["visibility"] = db_row["visibility"] if db_row else "hidden"
+        r["access"] = db_row["access"] if db_row else None
 
     # Access control filtering
     if role.sees_all:
@@ -193,13 +193,13 @@ def _search_chats(
         # not both visible AND allowed. Fail-closed on null/missing values.
         filtered = [
             r for r in results
-            if resolve_inherit_visibility(r.get("mcp_view")) == "visible"
-            and resolve_inherit_permission(r.get("mcp_read")) == "allow"
+            if resolve_inherit_visibility(r.get("visibility")) == "full"
+            and resolve_inherit_permission(r.get("access")) == "allow"
         ]
         suppressed = len(results) - len(filtered)
 
     # Trim visible results to presentation fields
-    trimmed = [_trim_chat_result(r) if r.get("mcp_view") == "visible" else r for r in filtered]
+    trimmed = [_trim_chat_result(r) if r.get("visibility") == "full" else r for r in filtered]
 
     if status == _DEGRADED:
         notes.append("Results are keyword-based (semantic search unavailable)")
@@ -270,12 +270,12 @@ def _search_files(
         # not both visible AND allowed. Fail-closed on null/missing values.
         filtered = [
             r for r in enriched
-            if resolve_inherit_visibility(r.get("mcp_view")) == "visible"
-            and resolve_inherit_permission(r.get("mcp_read")) == "allow"
+            if resolve_inherit_visibility(r.get("visibility")) == "full"
+            and resolve_inherit_permission(r.get("access")) == "allow"
         ]
         suppressed = len(enriched) - len(filtered)
 
-    trimmed = [_trim_file_result(r) if r.get("mcp_view") == "visible" else r for r in filtered]
+    trimmed = [_trim_file_result(r) if r.get("visibility") == "full" else r for r in filtered]
     trimmed = trimmed[:limit]
 
     if status == _DEGRADED:

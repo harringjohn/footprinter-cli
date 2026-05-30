@@ -88,11 +88,11 @@ class TestRecalculateGlobal:
 
         stats = recalculate_access(conn, "global")
 
-        # All rows should have mcp_view='inherit' (resolved at query time)
+        # All rows should have visibility='inherit' (resolved at query time)
         for table in ["files", "emails", "chats", "folders", "projects", "clients", "visits"]:
-            rows = conn.execute(f"SELECT mcp_view FROM {table}").fetchall()
+            rows = conn.execute(f"SELECT visibility FROM {table}").fetchall()
             for row in rows:
-                assert row["mcp_view"] == "inherit", f"{table} row not stamped inherit"
+                assert row["visibility"] == "inherit", f"{table} row not stamped inherit"
 
         assert stats  # non-empty dict
 
@@ -109,12 +109,12 @@ class TestRecalculateSourceScope:
         recalculate_access(conn, "source:files")
 
         # Files should be stamped
-        rows = conn.execute("SELECT mcp_view FROM files").fetchall()
-        assert all(r["mcp_view"] == "hidden" for r in rows)
+        rows = conn.execute("SELECT visibility FROM files").fetchall()
+        assert all(r["visibility"] == "hidden" for r in rows)
 
         # Emails should be unchanged (inherit)
-        rows = conn.execute("SELECT mcp_view FROM emails").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM emails").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
 
 class TestRecalculateAccountScope:
@@ -129,12 +129,12 @@ class TestRecalculateAccountScope:
         recalculate_access(conn, "account:personal")
 
         # Personal email stamped
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 10").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 10").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Work email unchanged
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 11").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 11").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 class TestRecalculateFolderPrefix:
@@ -149,16 +149,16 @@ class TestRecalculateFolderPrefix:
         recalculate_access(conn, "folder:/Users/me/Work/")
 
         # File under /Work/ stamped
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
         # File under /Personal/ unchanged
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Folder under /Work/ stamped
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 30").fetchone()
+        assert row["visibility"] == "hidden"
 
 
 class TestRecalculateFolderTildeExpansion:
@@ -177,20 +177,20 @@ class TestRecalculateFolderTildeExpansion:
         recalculate_access(conn, "folder:~/Work/")
 
         # File under /Work/ stamped
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
         # File under /Personal/ unchanged
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Folder under /Work/ stamped
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 30").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Folder under /Personal/ unchanged
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 31").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 class TestRecalculateFolderLikeEscaping:
@@ -206,12 +206,12 @@ class TestRecalculateFolderLikeEscaping:
         recalculate_access(conn, "folder:/Users/me/W_rk/")
 
         # Only the literal match should be stamped
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 100").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 100").fetchone()
+        assert row["visibility"] == "hidden"
 
         # /Work/ should NOT match _ wildcard
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 101").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 101").fetchone()
+        assert row["visibility"] == "inherit"
 
     def test_percent_in_path_is_literal(self, conn):
         """folder: scope treats % as literal, not LIKE wildcard."""
@@ -226,12 +226,12 @@ class TestRecalculateFolderLikeEscaping:
 
         recalculate_access(conn, "folder:/Users/me/50%done/")
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 100").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 100").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Should NOT match via % wildcard
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 101").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 101").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 def _seed_folder_hierarchy(conn):
@@ -281,11 +281,11 @@ class TestRecalculateFolderIdScope:
         recalculate_access(conn, "folder:30")
 
         for fid in (30, 32, 33):
-            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
-            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+            row = conn.execute("SELECT visibility FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["visibility"] == "hidden", f"folder {fid} should be hidden"
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 31").fetchone()
+        assert row["visibility"] == "inherit"
 
     def test_folder_id_scope_stamps_files_in_descendants(self, conn):
         """Files inside descendant folders are stamped by parent folder policy."""
@@ -298,31 +298,31 @@ class TestRecalculateFolderIdScope:
         recalculate_access(conn, "folder:30")
 
         for fid in (1, 60, 61):
-            row = conn.execute("SELECT mcp_view FROM files WHERE id = ?", (fid,)).fetchone()
-            assert row["mcp_view"] == "hidden", f"file {fid} should be hidden"
+            row = conn.execute("SELECT visibility FROM files WHERE id = ?", (fid,)).fetchone()
+            assert row["visibility"] == "hidden", f"file {fid} should be hidden"
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
     def test_nearest_ancestor_policy_wins(self, conn):
         """Child folder's own policy takes precedence over parent's."""
         _seed_folder_hierarchy(conn)
         conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:30', 'hidden')")
-        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'visible')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:32', 'full')")
         conn.commit()
 
         from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:30")
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 30").fetchone()
+        assert row["visibility"] == "hidden"
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 32").fetchone()
-        assert row["mcp_view"] == "visible"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 32").fetchone()
+        assert row["visibility"] == "full"
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 33").fetchone()
-        assert row["mcp_view"] == "visible"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 33").fetchone()
+        assert row["visibility"] == "full"
 
     def test_path_prefix_scope_still_works_with_hierarchy(self, conn):
         """Regression: folder:/path/ matching still works with hierarchy data."""
@@ -337,11 +337,11 @@ class TestRecalculateFolderIdScope:
         recalculate_access(conn, "folder:/Users/me/Work/")
 
         for fid in (30, 32, 33):
-            row = conn.execute("SELECT mcp_view FROM folders WHERE id = ?", (fid,)).fetchone()
-            assert row["mcp_view"] == "hidden", f"folder {fid} should be hidden"
+            row = conn.execute("SELECT visibility FROM folders WHERE id = ?", (fid,)).fetchone()
+            assert row["visibility"] == "hidden", f"folder {fid} should be hidden"
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 31").fetchone()
+        assert row["visibility"] == "inherit"
 
     def test_single_folder_visibility_resolves_ancestor_policy(self, conn):
         """Single-item resolver walks ancestors for folder:{id} policies."""
@@ -358,15 +358,15 @@ class TestRecalculateFolderIdScope:
     def test_folder_without_parent_id_falls_through_gracefully(self, conn):
         """NULL parent_folder_id terminates ancestor walk without crash."""
         _seed_entities(conn)
-        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         conn.commit()
 
         from footprinter.access_stamper import recalculate_access
 
         recalculate_access(conn, "folder:31")
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 31").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 31").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 class TestRecalculateProjectCascades:
@@ -381,28 +381,28 @@ class TestRecalculateProjectCascades:
         recalculate_access(conn, "project:3")
 
         # Project itself
-        row = conn.execute("SELECT mcp_view FROM projects WHERE id = 3").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM projects WHERE id = 3").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Child file (project_id=3)
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Non-child file (project_id IS NULL)
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Child email
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 10").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 10").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Child chat
-        row = conn.execute("SELECT mcp_view FROM chats WHERE id = 20").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM chats WHERE id = 20").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Child folder
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 30").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 30").fetchone()
+        assert row["visibility"] == "hidden"
 
 
 class TestRecalculateClientCascades:
@@ -417,20 +417,20 @@ class TestRecalculateClientCascades:
         recalculate_access(conn, "client:5")
 
         # Client
-        row = conn.execute("SELECT mcp_view FROM clients WHERE id = 5").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM clients WHERE id = 5").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Project under client
-        row = conn.execute("SELECT mcp_view FROM projects WHERE id = 3").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM projects WHERE id = 3").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Children of that project
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
         # File NOT under client's project
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 class TestRecalculateClientDirectAssignment:
@@ -580,7 +580,7 @@ class TestRecalculateClientStampsDirectClientEntities:
     """
 
     def test_stamps_direct_client_file_visibility(self, conn):
-        """File with client_id=5, project_id=NULL gets mcp_view='hidden' under client:5."""
+        """File with client_id=5, project_id=NULL gets visibility='hidden' under client:5."""
         _seed_entities(conn)
         conn.execute(
             "INSERT INTO files (id, source, name, path, account, project_id, client_id) "
@@ -593,13 +593,13 @@ class TestRecalculateClientStampsDirectClientEntities:
 
         recalculate_access(conn, "client:5")
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 50").fetchone()
-        assert row["mcp_view"] == "hidden", (
-            f"Direct-client file should be stamped 'hidden', got {row['mcp_view']!r}"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 50").fetchone()
+        assert row["visibility"] == "hidden", (
+            f"Direct-client file should be stamped 'hidden', got {row['visibility']!r}"
         )
 
     def test_stamps_direct_client_file_permission(self, conn):
-        """File with client_id=5, project_id=NULL gets mcp_read='deny' under client:5."""
+        """File with client_id=5, project_id=NULL gets access='deny' under client:5."""
         _seed_entities(conn)
         conn.execute(
             "INSERT INTO files (id, source, name, path, account, project_id, client_id) "
@@ -612,13 +612,13 @@ class TestRecalculateClientStampsDirectClientEntities:
 
         recalculate_access(conn, "client:5")
 
-        row = conn.execute("SELECT mcp_read FROM files WHERE id = 50").fetchone()
-        assert row["mcp_read"] == "deny", (
-            f"Direct-client file should be stamped 'deny', got {row['mcp_read']!r}"
+        row = conn.execute("SELECT access FROM files WHERE id = 50").fetchone()
+        assert row["access"] == "deny", (
+            f"Direct-client file should be stamped 'deny', got {row['access']!r}"
         )
 
     def test_stamps_direct_client_email_visibility(self, conn):
-        """Email with client_id=5, project_id=NULL gets mcp_view='hidden' under client:5."""
+        """Email with client_id=5, project_id=NULL gets visibility='hidden' under client:5."""
         _seed_entities(conn)
         conn.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, received_at, "
@@ -632,11 +632,11 @@ class TestRecalculateClientStampsDirectClientEntities:
 
         recalculate_access(conn, "client:5")
 
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 60").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 60").fetchone()
+        assert row["visibility"] == "hidden"
 
     def test_stamps_direct_client_chat_visibility(self, conn):
-        """Chat with client_id=5, project_id=NULL gets mcp_view='hidden' under client:5."""
+        """Chat with client_id=5, project_id=NULL gets visibility='hidden' under client:5."""
         _seed_entities(conn)
         conn.execute(
             "INSERT INTO chats (id, external_id, account, title, project_id, client_id) "
@@ -649,11 +649,11 @@ class TestRecalculateClientStampsDirectClientEntities:
 
         recalculate_access(conn, "client:5")
 
-        row = conn.execute("SELECT mcp_view FROM chats WHERE id = 70").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM chats WHERE id = 70").fetchone()
+        assert row["visibility"] == "hidden"
 
     def test_stamps_direct_client_folder_visibility(self, conn):
-        """Folder with client_id=5, project_id=NULL gets mcp_view='hidden' under client:5."""
+        """Folder with client_id=5, project_id=NULL gets visibility='hidden' under client:5."""
         _seed_entities(conn)
         conn.execute(
             "INSERT INTO folders (id, path, relative_path, name, project_id, client_id) "
@@ -666,8 +666,8 @@ class TestRecalculateClientStampsDirectClientEntities:
 
         recalculate_access(conn, "client:5")
 
-        row = conn.execute("SELECT mcp_view FROM folders WHERE id = 40").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM folders WHERE id = 40").fetchone()
+        assert row["visibility"] == "hidden"
 
 
 class TestRecalculateSingleEntity:
@@ -682,12 +682,12 @@ class TestRecalculateSingleEntity:
         result = recalculate_entity(conn, "file", 1)
 
         # File 1 stamped — global source writes 'inherit'
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
 
         # File 2 unchanged (only entity 1 was recalculated)
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
 
         assert result == {"file": 1}
 
@@ -785,22 +785,22 @@ class TestRecalculateBatched:
         stats = recalculate_access_batched(conn, "global", batch_size=2)
 
         # Read back all column values
-        batched_vis = {r["id"]: r["mcp_view"] for r in conn.execute("SELECT id, mcp_view FROM files").fetchall()}
-        batched_perm = {r["id"]: r["mcp_read"] for r in conn.execute("SELECT id, mcp_read FROM files").fetchall()}
+        batched_vis = {r["id"]: r["visibility"] for r in conn.execute("SELECT id, visibility FROM files").fetchall()}
+        batched_perm = {r["id"]: r["access"] for r in conn.execute("SELECT id, access FROM files").fetchall()}
 
         # Reset columns to default, run unbatched
-        conn.execute("UPDATE files SET mcp_view = 'inherit', mcp_read = 'inherit'")
-        conn.execute("UPDATE emails SET mcp_view = 'inherit', mcp_read = 'inherit'")
-        conn.execute("UPDATE chats SET mcp_view = 'inherit', mcp_read = 'inherit'")
-        conn.execute("UPDATE folders SET mcp_view = 'inherit'")
-        conn.execute("UPDATE projects SET mcp_view = 'inherit', mcp_read = 'inherit'")
-        conn.execute("UPDATE clients SET mcp_view = 'inherit', mcp_read = 'inherit'")
+        conn.execute("UPDATE files SET visibility = 'inherit', access = 'inherit'")
+        conn.execute("UPDATE emails SET visibility = 'inherit', access = 'inherit'")
+        conn.execute("UPDATE chats SET visibility = 'inherit', access = 'inherit'")
+        conn.execute("UPDATE folders SET visibility = 'inherit'")
+        conn.execute("UPDATE projects SET visibility = 'inherit', access = 'inherit'")
+        conn.execute("UPDATE clients SET visibility = 'inherit', access = 'inherit'")
         conn.commit()
 
         recalculate_access(conn, "global")
 
-        unbatched_vis = {r["id"]: r["mcp_view"] for r in conn.execute("SELECT id, mcp_view FROM files").fetchall()}
-        unbatched_perm = {r["id"]: r["mcp_read"] for r in conn.execute("SELECT id, mcp_read FROM files").fetchall()}
+        unbatched_vis = {r["id"]: r["visibility"] for r in conn.execute("SELECT id, visibility FROM files").fetchall()}
+        unbatched_perm = {r["id"]: r["access"] for r in conn.execute("SELECT id, access FROM files").fetchall()}
 
         assert batched_vis == unbatched_vis
         assert batched_perm == unbatched_perm
@@ -881,23 +881,23 @@ class TestRoundTripMatchesBatchResolve:
         file_ids = [r["id"] for r in conn.execute("SELECT id FROM files").fetchall()]
         vis_results = batch_resolve_visibility(conn, "file", file_ids)
         for fid in file_ids:
-            row = conn.execute("SELECT mcp_view FROM files WHERE id = ?", (fid,)).fetchone()
+            row = conn.execute("SELECT visibility FROM files WHERE id = ?", (fid,)).fetchone()
             expected_state, source = vis_results[fid]
             if _is_inherit_source(source):
-                assert row["mcp_view"] == "inherit"
+                assert row["visibility"] == "inherit"
             else:
-                assert row["mcp_view"] == expected_state
+                assert row["visibility"] == expected_state
 
         # Check files permissions — specific source writes resolved value
         perm_results = batch_resolve_permissions(conn, "file", file_ids)
         for fid in file_ids:
-            row = conn.execute("SELECT mcp_read FROM files WHERE id = ?", (fid,)).fetchone()
+            row = conn.execute("SELECT access FROM files WHERE id = ?", (fid,)).fetchone()
             expected_bool, source = perm_results[fid]
             if _is_inherit_source(source):
-                assert row["mcp_read"] == "inherit"
+                assert row["access"] == "inherit"
             else:
                 expected_val = "allow" if expected_bool else "deny"
-                assert row["mcp_read"] == expected_val
+                assert row["access"] == expected_val
 
 
 class TestStampEntities:
@@ -915,14 +915,14 @@ class TestStampEntities:
         stats = stamp_entities(conn, {"file": [1]})
 
         # File 1 stamped — global source writes 'inherit'
-        row = conn.execute("SELECT mcp_view, mcp_read FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
-        assert row["mcp_read"] == "inherit"
+        row = conn.execute("SELECT visibility, access FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
+        assert row["access"] == "inherit"
 
         # File 2 unchanged (not in the ids list)
-        row = conn.execute("SELECT mcp_view, mcp_read FROM files WHERE id = 2").fetchone()
-        assert row["mcp_view"] == "inherit"
-        assert row["mcp_read"] == "inherit"
+        row = conn.execute("SELECT visibility, access FROM files WHERE id = 2").fetchone()
+        assert row["visibility"] == "inherit"
+        assert row["access"] == "inherit"
 
         assert stats == {"file": 1}
 
@@ -937,15 +937,15 @@ class TestStampEntities:
         stats = stamp_entities(conn, {"file": [1, 2], "email": [10]})
 
         for fid in [1, 2]:
-            row = conn.execute("SELECT mcp_view FROM files WHERE id = ?", (fid,)).fetchone()
-            assert row["mcp_view"] == "inherit"
+            row = conn.execute("SELECT visibility FROM files WHERE id = ?", (fid,)).fetchone()
+            assert row["visibility"] == "inherit"
 
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 10").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 10").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Email 11 not stamped
-        row = conn.execute("SELECT mcp_view FROM emails WHERE id = 11").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM emails WHERE id = 11").fetchone()
+        assert row["visibility"] == "inherit"
 
         assert stats == {"file": 2, "email": 1}
 
@@ -971,8 +971,8 @@ class TestStampEntities:
         # Rollback should be a no-op since stamp_entities already committed
         conn.rollback()
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
     def test_exception_mid_loop_does_not_commit_partial_writes(self, conn, monkeypatch):
         """If resolve raises for entity type B, partial writes are uncommitted and rollback-able."""
@@ -1002,8 +1002,8 @@ class TestStampEntities:
         # Partial writes are uncommitted — rollback reverts them
         conn.rollback()
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 class TestSqliteVariableLimit:
@@ -1044,7 +1044,7 @@ class TestSqliteVariableLimit:
         stats = stamp_entities(conn, {"file": ids})
 
         assert stats["file"] == count
-        rows = conn.execute("SELECT COUNT(*) FROM files WHERE mcp_view = 'hidden'").fetchone()[0]
+        rows = conn.execute("SELECT COUNT(*) FROM files WHERE visibility = 'hidden'").fetchone()[0]
         assert rows == count
 
     def test_batch_resolve_visibility_chunks_correctly(self, conn):
@@ -1088,16 +1088,16 @@ class TestRecalculateSourceBrowser:
         stats = recalculate_access(conn, "source:browser")
 
         # Visits should be stamped with the source-level policy
-        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
-        assert all(r["mcp_view"] == "hidden" for r in rows)
+        rows = conn.execute("SELECT visibility FROM visits").fetchall()
+        assert all(r["visibility"] == "hidden" for r in rows)
 
         # Files should be unchanged
-        rows = conn.execute("SELECT mcp_view FROM files").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM files").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
         # Emails should be unchanged
-        rows = conn.execute("SELECT mcp_view FROM emails").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM emails").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
         assert stats == {"visit": 2}
 
@@ -1125,8 +1125,8 @@ class TestRecalculateVisitScopeGap:
         stats = recalculate_access(conn, "project:3")
 
         assert "visit" not in stats
-        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM visits").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
     def test_client_scope_excludes_visits(self, conn):
         """client:5 does not include visits."""
@@ -1139,8 +1139,8 @@ class TestRecalculateVisitScopeGap:
         stats = recalculate_access(conn, "client:5")
 
         assert "visit" not in stats
-        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM visits").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
     def test_account_scope_excludes_visits(self, conn):
         """account:work does not include visits (visits have no account column)."""
@@ -1153,8 +1153,8 @@ class TestRecalculateVisitScopeGap:
         stats = recalculate_access(conn, "account:work")
 
         assert "visit" not in stats
-        rows = conn.execute("SELECT mcp_view FROM visits").fetchall()
-        assert all(r["mcp_view"] == "inherit" for r in rows)
+        rows = conn.execute("SELECT visibility FROM visits").fetchall()
+        assert all(r["visibility"] == "inherit" for r in rows)
 
 
 class TestWalkAncestorPolicies:

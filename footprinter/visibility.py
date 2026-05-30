@@ -6,7 +6,7 @@ Two-tier model:
   - Baseline: Hardcoded fallback (BASELINE_VISIBILITY = 'opaque')
 
 Most-restrictive-wins semantics applies ONLY among matching policies.
-  hidden > opaque > visible
+  hidden > opaque > full
 
 Hierarchy layers (checked for policies):
   file:{id} → folder prefix → folder FK → project:{id} → client:{id} → source:*
@@ -17,13 +17,13 @@ Resolution:
   1. Collect explicit values from matching policies only
   2. If any policy is 'hidden' → return 'hidden'
   3. If any policy is 'opaque' → return 'opaque'
-  4. If any policy is 'visible' → return 'visible'
+  4. If any policy is 'full' → return 'full'
   5. No policies matched → return BASELINE_VISIBILITY
 
 Visibility states:
   - 'hidden'  - item doesn't exist to MCP (excluded from all results and counts)
   - 'opaque'  - appears with minimal info (id, content_type, source)
-  - 'visible' - full metadata returned
+  - 'full'    - full metadata returned
 
 Hard Rule: Content read access can never exceed metadata visibility.
 If an item is hidden or opaque, it cannot be read regardless of permission policy.
@@ -36,7 +36,7 @@ from typing import Callable, Dict, List, Literal, Optional, Tuple
 from footprinter.db.policies import is_folder_path_scope
 from footprinter.db.sql_utils import chunked_query as _chunked_query
 
-VisibilityState = Literal["hidden", "opaque", "visible"]
+VisibilityState = Literal["hidden", "opaque", "full"]
 
 # Hardcoded baseline - used when NO policies match
 BASELINE_VISIBILITY: VisibilityState = "opaque"
@@ -52,7 +52,7 @@ def get_visibility(conn: sqlite3.Connection, item_type: str, item_id: int) -> Vi
         item_id: Row ID in the relevant table
 
     Returns:
-        'hidden', 'opaque', or 'visible'
+        'hidden', 'opaque', or 'full'
     """
     cursor = conn.cursor()
 
@@ -89,7 +89,7 @@ def resolve_visibility_with_source(
 
     Returns:
         Tuple of (resolved_visibility, source_scope)
-        e.g., ('visible', "folder:~/Work") or ('opaque', "baseline")
+        e.g., ('full', "folder:~/Work") or ('opaque', "baseline")
     """
     cursor = conn.cursor()
 
@@ -263,7 +263,7 @@ def _batch_resolve_file_visibility(cursor, item_ids: List[int]) -> Dict[int, Tup
         if source_scope in all_policies:
             policies.append((_resolve(all_policies[source_scope]), source_scope))
 
-        # Resolve: most restrictive wins (hidden > opaque > visible)
+        # Resolve: most restrictive wins (hidden > opaque > full)
         for value, source in policies:
             if value == "hidden":
                 results[file_id] = ("hidden", source)
@@ -275,8 +275,8 @@ def _batch_resolve_file_visibility(cursor, item_ids: List[int]) -> Dict[int, Tup
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[file_id] = ("visible", source)
+                    if value == "full":
+                        results[file_id] = ("full", source)
                         break
                 else:
                     results[file_id] = global_baseline
@@ -335,8 +335,8 @@ def _batch_resolve_project_visibility(cursor, item_ids: List[int]) -> Dict[int, 
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[project_id] = ("visible", source)
+                    if value == "full":
+                        results[project_id] = ("full", source)
                         break
                 else:
                     results[project_id] = global_baseline
@@ -381,8 +381,8 @@ def _batch_resolve_client_visibility(cursor, item_ids: List[int]) -> Dict[int, T
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[client_id] = ("visible", source)
+                    if value == "full":
+                        results[client_id] = ("full", source)
                         break
                 else:
                     results[client_id] = global_baseline
@@ -481,8 +481,8 @@ def _batch_resolve_email_visibility(cursor, item_ids: List[int]) -> Dict[int, Tu
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[email_id] = ("visible", source)
+                    if value == "full":
+                        results[email_id] = ("full", source)
                         break
                 else:
                     results[email_id] = global_baseline
@@ -581,8 +581,8 @@ def _batch_resolve_chat_visibility(cursor, item_ids: List[int]) -> Dict[int, Tup
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[chat_id] = ("visible", source)
+                    if value == "full":
+                        results[chat_id] = ("full", source)
                         break
                 else:
                     results[chat_id] = global_baseline
@@ -700,8 +700,8 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
                     break
             else:
                 for value, source in policies:
-                    if value == "visible":
-                        results[folder_id] = ("visible", source)
+                    if value == "full":
+                        results[folder_id] = ("full", source)
                         break
                 else:
                     results[folder_id] = global_baseline
@@ -711,7 +711,7 @@ def _batch_resolve_folder_visibility(cursor, item_ids: List[int]) -> Dict[int, T
 
 def _resolve(value: Optional[str]) -> Optional[VisibilityState]:
     """Convert a visibility value to state or None (no policy)."""
-    if value in ("hidden", "opaque", "visible"):
+    if value in ("hidden", "opaque", "full"):
         return value
     return None  # 'inherit' or NULL means no policy
 
@@ -853,7 +853,7 @@ def _resolve_file_visibility_with_source(cursor, file_id: int) -> Tuple[Visibili
         policies.append((source_policy, "source:files"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -863,8 +863,8 @@ def _resolve_file_visibility_with_source(cursor, file_id: int) -> Tuple[Visibili
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -934,7 +934,7 @@ def _resolve_email_visibility_with_source(cursor, email_id: int) -> Tuple[Visibi
         policies.append((source_policy, "source:emails"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -944,8 +944,8 @@ def _resolve_email_visibility_with_source(cursor, email_id: int) -> Tuple[Visibi
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -1015,7 +1015,7 @@ def _resolve_chat_visibility_with_source(cursor, chat_id: int) -> Tuple[Visibili
         policies.append((source_policy, "source:chats"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -1025,8 +1025,8 @@ def _resolve_chat_visibility_with_source(cursor, chat_id: int) -> Tuple[Visibili
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -1114,7 +1114,7 @@ def _resolve_folder_visibility_with_source(cursor, folder_id: int) -> Tuple[Visi
         policies.append((source_policy, "source:folders"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -1124,8 +1124,8 @@ def _resolve_folder_visibility_with_source(cursor, folder_id: int) -> Tuple[Visi
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -1169,7 +1169,7 @@ def _resolve_project_visibility_with_source(cursor, project_id: int) -> Tuple[Vi
         policies.append((source_policy, "source:projects"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -1179,8 +1179,8 @@ def _resolve_project_visibility_with_source(cursor, project_id: int) -> Tuple[Vi
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -1210,7 +1210,7 @@ def _resolve_client_visibility_with_source(cursor, client_id: int) -> Tuple[Visi
         policies.append((source_policy, "source:clients"))
 
     # MOST-RESTRICTIVE-WINS among matching policies only:
-    # hidden > opaque > visible
+    # hidden > opaque > full
     for value, source in policies:
         if value == "hidden":
             return ("hidden", source)
@@ -1220,8 +1220,8 @@ def _resolve_client_visibility_with_source(cursor, client_id: int) -> Tuple[Visi
             return ("opaque", source)
 
     for value, source in policies:
-        if value == "visible":
-            return ("visible", source)
+        if value == "full":
+            return ("full", source)
 
     # No policies matched → use global policy or baseline
     return _get_global_baseline(cursor)
@@ -1304,7 +1304,7 @@ def _batch_resolve_browser_visibility(cursor, item_ids: List[int]) -> Dict[int, 
 def is_readable(visibility: VisibilityState) -> bool:
     """Check if an item with this visibility can be read.
 
-    Only visible items can have their content read.
+    Only full-visibility items can have their content read.
     Hidden and opaque items are blocked at the visibility layer.
     """
-    return visibility == "visible"
+    return visibility == "full"

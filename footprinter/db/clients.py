@@ -52,8 +52,8 @@ def list_clients(
     count_sql = f"SELECT COUNT(*) FROM clients client{where}"
     fetch_sql = f"""
         SELECT client.id, client.name, client.slug, client.client_type, client.status,
-               client.mcp_view, client.mcp_read,
-               client.mcp_view_source, client.mcp_read_source,
+               client.visibility, client.access,
+               client.visibility_source, client.access_source,
                (SELECT COUNT(*) FROM projects project WHERE project.client_id = client.id) as project_count,
                (SELECT COUNT(*) FROM files file
                 JOIN projects project ON file.project_id = project.id
@@ -74,10 +74,10 @@ def list_clients(
             "status": row["status"],
             "project_count": row["project_count"],
             "file_count": row["file_count"],
-            "mcp_view": row["mcp_view"] or "inherit",
-            "mcp_read": row["mcp_read"] or "inherit",
-            "mcp_view_source": row["mcp_view_source"],
-            "mcp_read_source": row["mcp_read_source"],
+            "visibility": row["visibility"] or "inherit",
+            "access": row["access"] or "inherit",
+            "visibility_source": row["visibility_source"],
+            "access_source": row["access_source"],
         }
         for row in rows
     ]
@@ -226,8 +226,8 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT id, name, slug, client_type, status,
-                  mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  visibility, access,
+                  visibility_source, access_source
            FROM clients WHERE id = ?""",
         (client_id,),
     )
@@ -241,10 +241,10 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
         "slug": row["slug"],
         "client_type": row["client_type"],
         "status": row["status"],
-        "mcp_view": row["mcp_view"] or "inherit",
-        "mcp_read": row["mcp_read"] or "inherit",
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"] or "inherit",
+        "access": row["access"] or "inherit",
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
     }
 
     # Attached projects
@@ -277,12 +277,12 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
 def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     """Find clients matching name with LIKE %name%.
 
-    Returns all columns including mcp_view. Does NOT filter by visibility.
+    Returns all columns including visibility. Does NOT filter by visibility.
     """
     rows = conn.execute(
         """SELECT id, name, slug, client_type, status,
-                  created_at, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  created_at, visibility, access,
+                  visibility_source, access_source
            FROM clients WHERE name LIKE ?""",
         (f"%{name}%",),
     ).fetchall()
@@ -292,7 +292,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
 def count_hidden_by_name(conn: sqlite3.Connection, name: str) -> int:
     """Count hidden clients matching a fuzzy name query (for diagnostics)."""
     row = conn.execute(
-        "SELECT COUNT(*) FROM clients WHERE name LIKE ? AND COALESCE(mcp_view, 'inherit') = 'hidden'",
+        "SELECT COUNT(*) FROM clients WHERE name LIKE ? AND COALESCE(visibility, 'inherit') = 'hidden'",
         (f"%{name}%",),
     ).fetchone()
     return row[0]
@@ -309,7 +309,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
         }
 
     ph = ",".join("?" * len(project_ids))
-    _nh = "AND COALESCE(mcp_view, 'inherit') != 'hidden'"
+    _nh = "AND COALESCE(visibility, 'inherit') != 'hidden'"
 
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size

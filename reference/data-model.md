@@ -206,8 +206,8 @@ All 8 entity tables (files, folders, visits, projects, chats, messages, emails, 
 | `status` | TEXT | `'listed'` | CHECK (status IN ('listed', 'unlisted', 'removed')) | Lifecycle state |
 | `created_at` | DATETIME | CURRENT_TIMESTAMP | — | Record creation time |
 | `display_name` | TEXT | — | — | Uniform display label (auto-populated via trigger) |
-| `mcp_read` | TEXT | `'inherit'` | CHECK (mcp_read IN ('allow', 'deny', 'inherit')) | MCP read access |
-| `mcp_view` | TEXT | `'inherit'` | CHECK (mcp_view IN ('hidden', 'opaque', 'visible', 'inherit')) | MCP visibility |
+| `access` | TEXT | `'inherit'` | CHECK (access IN ('allow', 'deny', 'inherit')) | MCP read access |
+| `visibility` | TEXT | `'inherit'` | CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')) | MCP visibility |
 
 All entity tables share this same status CHECK constraint — there are no per-table extensions.
 
@@ -368,8 +368,8 @@ The primary table for all indexed files. Stores both local files and remote file
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **AI-generated summaries** (standard column, populated by future scope — always NULL in tool-only installs):
 
@@ -396,7 +396,7 @@ The primary table for all indexed files. Stores both local files and remote file
 | `idx_files_local_unique` | `(source, path)` | Unique local paths |
 | `idx_files_drive_unique` | `(source, external_id, account)` | Uniqueness for remote files across (source, external_id, account). Index name reflects Drive-first history; applies to any connector's remote files. |
 | `idx_files_account` | `(account)` | Filter by source account |
-| `idx_files_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_files_visibility` | `(visibility)` | Filter by visibility |
 | `idx_files_client` | `(client_id)` | Filter by client |
 | `idx_files_modified` | `(modified_at)` | Sort by modification time |
 | `idx_files_type` | `(content_type)` | Filter by file type |
@@ -447,8 +447,8 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
 
 **Display:**
 
@@ -464,7 +464,7 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 | `idx_folders_project` | `(project_id)` | Project queries |
 | `idx_folders_source` | `(source)` | Filter by source |
 | `idx_folders_unique_path` | `(path)` | Unique local paths (WHERE source = 'local') |
-| `idx_folders_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_folders_visibility` | `(visibility)` | Filter by visibility |
 | `idx_folders_status` | `(status)` | Filter by status |
 | `idx_folders_client` | `(client_id)` | Filter by client |
 
@@ -502,8 +502,8 @@ Project metadata for detected code projects and work projects.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **Display:**
 
@@ -517,7 +517,7 @@ Project metadata for detected code projects and work projects.
 |-------|---------|-------|
 | `idx_projects_root` | `(root_path)` | Unique index for project root |
 | `idx_projects_client` | `(client_id)` | Filter by client |
-| `idx_projects_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_projects_visibility` | `(visibility)` | Filter by visibility |
 
 ---
 
@@ -536,8 +536,8 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `status_reason` | TEXT | Why client has this status (e.g., `'cli:delete'`) |
 | `created_at` | DATETIME | When created (default: CURRENT_TIMESTAMP) |
 | `metadata` | TEXT | JSON: additional metadata |
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
 
 **Indexes:**
@@ -546,7 +546,7 @@ Client/project grouping table. Projects can optionally reference a client via `c
 |-------|---------|-------|
 | `idx_clients_slug` | `(slug)` | Slug lookups |
 | `idx_clients_type` | `(client_type)` | Filter by client type |
-| `idx_clients_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_clients_visibility` | `(visibility)` | Filter by visibility |
 
 **Usage:** Clients are created manually — there is no auto-seeding or auto-detection. The `path_pattern` column (e.g., `/Work/clients/acme/`) is used to assign `client_id` on projects whose `root_path` falls under that pattern.
 
@@ -584,8 +584,8 @@ Web browsing history from Safari and Chrome.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **Client/project association:**
 
@@ -610,7 +610,7 @@ Web browsing history from Safari and Chrome.
 | `idx_visits_unique` | `(url, visit_time, browser)` | Unique constraint |
 | `idx_visits_client` | `(client_id)` | Filter by client |
 | `idx_visits_status` | `(status)` | Filter by status |
-| `idx_visits_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_visits_visibility` | `(visibility)` | Filter by visibility |
 
 ---
 
@@ -651,8 +651,8 @@ Email messages populated by email connector plugins (e.g. `footprinter-google` f
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **AI-generated summaries** (standard column, populated by future scope — always NULL in tool-only installs):
 
@@ -684,7 +684,7 @@ Email messages populated by email connector plugins (e.g. `footprinter-google` f
 | `idx_email_thread` | `(thread_id)` | Thread queries |
 | `idx_emails_client` | `(client_id)` | Filter by client |
 | `idx_emails_project` | `(project_id)` | Filter by project |
-| `idx_emails_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_emails_visibility` | `(visibility)` | Filter by visibility |
 
 ---
 
@@ -723,8 +723,8 @@ Claude and ChatGPT conversation exports.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **Client/project association:**
 
@@ -754,7 +754,7 @@ Claude and ChatGPT conversation exports.
 | `idx_chat_conv_status` | `(status)` | Filter by status |
 | `idx_chats_client` | `(client_id)` | Filter by client |
 | `idx_chats_project` | `(project_id)` | Filter by project |
-| `idx_chats_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_chats_visibility` | `(visibility)` | Filter by visibility |
 
 ---
 
@@ -788,8 +788,8 @@ Individual messages within conversations.
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `mcp_read` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
-| `mcp_view` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'visible'`, `'inherit'` (default: `'inherit'`) |
+| `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
 **Display:**
 
@@ -803,7 +803,7 @@ Individual messages within conversations.
 |-------|---------|-------|
 | `idx_chat_msg_conv` | `(chat_id)` | Chat lookup |
 | `idx_chat_msg_created` | `(created_at)` | Sort by creation date |
-| `idx_messages_visibility` | `(mcp_view)` | Filter by visibility |
+| `idx_messages_visibility` | `(visibility)` | Filter by visibility |
 | `idx_messages_status` | `(status)` | Filter by status |
 
 ---
@@ -931,7 +931,7 @@ Current active table for visibility rules controlling MCP metadata access.
 | Column | Type | Purpose |
 |--------|------|---------|
 | `scope` | TEXT | Visibility scope (PRIMARY KEY) |
-| `setting` | TEXT | `'hidden'`, `'opaque'`, or `'visible'` (NOT NULL, CHECK constraint) |
+| `setting` | TEXT | `'hidden'`, `'opaque'`, or `'full'` (NOT NULL, CHECK constraint) |
 | `updated_at` | DATETIME | Last update (default: CURRENT_TIMESTAMP) |
 
 **Scope Values:**
@@ -1117,7 +1117,7 @@ Created by `init_db()`. These are external-content FTS5 tables backed by their r
 | `emails_fts` | `emails` | `subject`, `from_name`, `from_address`, `body_preview` |
 | `chats_fts` | `chats` | `title` |
 
-Content columns (`content_preview`, `body_preview`) are NULLed in the FTS index when `mcp_view` is `'opaque'` or `'hidden'`, preventing sensitive content from appearing in search results.
+Content columns (`content_preview`, `body_preview`) are NULLed in the FTS index when `visibility` is `'opaque'` or `'hidden'`, preventing sensitive content from appearing in search results.
 
 ---
 

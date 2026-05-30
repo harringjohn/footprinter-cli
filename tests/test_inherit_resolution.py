@@ -14,13 +14,13 @@ def conn(tool_db):
 class TestLoadGlobals:
     def test_reads_policies_from_db(self, conn):
         """load_globals() caches global visibility and permission policies."""
-        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'allow')")
         conn.commit()
 
         vf.load_globals(conn)
 
-        assert vf._global_visibility == "visible"
+        assert vf._global_visibility == "full"
         assert vf.has_global_permission() is True
 
     def test_missing_global_policy_sets_none(self, conn):
@@ -37,10 +37,10 @@ class TestLoadGlobals:
         vf.load_globals(conn)
         assert vf._global_visibility == "hidden"
 
-        conn.execute("UPDATE visibility_policies SET setting = 'visible' WHERE scope = 'global'")
+        conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE scope = 'global'")
         conn.commit()
         vf.load_globals(conn)
-        assert vf._global_visibility == "visible"
+        assert vf._global_visibility == "full"
 
 
 class TestResolveInheritVisibility:
@@ -50,11 +50,11 @@ class TestResolveInheritVisibility:
 
     def test_inherit_with_global_visible(self, conn):
         """inherit resolves to global policy when global=visible."""
-        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         conn.commit()
         vf.load_globals(conn)
 
-        assert vf.resolve_inherit_visibility("inherit") == "visible"
+        assert vf.resolve_inherit_visibility("inherit") == "full"
 
     def test_inherit_with_global_hidden(self, conn):
         """inherit resolves to global policy when global=hidden."""
@@ -72,7 +72,7 @@ class TestResolveInheritVisibility:
 
     def test_explicit_values_pass_through(self):
         """Explicit values are returned unchanged."""
-        assert vf.resolve_inherit_visibility("visible") == "visible"
+        assert vf.resolve_inherit_visibility("full") == "full"
         assert vf.resolve_inherit_visibility("opaque") == "opaque"
         assert vf.resolve_inherit_visibility("hidden") == "hidden"
 
@@ -113,7 +113,7 @@ class TestResolveInheritPermission:
 class TestEndToEnd:
     def test_filter_result_with_inherit_and_global_visible(self, conn):
         """Entity with inherit + global=visible is visible through the filter."""
-        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')")
+        conn.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
         conn.commit()
         vf.load_globals(conn)
 
@@ -123,7 +123,7 @@ class TestEndToEnd:
             "content_type": ".txt",
             "source": "local",
             "path": "/test",
-            "mcp_view": "inherit",
+            "visibility": "inherit",
         }
         from footprinter.services.access_service import filter_result
 
@@ -133,22 +133,22 @@ class TestEndToEnd:
         assert filtered["path"] == "/test"
 
     def test_strip_content_with_inherit_and_global_allow(self, conn):
-        """Content preserved when mcp_read=inherit and global=allow."""
+        """Content preserved when access=inherit and global=allow."""
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'allow')")
         conn.commit()
         vf.load_globals(conn)
 
-        results = [{"id": 1, "snippet": "hello", "mcp_read": "inherit"}]
+        results = [{"id": 1, "snippet": "hello", "access": "inherit"}]
         from footprinter.services.access_service import strip_content_for_denied
 
         stripped = strip_content_for_denied("chat", results)
         assert stripped[0]["snippet"] == "hello"
 
     def test_strip_content_with_inherit_and_no_global(self, conn):
-        """Content preserved when mcp_read=inherit and no global policy (baseline allow)."""
+        """Content preserved when access=inherit and no global policy (baseline allow)."""
         vf.load_globals(conn)
 
-        results = [{"id": 1, "snippet": "hello", "mcp_read": "inherit"}]
+        results = [{"id": 1, "snippet": "hello", "access": "inherit"}]
         from footprinter.services.access_service import strip_content_for_denied
 
         stripped = strip_content_for_denied("chat", results)

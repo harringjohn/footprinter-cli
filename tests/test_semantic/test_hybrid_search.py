@@ -186,7 +186,7 @@ def fts5_db(tmp_path):
             account TEXT,
             created_at TEXT,
             message_count INTEGER DEFAULT 0,
-            mcp_view TEXT DEFAULT 'inherit',
+            visibility TEXT DEFAULT 'inherit',
             status TEXT DEFAULT 'listed'
         )
     """
@@ -201,32 +201,32 @@ def fts5_db(tmp_path):
 
     # Insert test data — visible chats
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
-        VALUES ('Python debugging', 'claude', '2024-01-01', 10, 'visible')"""
+        """INSERT INTO chats (title, account, created_at, message_count, visibility)
+        VALUES ('Python debugging', 'claude', '2024-01-01', 10, 'full')"""
     )
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
-        VALUES ('JavaScript intro', 'chatgpt', '2024-01-02', 5, 'visible')"""
+        """INSERT INTO chats (title, account, created_at, message_count, visibility)
+        VALUES ('JavaScript intro', 'chatgpt', '2024-01-02', 5, 'full')"""
     )
     # Hidden chat — returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        """INSERT INTO chats (title, account, created_at, message_count, visibility)
         VALUES ('Python patterns', 'claude', '2024-01-03', 8, 'hidden')"""
     )
     # Unresolved chat (inherit) — returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        """INSERT INTO chats (title, account, created_at, message_count, visibility)
         VALUES ('Python tips', 'claude', '2024-01-04', 3, 'inherit')"""
     )
     # Opaque chat — should be returned by keyword_search (downstream handles filtering)
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view)
+        """INSERT INTO chats (title, account, created_at, message_count, visibility)
         VALUES ('Python opaque', 'claude', '2024-01-05', 4, 'opaque')"""
     )
     # Removed chat — should be excluded from keyword_search results
     conn.execute(
-        """INSERT INTO chats (title, account, created_at, message_count, mcp_view, status)
-        VALUES ('Python removed', 'claude', '2024-01-06', 2, 'visible', 'removed')"""
+        """INSERT INTO chats (title, account, created_at, message_count, visibility, status)
+        VALUES ('Python removed', 'claude', '2024-01-06', 2, 'full', 'removed')"""
     )
     # Populate FTS
     conn.execute(

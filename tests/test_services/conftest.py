@@ -36,9 +36,9 @@ def service_db(tmp_path):
     # -- Clients: visible(1), hidden(2), opaque(3) --------------------------
     conn.execute(
         """INSERT INTO clients (id, name, slug, client_type, status,
-                                mcp_view, mcp_read)
+                                visibility, access)
            VALUES
-               (1, 'Acme Corp',    'acme',   'external', 'listed', 'visible', 'allow'),
+               (1, 'Acme Corp',    'acme',   'external', 'listed', 'full', 'allow'),
                (2, 'Hidden Inc',   'hidden', 'external', 'listed', 'hidden',  'allow'),
                (3, 'Opaque Ltd',   'opaque', 'internal', 'listed', 'opaque',  'allow')"""
     )
@@ -46,9 +46,9 @@ def service_db(tmp_path):
     # -- Projects: visible(1), hidden(2), opaque(3) -------------------------
     conn.execute(
         """INSERT INTO projects (id, name, status,
-                                 client_id, mcp_view, mcp_read)
+                                 client_id, visibility, access)
            VALUES
-               (1, 'Alpha',   'listed', 1, 'visible', 'allow'),
+               (1, 'Alpha',   'listed', 1, 'full', 'allow'),
                (2, 'Beta',    'listed', 2, 'hidden',  'allow'),
                (3, 'Gamma',   'listed', 3, 'opaque',  'allow')"""
     )
@@ -56,9 +56,9 @@ def service_db(tmp_path):
     # -- Folders: visible(1), hidden(2), opaque(3) --------------------------
     conn.execute(
         """INSERT INTO folders (id, path, relative_path, name, source, project_id,
-                                direct_file_count, total_size_bytes, mcp_view, mcp_read)
+                                direct_file_count, total_size_bytes, visibility, access)
            VALUES
-               (1, '/Users/u/Work/alpha/src',  '/Work/alpha/src',  'src',  'local', 1, 5, 10000, 'visible', 'allow'),
+               (1, '/Users/u/Work/alpha/src',  '/Work/alpha/src',  'src',  'local', 1, 5, 10000, 'full', 'allow'),
                (2, '/Users/u/Work/beta/src',   '/Work/beta/src',   'src',  'local', 2, 3, 5000,  'hidden',  'allow'),
                (3, '/Users/u/Work/gamma/src',  '/Work/gamma/src',  'src',  'local', 3, 1, 2000,  'opaque',  'allow')"""
     )
@@ -66,10 +66,10 @@ def service_db(tmp_path):
     # -- Files: visible(1), hidden(2), opaque(3) ----------------------------
     conn.execute(
         """INSERT INTO files (id, name, path, source, status, content_type, size_bytes,
-                              project_id, folder_id, mcp_view, mcp_read)
+                              project_id, folder_id, visibility, access)
            VALUES
                (1, 'readme.md', '/Users/u/Work/alpha/readme.md', 'local', 'listed', 'markdown', 1000,
-                1, 1, 'visible', 'allow'),
+                1, 1, 'full', 'allow'),
                (2, 'secret.py', '/Users/u/Work/beta/secret.py',  'local', 'listed', 'python',   2000,
                 2, 2, 'hidden',  'allow'),
                (3, 'config.rs', '/Users/u/Work/gamma/config.rs', 'local', 'listed', 'rust',     500,
@@ -79,9 +79,9 @@ def service_db(tmp_path):
     # -- Chats: visible(1), hidden(2), opaque(3) ----------------------------
     conn.execute(
         """INSERT INTO chats (id, external_id, account, title, message_count,
-                              mcp_view, mcp_read)
+                              visibility, access)
            VALUES
-               (1, 'conv-vis',    'claude', 'Visible Chat', 2, 'visible', 'allow'),
+               (1, 'conv-vis',    'claude', 'Visible Chat', 2, 'full', 'allow'),
                (2, 'conv-hidden', 'claude', 'Hidden Chat',  1, 'hidden',  'allow'),
                (3, 'conv-opaque', 'claude', 'Opaque Chat',  1, 'opaque',  'deny')"""
     )
@@ -99,10 +99,10 @@ def service_db(tmp_path):
     # -- Emails: visible(1), hidden(2), opaque(3) ---------------------------
     conn.execute(
         """INSERT INTO emails (id, message_id, thread_id, account, from_address,
-                               subject, received_at, status, mcp_view, mcp_read)
+                               subject, received_at, status, visibility, access)
            VALUES
                (1, 'msg-1', 'thr-1', 'work',     'alice@example.com',
-                'Visible Email', '2026-01-15T10:00:00', 'listed', 'visible', 'allow'),
+                'Visible Email', '2026-01-15T10:00:00', 'listed', 'full', 'allow'),
                (2, 'msg-2', 'thr-2', 'work',     'bob@example.com',
                 'Hidden Email',  '2026-01-15T11:00:00', 'listed', 'hidden',  'allow'),
                (3, 'msg-3', 'thr-3', 'personal', 'eve@example.com',
@@ -112,10 +112,10 @@ def service_db(tmp_path):
     # -- Visits: visible(1), hidden(2), opaque(3) ---------------------------
     conn.execute(
         """INSERT INTO visits (id, url, title, visit_time, browser,
-                               mcp_view, mcp_read)
+                               visibility, access)
            VALUES
                (1, 'https://visible.example.com', 'Visible Page', '2026-01-15 10:00:00', 'safari',
-                'visible', 'allow'),
+                'full', 'allow'),
                (2, 'https://hidden.example.com',  'Hidden Page',  '2026-01-15 11:00:00', 'safari',
                 'hidden',  'allow'),
                (3, 'https://opaque.example.com',  'Opaque Page',  '2026-01-15 12:00:00', 'chrome',
@@ -125,7 +125,7 @@ def service_db(tmp_path):
     # -- Global visibility/permission policies --------------------------------
     conn.execute(
         """INSERT INTO visibility_policies (scope, setting) VALUES
-               ('global', 'visible')"""
+               ('global', 'full')"""
     )
     conn.execute(
         """INSERT INTO permission_policies (scope, setting) VALUES

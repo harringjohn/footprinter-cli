@@ -1,7 +1,7 @@
 """Tests for footprinter.db.messages query functions.
 
 Verifies that list_messages(), get_message(), and search_messages() include
-mcp_view and mcp_read in returned dicts.
+visibility and access in returned dicts.
 """
 
 from footprinter.db.messages import get_message, list_messages, search_messages
@@ -21,10 +21,10 @@ class TestMessagesAccessColumns:
             """
             INSERT INTO messages
                 (chat_id, message_id, role, content, created_at,
-                 mcp_view, mcp_read)
+                 visibility, access)
             VALUES
                 (1, 'msg-001', 'user', 'hello world', '2025-01-01 12:00:00',
-                 'visible', 'allow')
+                 'full', 'allow')
             """
         )
         conn.commit()
@@ -34,19 +34,19 @@ class TestMessagesAccessColumns:
         self._seed_chat_and_message(tool_db)
         result = list_messages(tool_db)
         msg = result["messages"][0]
-        assert msg["mcp_view"] == "visible"
-        assert msg["mcp_read"] == "allow"
+        assert msg["visibility"] == "full"
+        assert msg["access"] == "allow"
 
     def test_get_message_includes_access_columns(self, tool_db):
         msg_id = self._seed_chat_and_message(tool_db)
         msg = get_message(tool_db, msg_id)
         assert msg is not None
-        assert msg["mcp_view"] == "visible"
-        assert msg["mcp_read"] == "allow"
+        assert msg["visibility"] == "full"
+        assert msg["access"] == "allow"
 
     def test_search_messages_includes_access_columns(self, tool_db):
         self._seed_chat_and_message(tool_db)
         result = search_messages(tool_db, "hello")
         msg = result["results"][0]
-        assert msg["mcp_view"] == "visible"
-        assert msg["mcp_read"] == "allow"
+        assert msg["visibility"] == "full"
+        assert msg["access"] == "allow"

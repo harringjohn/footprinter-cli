@@ -1,7 +1,7 @@
 """Tests for footprinter.db.folders query functions.
 
 Verifies that list_folders() and get_folder() include both
-mcp_view and mcp_read in returned dicts.
+visibility and access in returned dicts.
 """
 
 from footprinter.db.folders import (
@@ -22,10 +22,10 @@ class TestFoldersAccessColumns:
             """
             INSERT INTO folders
                 (path, relative_path, name, source,
-                 mcp_view, mcp_read)
+                 visibility, access)
             VALUES
                 ('/Users/test/Work', '/Work', 'Work', 'local',
-                 'visible', 'allow')
+                 'full', 'allow')
             """
         )
         conn.commit()
@@ -35,15 +35,15 @@ class TestFoldersAccessColumns:
         self._insert_folder(tool_db)
         result = list_folders(tool_db, depth=None)
         folder = result["folders"][0]
-        assert folder["mcp_view"] == "visible"
-        assert folder["mcp_read"] == "allow"
+        assert folder["visibility"] == "full"
+        assert folder["access"] == "allow"
 
     def test_get_folder_includes_access_columns(self, tool_db):
         folder_id = self._insert_folder(tool_db)
         folder = get_folder(tool_db, folder_id)
         assert folder is not None
-        assert folder["mcp_view"] == "visible"
-        assert folder["mcp_read"] == "allow"
+        assert folder["visibility"] == "full"
+        assert folder["access"] == "allow"
 
 
 class TestListFoldersDefaultExclude:
@@ -295,15 +295,15 @@ class TestGetFolderNavigationStatusFilter:
 
     def _setup(self, conn) -> int:
         cur = conn.execute(
-            """INSERT INTO folders (path, relative_path, name, source, mcp_view)
-               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'visible')"""
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'full')"""
         )
         folder_id = cur.lastrowid
         conn.executemany(
             """INSERT INTO files
                    (name, path, source, status, status_reason,
-                    folder_id, mcp_view, mcp_read)
-               VALUES (?, ?, 'local', ?, ?, ?, 'visible', 'allow')""",
+                    folder_id, visibility, access)
+               VALUES (?, ?, 'local', ?, ?, ?, 'full', 'allow')""",
             [
                 ("listed.py", "/Users/u/proj/listed.py", "listed", None, folder_id),
                 ("unlisted.py", "/Users/u/proj/unlisted.py", "unlisted", "user_hidden", folder_id),
@@ -355,15 +355,15 @@ class TestGetFolderNavigationStatusFilter:
     def _setup_with_subfolders(self, conn) -> int:
         """Mirror _setup but with mixed-status subfolders instead of files."""
         cur = conn.execute(
-            """INSERT INTO folders (path, relative_path, name, source, status, mcp_view)
-               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'listed', 'visible')"""
+            """INSERT INTO folders (path, relative_path, name, source, status, visibility)
+               VALUES ('/Users/u/proj', '/proj', 'proj', 'local', 'listed', 'full')"""
         )
         folder_id = cur.lastrowid
         conn.executemany(
             """INSERT INTO folders
                    (path, relative_path, name, source, status, status_reason,
-                    parent_folder_id, mcp_view, mcp_read)
-               VALUES (?, ?, ?, 'local', ?, ?, ?, 'visible', 'allow')""",
+                    parent_folder_id, visibility, access)
+               VALUES (?, ?, ?, 'local', ?, ?, ?, 'full', 'allow')""",
             [
                 ("/Users/u/proj/listed_sub", "/proj/listed_sub", "listed_sub",
                  "listed", None, folder_id),
@@ -454,8 +454,8 @@ class TestRecursiveFileCountWithNestedFolders:
 
     def _insert_folder(self, conn, path: str, name: str) -> int:
         cur = conn.execute(
-            """INSERT INTO folders (path, relative_path, name, source, mcp_view)
-               VALUES (?, ?, ?, 'local', 'visible')""",
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES (?, ?, ?, 'local', 'full')""",
             (path, path, name),
         )
         return cur.lastrowid
@@ -463,8 +463,8 @@ class TestRecursiveFileCountWithNestedFolders:
     def _insert_file(self, conn, folder_id: int, name: str, path: str) -> None:
         conn.execute(
             """INSERT INTO files
-                   (name, path, source, status, folder_id, mcp_view, mcp_read)
-               VALUES (?, ?, 'local', 'listed', ?, 'visible', 'allow')""",
+                   (name, path, source, status, folder_id, visibility, access)
+               VALUES (?, ?, 'local', 'listed', ?, 'full', 'allow')""",
             (name, path, folder_id),
         )
 
@@ -512,10 +512,10 @@ class TestGetFolderByRelativePath:
     def _insert_folder(self, conn):
         conn.execute(
             """INSERT INTO folders
-                (path, relative_path, name, source, mcp_view, mcp_read)
+                (path, relative_path, name, source, visibility, access)
             VALUES
                 ('/Users/test/Work/demo', '/Work/demo', 'demo', 'local',
-                 'visible', 'allow')"""
+                 'full', 'allow')"""
         )
         conn.commit()
 

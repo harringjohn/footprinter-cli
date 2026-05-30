@@ -123,7 +123,7 @@ Status filtering and visibility/permissions serve different purposes:
 |--------|-----------------|--------------------------------------|
 | **Purpose** | Data lifecycle management | Security and access control |
 | **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp upsert --status`) | User via policy commands (`fp mcp set`) |
-| **Storage** | `status` column on entity tables | `visibility_policies` and `permission_policies` tables, cached in `mcp_view`/`mcp_read` columns |
+| **Storage** | `status` column on entity tables | `visibility_policies` and `permission_policies` tables, cached in `visibility`/`access` columns |
 | **Semantics** | Exact match (listed/unlisted/removed) | Most-restrictive-wins (visibility), deny-wins (permissions) |
 | **ADMIN bypass** | ADMIN filters by default but can opt in to non-listed items | ADMIN bypasses entirely |
 
@@ -143,8 +143,8 @@ The access service (`footprinter/services/access_service.py`) implements a 4-sta
 
 1. **Existence** — item must exist in the database
 2. **Status** — `status` must be `'listed'` (VIEWER only; ADMIN passes through with status in metadata)
-3. **Visibility** — `mcp_view` must not be `hidden` or `opaque`
-4. **Permission** — `mcp_read` must not be `deny`
+3. **Visibility** — `visibility` must not be `hidden` or `opaque`
+4. **Permission** — `access` must not be `deny`
 
 ADMIN callers bypass stages 2–4 (checked via `role.sees_all`). Stage 1 always applies.
 
@@ -172,7 +172,7 @@ Policies are the source of truth for access control. Two tables store them:
 ```sql
 CREATE TABLE visibility_policies (
     scope TEXT PRIMARY KEY,
-    setting TEXT NOT NULL CHECK (setting IN ('hidden', 'opaque', 'visible')),
+    setting TEXT NOT NULL CHECK (setting IN ('hidden', 'opaque', 'full')),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -279,9 +279,9 @@ If no policies match at any scope, the hardcoded baseline applies: `BASELINE_PER
 
 ## Entity Columns
 
-All 8 entity tables carry `mcp_view` and `mcp_read` columns. These store **cached resolved values** written by the recalculation engine. They are not direct settings — use `visibility_policies` and `permission_policies` to manage access.
+All 8 entity tables carry `visibility` and `access` columns. These store **cached resolved values** written by the recalculation engine. They are not direct settings — use `visibility_policies` and `permission_policies` to manage access.
 
-| Table | `mcp_view` | `mcp_read` | Recalculated | Notes |
+| Table | `visibility` | `access` | Recalculated | Notes |
 |-------|-----------|-----------|--------------|-------|
 | `files` | ✓ | ✓ | Both | Full hierarchy resolution |
 | `folders` | ✓ | Column exists | Visibility only | Permission not resolved; stays at `inherit` |
@@ -300,7 +300,7 @@ Default value for all columns: `'inherit'`.
 |--------------|---------|
 | `'inherit'` | No entity-specific policy — resolve from the global policy at query time. If no global policy exists, falls back to the hardcoded baseline (`opaque` for visibility, `allow` for permissions). |
 | `NULL` / missing | Truly missing data — fails closed to `opaque` / `deny` regardless of global policy. |
-| `'hidden'`, `'opaque'`, `'visible'` | Resolved visibility from a specific (non-global) policy. |
+| `'hidden'`, `'opaque'`, `'full'` | Resolved visibility from a specific (non-global) policy. |
 | `'allow'`, `'deny'` | Resolved permission from a specific (non-global) policy. |
 
 The recalculation engine writes `'inherit'` when the only matching policies are `global` or the hardcoded baseline. It writes the resolved value when a specific policy (source, account, folder, project, client, or entity-level) determines the outcome. This means:
@@ -358,7 +358,7 @@ Entities whose resolution traces back to only the `global` policy or the hardcod
 
 ## MCP Tool Enforcement
 
-MCP tools apply Layer 0 status filtering via `build_status_filter()` at the db query layer, then read the cached `mcp_view` and `mcp_read` columns for Layers 1–2. For most visibility/permission values, no live policy resolution happens. The exception is `inherit`: the MCP server loads the global visibility and permission policies once per request via `load_globals()`, and `inherit` values are resolved to the global policy on the fly by `resolve_inherit_visibility()` and `resolve_inherit_permission()` (in `footprinter/services/access_service.py`).
+MCP tools apply Layer 0 status filtering via `build_status_filter()` at the db query layer, then read the cached `visibility` and `access` columns for Layers 1–2. For most visibility/permission values, no live policy resolution happens. The exception is `inherit`: the MCP server loads the global visibility and permission policies once per request via `load_globals()`, and `inherit` values are resolved to the global policy on the fly by `resolve_inherit_visibility()` and `resolve_inherit_permission()` (in `footprinter/services/access_service.py`).
 
 For single-item reads, `gate_access()` enforces all three layers in sequence — status (stage 2), visibility (stage 3), permission (stage 4). Both `removed` and `unlisted` statuses map to `NOT_FOUND` for VIEWER callers.
 
@@ -366,9 +366,9 @@ For single-item reads, `gate_access()` enforces all three layers in sequence —
 
 | Code | Meaning | When Returned |
 |------|---------|---------------|
-| `NOT_FOUND` | Item is hidden, removed, or unlisted | `mcp_view = 'hidden'`, or `status` is `'removed'`/`'unlisted'` (VIEWER) |
-| `VISIBILITY_RESTRICTED` | Item is opaque | `mcp_view = 'opaque'` (returns minimal metadata) |
-| `PERMISSION_DENIED` | Read access denied | Item is visible but `mcp_read = 'deny'` |
+| `NOT_FOUND` | Item is hidden, removed, or unlisted | `visibility = 'hidden'`, or `status` is `'removed'`/`'unlisted'` (VIEWER) |
+| `VISIBILITY_RESTRICTED` | Item is opaque | `visibility = 'opaque'` (returns minimal metadata) |
+| `PERMISSION_DENIED` | Read access denied | Item is visible but `access = 'deny'` |
 
 ### Tool Behavior by Status and Visibility
 
@@ -381,7 +381,7 @@ For VIEWER callers, items must be `listed` AND pass visibility checks. ADMIN cal
 | `footprinter_project` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
 | `footprinter_client` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
 | `footprinter_folder` | NOT_FOUND | NOT_FOUND | Minimal fields | Full metadata |
-| `footprinter_semantic` | Excluded | Excluded | Excluded | Requires `mcp_read = 'allow'` |
+| `footprinter_semantic` | Excluded | Excluded | Excluded | Requires `access = 'allow'` |
 | `footprinter_read` | NOT_FOUND | NOT_FOUND | VISIBILITY_RESTRICTED | Check permissions |
 
 Semantic search tools are stricter than metadata tools: opaque and denied items are excluded entirely (not metadata-limited), because match relevance itself is content-derived.
@@ -415,14 +415,14 @@ Vectors are created at ingest time and persist with the entity. They are deleted
 | Entity vectorized at ingest | Vectors created |
 | Entity marked `status = 'removed'` | Vectors deleted |
 | Entity deleted via CLI | Vectors deleted (coupled operation) |
-| Permission changes (`mcp_read`) | No effect |
-| Visibility changes (`mcp_view`) | No effect |
+| Permission changes (`access`) | No effect |
+| Visibility changes (`visibility`) | No effect |
 
 **Rationale:** Vectors are an index over content, like FTS5. You don't rebuild the FTS5 index when permissions change — you check permissions at query time. Same principle.
 
 ### Query-Time Access Control
 
-Semantic search requires both `mcp_view = 'visible'` **and** `mcp_read = 'allow'`. This is stricter than metadata search:
+Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. This is stricter than metadata search:
 
 - Both opaque and denied items are **excluded entirely** from semantic results
 - Rationale: semantic matches are content-derived — appearing in results for a query reveals information about the content
@@ -431,7 +431,7 @@ Semantic search requires both `mcp_view = 'visible'` **and** `mcp_read = 'allow'
 
 ### Metadata Search vs Semantic Search
 
-| `mcp_view` | `mcp_read` | Metadata search | Semantic search |
+| `visibility` | `access` | Metadata search | Semantic search |
 |---------------------|-------------------|-----------------|-----------------|
 | `hidden`            | (any)             | Excluded        | Excluded        |
 | `opaque`            | (not evaluated)   | Minimal metadata | Excluded       |
@@ -612,7 +612,7 @@ ORDER BY LENGTH(scope) DESC;
 
 ```sql
 -- See the resolved (cached) values on a file
-SELECT id, path, mcp_view, mcp_read
+SELECT id, path, visibility, access
 FROM files
 WHERE id = ?;
 ```

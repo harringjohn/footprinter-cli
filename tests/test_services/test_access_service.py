@@ -56,9 +56,9 @@ class TestAccessServiceGating:
         """File 3 is opaque, which gates before permission. Create a visible+denied file."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (10, 'denied.md', '/Users/u/Work/denied.md', 'local', 'listed',
-                       'markdown', 100, 1, 1, 'visible', 'deny')"""
+                       'markdown', 100, 1, 1, 'full', 'deny')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -82,9 +82,9 @@ class TestAccessServiceGating:
         """File with status='removed' must be blocked for VIEWER."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (20, 'gone.md', '/Users/u/Work/alpha/gone.md', 'local', 'removed',
-                       'markdown', 100, 1, 1, 'visible', 'allow')"""
+                       'markdown', 100, 1, 1, 'full', 'allow')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -99,9 +99,9 @@ class TestAccessServiceGating:
         """File with status='unlisted' must be blocked for VIEWER."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (21, 'shh.md', '/Users/u/Work/alpha/shh.md', 'local', 'unlisted',
-                       'markdown', 100, 1, 1, 'visible', 'allow')"""
+                       'markdown', 100, 1, 1, 'full', 'allow')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -116,9 +116,9 @@ class TestAccessServiceGating:
         """ADMIN reads removed files; status rides along in metadata."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (22, 'gone-admin.md', '/Users/u/Work/alpha/gone-admin.md', 'local',
-                       'removed', 'markdown', 100, 1, 1, 'visible', 'allow')"""
+                       'removed', 'markdown', 100, 1, 1, 'full', 'allow')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -134,9 +134,9 @@ class TestAccessServiceGating:
         """ADMIN reads unlisted files; status rides along in metadata."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (23, 'shh-admin.md', '/Users/u/Work/alpha/shh-admin.md', 'local',
-                       'unlisted', 'markdown', 100, 1, 1, 'visible', 'allow')"""
+                       'unlisted', 'markdown', 100, 1, 1, 'full', 'allow')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -152,7 +152,7 @@ class TestAccessServiceGating:
         """Status stage must run before visibility — removed+hidden returns 'removed'."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (24, 'gone-hidden.md', '/Users/u/Work/alpha/gone-hidden.md', 'local',
                        'removed', 'markdown', 100, 1, 1, 'hidden', 'allow')"""
         )
@@ -198,9 +198,9 @@ class TestAccessServiceGating:
         """ADMIN should read denied files."""
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (11, 'admin.md', '/Users/u/Work/admin.md', 'local', 'listed',
-                       'markdown', 100, 1, 1, 'visible', 'deny')"""
+                       'markdown', 100, 1, 1, 'full', 'deny')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -271,9 +271,9 @@ class TestAccessServiceChat:
         """Denied chat must not leak content in opaque metadata."""
         service_db.execute(
             """INSERT INTO chats (id, external_id, account, title,
-                                  message_count, mcp_view, mcp_read)
+                                  message_count, visibility, access)
                VALUES (10, 'conv-denied', 'claude', 'Denied Chat',
-                       0, 'visible', 'deny')"""
+                       0, 'full', 'deny')"""
         )
         service_db.commit()
         result = access_service.gate_access(
@@ -289,9 +289,9 @@ class TestAccessServiceChat:
         """Chat with NULL summary should return messages without crashing."""
         service_db.execute(
             """INSERT INTO chats (id, external_id, account, title,
-                                  message_count, mcp_view, mcp_read)
+                                  message_count, visibility, access)
                VALUES (11, 'conv-nosummary', 'claude', 'No Summary Chat',
-                       1, 'visible', 'allow')"""
+                       1, 'full', 'allow')"""
         )
         service_db.execute(
             """INSERT INTO messages (chat_id, role, content)
@@ -347,7 +347,7 @@ class TestAccessServiceNoInlineSQL:
 
 
 def test_filter_result_hidden_returns_none():
-    item = {"id": 1, "name": "secret", "mcp_view": "hidden"}
+    item = {"id": 1, "name": "secret", "visibility": "hidden"}
     assert filter_result("file", item) is None
 
 
@@ -358,7 +358,7 @@ def test_filter_result_opaque_returns_minimal_fields():
         "content_type": "python",
         "source": "local",
         "path": "/full/path",
-        "mcp_view": "opaque",
+        "visibility": "opaque",
     }
     result = filter_result("file", item)
     assert result is not None
@@ -373,7 +373,7 @@ def test_filter_result_visible_returns_full():
         "content_type": "markdown",
         "source": "local",
         "path": "/visible/path",
-        "mcp_view": "visible",
+        "visibility": "full",
     }
     result = filter_result("file", item)
     assert result == item
@@ -386,7 +386,7 @@ def test_filter_result_opaque_client_fields():
         "client_type": "external",
         "status": "listed",
         "path_pattern": "~/Work/clients/acme/",
-        "mcp_view": "opaque",
+        "visibility": "opaque",
     }
     result = filter_result("client", item)
     assert result is not None
@@ -405,14 +405,14 @@ def test_filter_result_opaque_client_fields():
                 "source": "local",
                 "path": "/full/path",
                 "project_id": 42,
-                "mcp_view": "opaque",
+                "visibility": "opaque",
             },
             {"id", "content_type", "source", "project_id"},
             id="file-project_id",
         ),
         pytest.param(
             "email",
-            {"id": 2, "subject": "Hello", "account": "work", "project_id": 10, "client_id": 5, "mcp_view": "opaque"},
+            {"id": 2, "subject": "Hello", "account": "work", "project_id": 10, "client_id": 5, "visibility": "opaque"},
             {"id", "account", "project_id", "client_id"},
             id="email-project_id+client_id",
         ),
@@ -424,7 +424,7 @@ def test_filter_result_opaque_client_fields():
                 "account": "personal",
                 "project_id": 10,
                 "client_id": 5,
-                "mcp_view": "opaque",
+                "visibility": "opaque",
             },
             {"id", "account", "project_id", "client_id"},
             id="chat-project_id+client_id",
@@ -438,14 +438,14 @@ def test_filter_result_opaque_client_fields():
                 "direct_file_count": 3,
                 "source": "local",
                 "project_id": 7,
-                "mcp_view": "opaque",
+                "visibility": "opaque",
             },
             {"id", "direct_files", "direct_file_count", "source", "project_id"},
             id="folder-project_id",
         ),
         pytest.param(
             "visit",
-            {"id": 5, "url": "https://example.com", "browser": "safari", "project_id": 8, "mcp_view": "opaque"},
+            {"id": 5, "url": "https://example.com", "browser": "safari", "project_id": 8, "visibility": "opaque"},
             {"id", "browser", "project_id"},
             id="visit-project_id",
         ),
@@ -456,7 +456,7 @@ def test_filter_result_opaque_client_fields():
                 "name": "Footprinter",
                 "status": "listed",
                 "client_id": 2,
-                "mcp_view": "opaque",
+                "visibility": "opaque",
             },
             {"id", "status", "client_id"},
             id="project-client_id",
@@ -476,9 +476,9 @@ def test_filter_result_opaque_includes_fk_columns(item_type, item, expected_keys
 
 def test_filter_results_list_removes_hidden_counts_suppressed():
     items = [
-        {"id": 1, "name": "visible", "mcp_view": "visible"},
-        {"id": 2, "name": "hidden", "mcp_view": "hidden"},
-        {"id": 3, "name": "opaque", "mcp_view": "opaque", "browser": "safari"},
+        {"id": 1, "name": "full", "visibility": "full"},
+        {"id": 2, "name": "hidden", "visibility": "hidden"},
+        {"id": 3, "name": "opaque", "visibility": "opaque", "browser": "safari"},
     ]
     filtered, suppressed = filter_results_list("visit", items)
     assert suppressed == 1
@@ -494,9 +494,9 @@ def test_filter_results_list_removes_hidden_counts_suppressed():
 
 def test_strip_content_for_denied():
     items = [
-        {"id": 1, "snippet": "some content", "mcp_read": "allow"},
-        {"id": 2, "snippet": "secret stuff", "mcp_read": "deny"},
-        {"id": 3, "snippet": "inherit content", "mcp_read": "inherit"},
+        {"id": 1, "snippet": "some content", "access": "allow"},
+        {"id": 2, "snippet": "secret stuff", "access": "deny"},
+        {"id": 3, "snippet": "inherit content", "access": "inherit"},
     ]
     result = strip_content_for_denied("file", items)
     assert "snippet" in result[0]
@@ -506,7 +506,7 @@ def test_strip_content_for_denied():
 
 def test_strip_content_for_denied_chat_fields():
     items = [
-        {"id": 1, "snippet": "text", "mcp_read": "deny"},
+        {"id": 1, "snippet": "text", "access": "deny"},
     ]
     result = strip_content_for_denied("chat", items)
     assert "snippet" not in result[0]
@@ -518,19 +518,19 @@ def test_strip_content_for_denied_chat_fields():
 
 
 def test_resolve_inherit_uses_global(service_db):
-    """With global policy = 'visible', inherit should resolve to 'visible'."""
+    """With global policy = 'full', inherit should resolve to 'full'."""
     load_globals(service_db)
-    assert resolve_inherit_visibility("inherit") == "visible"
+    assert resolve_inherit_visibility("inherit") == "full"
 
 
 def test_resolve_inherit_none_returns_opaque():
-    """Missing mcp_view (None) should fail-closed to 'opaque'."""
+    """Missing visibility (None) should fail-closed to 'opaque'."""
     assert resolve_inherit_visibility(None) == "opaque"
 
 
 def test_resolve_inherit_explicit_passes_through():
     assert resolve_inherit_visibility("hidden") == "hidden"
-    assert resolve_inherit_visibility("visible") == "visible"
+    assert resolve_inherit_visibility("full") == "full"
     assert resolve_inherit_visibility("opaque") == "opaque"
 
 
