@@ -90,7 +90,7 @@ Before checking permissions, MCP enforces a visibility layer that controls wheth
 |-------|-------------|------------------|-------------------|
 | `hidden` | No (excluded) | None | No |
 | `opaque` | Yes (minimal) | `id`, `content_type`, `source` only | No |
-| `visible` | Yes (full) | All fields | Yes (if permitted) |
+| `full` | Yes (full) | All fields | Yes (if permitted) |
 
 **Resolution:** Policies in `visibility_policies` are the source of truth. The recalculation engine (`footprinter/access.py`) resolves policies per entity using most-restrictive-wins semantics (`hidden` > `opaque` > `full`) and writes cached values to `visibility` columns. MCP tools read these cached columns at query time — no live policy resolution during requests.
 

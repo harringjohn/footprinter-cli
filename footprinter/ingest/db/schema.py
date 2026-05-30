@@ -778,43 +778,54 @@ class SchemaMixin:
         if "mcp_view" not in cols:
             return
 
-        for trigger_name in self._FTS_TRIGGER_NAMES:
-            self.conn.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            for trigger_name in self._FTS_TRIGGER_NAMES:
+                self.conn.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
 
-        for table in ACCESS_CONTROL_TABLES:
-            self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view TO visibility")
-            self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read TO access")
-            try:
-                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view_source TO visibility_source")
-                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read_source TO access_source")
-            except sqlite3.OperationalError:
-                pass
+            for table in ACCESS_CONTROL_TABLES:
+                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view TO visibility")
+                self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read TO access")
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_view_source TO visibility_source")
+                    self.conn.execute(f"ALTER TABLE {table} RENAME COLUMN mcp_read_source TO access_source")
+                except sqlite3.OperationalError:
+                    pass
 
-        for table in ACCESS_CONTROL_TABLES:
-            self.conn.execute(f"UPDATE {table} SET visibility = 'full' WHERE visibility = 'visible'")
-        self.conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE setting = 'visible'")
+            for table in ACCESS_CONTROL_TABLES:
+                self.conn.execute(f"UPDATE {table} SET visibility = 'full' WHERE visibility = 'visible'")
+            self.conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE setting = 'visible'")
 
-        self.conn.execute("PRAGMA writable_schema = ON")
-        for table in list(ACCESS_CONTROL_TABLES) + ["visibility_policies"]:
-            row = self.conn.execute(
-                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
-            ).fetchone()
-            if not row:
-                continue
-            new_sql = row[0]
-            new_sql = new_sql.replace("mcp_view_source", "visibility_source")
-            new_sql = new_sql.replace("mcp_read_source", "access_source")
-            new_sql = new_sql.replace("mcp_view", "visibility")
-            new_sql = new_sql.replace("mcp_read", "access")
-            new_sql = new_sql.replace("'visible'", "'full'")
-            self.conn.execute(
-                "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name=?",
-                (new_sql, table),
-            )
-        self.conn.execute("PRAGMA writable_schema = OFF")
-        v = self.conn.execute("PRAGMA schema_version").fetchone()[0]
-        self.conn.execute(f"PRAGMA schema_version = {v + 1}")
-        self.conn.execute("PRAGMA integrity_check")
+            self.conn.execute("PRAGMA writable_schema = ON")
+            for table in list(ACCESS_CONTROL_TABLES) + ["visibility_policies"]:
+                row = self.conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+                ).fetchone()
+                if not row:
+                    continue
+                new_sql = row[0]
+                # _source variants must be replaced before their prefixes to avoid partial matches
+                new_sql = new_sql.replace("mcp_view_source", "visibility_source")
+                new_sql = new_sql.replace("mcp_read_source", "access_source")
+                new_sql = new_sql.replace("mcp_view", "visibility")
+                new_sql = new_sql.replace("mcp_read", "access")
+                new_sql = new_sql.replace("'visible'", "'full'")
+                self.conn.execute(
+                    "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name=?",
+                    (new_sql, table),
+                )
+            self.conn.execute("PRAGMA writable_schema = OFF")
+            v = self.conn.execute("PRAGMA schema_version").fetchone()[0]
+            self.conn.execute(f"PRAGMA schema_version = {v + 1}")
+
+            result = self.conn.execute("PRAGMA integrity_check").fetchone()
+            if result[0] != "ok":
+                raise RuntimeError(f"Integrity check failed after access column migration: {result[0]}")
+
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
         logger.info("Migrated mcp_view/mcp_read → visibility/access columns")
 
     def _ensure_source_columns(self):
