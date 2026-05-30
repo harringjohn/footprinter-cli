@@ -122,7 +122,7 @@ Status filtering and visibility/permissions serve different purposes:
 | Aspect | Layer 0 (Status) | Layers 1–2 (Visibility + Permissions) |
 |--------|-----------------|--------------------------------------|
 | **Purpose** | Data lifecycle management | Security and access control |
-| **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp upsert --status`) | User via policy commands (`fp mcp set`) |
+| **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp upsert --status`) | User via policy commands (`fp permission set`) |
 | **Storage** | `status` column on entity tables | `visibility_policies` and `permission_policies` tables, cached in `visibility`/`access` columns |
 | **Semantics** | Exact match (listed/unlisted/removed) | Most-restrictive-wins (visibility), deny-wins (permissions) |
 | **ADMIN bypass** | ADMIN filters by default but can opt in to non-listed items | ADMIN bypasses entirely |
@@ -334,7 +334,7 @@ The engine maintains metadata for 6 entity types that participate in batch recal
 
 | Trigger | Mechanism |
 |---------|-----------|
-| **Policy CRUD** | CLI commands (`fp mcp set`, `fp mcp reset`, etc.) call `recalculate_access(scope)` after modifying a policy |
+| **Policy CRUD** | CLI commands (`fp permission set`, `fp permission reset`, etc.) call `recalculate_access(scope)` after modifying a policy |
 | **Relationship edits** | Changing a file's project, a project's client, or similar FK changes triggers recalculation for affected entities |
 | **Pipeline stage** | The `access_resolution` stage runs as the last step in every pipeline, stamping all newly ingested entities |
 
@@ -442,39 +442,44 @@ Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. 
 
 ## CLI Management
 
-The `fp mcp` subcommands manage visibility and permission policies without raw SQL. Policy changes automatically trigger recalculation for affected entities.
+The `fp permission` command is the primary surface for managing visibility and permission policies. The same subcommands are also available under `fp mcp` as aliases. Policy changes automatically trigger recalculation for affected entities.
 
-### Show all policies (`fp mcp check`)
+### List all policies (`fp permission list`)
 
 ```bash
-fp mcp check                         # Show all policies (unified table)
-fp mcp check --json                  # JSON output
-fp mcp check <path>                  # Check both visibility and permission for a path
-fp mcp check --folder <path>         # Folder aggregate check
-fp mcp check --project <id>          # Project-level check
-fp mcp check --client <id>           # Client-level check
+fp permission list                   # Show all policies (unified table)
+fp permission list --json            # JSON output
 ```
 
-### Set policies (`fp mcp set`)
+### Check access resolution (`fp permission check`)
 
 ```bash
-fp mcp set <scope> --visibility <val> --permission <val>  # Set both
-fp mcp set <scope> --visibility <val>                     # Set visibility only
-fp mcp set <scope> --permission <val>                     # Set permission only
+fp permission check <path>           # Check both visibility and permission for a path
+fp permission check --folder <path>  # Folder aggregate check
+fp permission check --project <id>   # Project-level check
+fp permission check --client <id>    # Client-level check
 ```
 
-### Reset policies (`fp mcp reset`)
+### Set policies (`fp permission set`)
 
 ```bash
-fp mcp reset <scope>                 # Remove policy for a scope (fall back to inheritance)
-fp mcp reset --all                   # Clear all policies and re-seed defaults
+fp permission set <scope> --visibility <val> --access <val>  # Set both
+fp permission set <scope> --visibility <val>                  # Set visibility only
+fp permission set <scope> --access <val>                      # Set access only
 ```
 
-### Dry-run preview (`fp mcp set --dry-run`)
+### Reset policies (`fp permission reset`)
 
 ```bash
-fp mcp set folder:<path> --visibility hidden --dry-run    # Preview without applying
-fp mcp set project:<id> --permission deny --dry-run       # Preview for a project
+fp permission reset <scope>          # Remove policy for a scope (fall back to inheritance)
+fp permission reset --all            # Clear all policies and re-seed defaults
+```
+
+### Recalculate cached values (`fp permission recalculate`)
+
+```bash
+fp permission recalculate            # Re-resolve access stamps from the policy chain
+fp permission recalculate <scope>    # Recalculate for a specific scope
 ```
 
 ### Scope Syntax
@@ -483,21 +488,21 @@ All `set`, `reset`, and `check` commands accept scope strings:
 
 ```bash
 # Global
-fp mcp set global --visibility visible --permission allow
+fp permission set global --visibility visible --access allow
 
 # Source type
-fp mcp set source:emails --permission deny
+fp permission set source:emails --access deny
 
 # Account
-fp mcp set account:personal --visibility hidden
+fp permission set account:personal --visibility hidden
 
 # Folder prefix (tilde expanded)
-fp mcp set "folder:~/Personal/" --visibility hidden
-fp mcp set "folder:~/Work/clients/" --permission deny
+fp permission set "folder:~/Personal/" --visibility hidden
+fp permission set "folder:~/Work/clients/" --access deny
 
 # Entity-specific
-fp mcp set file:42 --visibility hidden
-fp mcp set email:10 --permission deny
+fp permission set file:42 --visibility hidden
+fp permission set email:10 --access deny
 ```
 
 ### Valid Settings
@@ -516,9 +521,9 @@ On fresh install, `fp setup` wizard automatically seeds:
 - `visibility_policies`: `global` = `visible`
 - `permission_policies`: `global` = `allow`
 
-All indexed data is visible and readable by AI assistants by default. Use `fp mcp set global --permission deny` to restrict access.
+All indexed data is visible and readable by AI assistants by default. Use `fp permission set global --access deny` to restrict access.
 
-Seeding uses `INSERT OR IGNORE`, so it never overwrites existing policies. Running `fp mcp reset --all` clears policies and re-applies defaults.
+Seeding uses `INSERT OR IGNORE`, so it never overwrites existing policies. Running `fp permission reset --all` clears policies and re-applies defaults.
 
 ### Security Posture
 
@@ -535,18 +540,18 @@ Two layers control this:
 The distinction matters:
 
 - **Hardcoded baselines** are fallback constants in `permissions.py` and `visibility.py`. They apply only when the policy tables are completely empty (e.g., before running `fp setup`). The permission baseline is permissive (allow reads); the visibility baseline is conservative (opaque — minimal fields only).
-- **Seeded policies** are database rows created by `fp setup`. They make the open-access posture explicit and manageable — you can narrow them with `fp mcp set` commands.
+- **Seeded policies** are database rows created by `fp setup`. They make the open-access posture explicit and manageable — you can narrow them with `fp permission set` commands.
 
 To switch to deny-by-default (metadata-only — metadata visible, content denied):
 
 ```bash
-fp mcp set global --permission deny
+fp permission set global --access deny
 ```
 
 To verify current policies:
 
 ```bash
-fp mcp check
+fp permission list
 ```
 
 ---
@@ -556,27 +561,27 @@ fp mcp check
 ### Hide Personal Files
 
 ```bash
-fp mcp set "folder:~/Personal/identity/" --visibility hidden
+fp permission set "folder:~/Personal/identity/" --visibility hidden
 ```
 
 ### Allow Work Files, Deny Personal
 
 ```bash
 # Everything visible, deny reads by default, allow work files
-fp mcp set global --visibility visible --permission deny
-fp mcp set "folder:~/Work/" --permission allow
+fp permission set global --visibility visible --access deny
+fp permission set "folder:~/Work/" --access allow
 ```
 
 ### Make Client Data Opaque
 
 ```bash
-fp mcp set "folder:~/Work/clients/" --visibility opaque
+fp permission set "folder:~/Work/clients/" --visibility opaque
 ```
 
 ### Block Specific Email Account
 
 ```bash
-fp mcp set account:personal --visibility hidden
+fp permission set account:personal --visibility hidden
 ```
 
 ---
@@ -586,8 +591,8 @@ fp mcp set account:personal --visibility hidden
 ### Check Effective Access for a Path
 
 ```bash
-# Quick check — shows resolved visibility + permission
-fp mcp check ~/Work/clients/acme/report.pdf
+# Quick check — shows resolved visibility + access
+fp permission check ~/Work/clients/acme/report.pdf
 ```
 
 ### Query Matching Policies
@@ -620,7 +625,7 @@ WHERE id = ?;
 These cached values were written by the recalculation engine. If they seem wrong, check the matching policies above and re-run recalculation:
 
 ```bash
-fp mcp check <path>   # Re-resolves and shows the result
+fp permission check <path>   # Re-resolves and shows the result
 ```
 
 ---
