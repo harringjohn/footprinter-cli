@@ -356,11 +356,11 @@ def _handle_data_bulk(args) -> None:
                 try:
                     result = insert_fn(conn, data)
                     action, _entity_id = _normalize_insert_result(result)
-                    if action in ("inserted", "created", "updated", "unchanged"):
+                    if action in ("inserted", "created"):
                         created += 1
-                    elif action == "duplicate":
+                    elif action in ("updated", "unchanged", "duplicate"):
                         errors += 1
-                        error_details.append({"row": i, "error": "Duplicate record"})
+                        error_details.append({"row": i, "error": "Record already exists"})
                     else:
                         errors += 1
                         error_details.append({"row": i, "error": f"Unexpected insert result: {action}"})

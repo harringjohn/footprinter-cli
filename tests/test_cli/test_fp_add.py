@@ -423,6 +423,73 @@ class TestAddDataBulkCsv:
         assert result["created"] == 1
 
     # ---------------------------------------------------------------------------
+    # 10b. Data entity CSV — existing rows become errors
+    # ---------------------------------------------------------------------------
+
+    @patch("footprinter.cli.add.IngestService")
+    @patch("footprinter.cli.add.open_db")
+    def test_add_files_csv_updated_rows_are_errors(self, mock_open_db, _mock_ingest, tmp_path):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/existing1.txt,existing1.txt",
+            "/tmp/existing2.txt,existing2.txt",
+        ])
+        with patch(
+            "footprinter.cli.add._get_insert_fn",
+            return_value=MagicMock(return_value=("updated", 1)),
+        ):
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 0
+        assert result["errors"] == 2
+        assert all(
+            "already exists" in d["error"].lower()
+            for d in result.get("error_details", [])
+        )
+
+    @patch("footprinter.cli.add.IngestService")
+    @patch("footprinter.cli.add.open_db")
+    def test_add_files_csv_unchanged_rows_are_errors(self, mock_open_db, _mock_ingest, tmp_path):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/existing.txt,existing.txt",
+        ])
+        with patch(
+            "footprinter.cli.add._get_insert_fn",
+            return_value=MagicMock(return_value=("unchanged", 1)),
+        ):
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 0
+        assert result["errors"] == 1
+
+    @patch("footprinter.cli.add.IngestService")
+    @patch("footprinter.cli.add.open_db")
+    def test_add_files_csv_mixed_new_and_existing(self, mock_open_db, _mock_ingest, tmp_path):
+        _patched_open_db(mock_open_db)
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/new.txt,new.txt",
+            "/tmp/existing.txt,existing.txt",
+        ])
+        mock_insert = MagicMock(side_effect=[("inserted", 1), ("updated", 2)])
+        with patch("footprinter.cli.add._get_insert_fn", return_value=mock_insert):
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 1
+        assert result["errors"] == 1
+        assert len(result.get("error_details", [])) == 1
+        assert result["error_details"][0]["row"] == 2
+
+    # ---------------------------------------------------------------------------
     # 11. Data entity CSV — insert error handling
     # ---------------------------------------------------------------------------
 
