@@ -10,7 +10,7 @@ def conn():
     """In-memory SQLite with folders, files, and projects tables."""
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE projects (  id INTEGER PRIMARY KEY,  project_name TEXT)")
+    db.execute("CREATE TABLE projects (  id INTEGER PRIMARY KEY,  name TEXT)")
     db.execute(
         "CREATE TABLE folders ("
         "  id INTEGER PRIMARY KEY,"
@@ -33,7 +33,7 @@ def conn():
     )
 
     # Seed a project
-    db.execute("INSERT INTO projects (id, project_name) VALUES (1, 'TestProject')")
+    db.execute("INSERT INTO projects (id, name) VALUES (1, 'TestProject')")
 
     # Build a folder tree:
     #   1 (root)
