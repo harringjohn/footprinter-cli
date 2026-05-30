@@ -205,7 +205,7 @@ def check_folder(conn: sqlite3.Connection, path: str, json_output: bool, verbose
                 "folder": display_path,
                 "file_count": 0,
                 "permission_counts": {"allow": 0, "deny": 0},
-                "visibility_counts": {"visible": 0, "opaque": 0, "hidden": 0},
+                "visibility_counts": {"full": 0, "opaque": 0, "hidden": 0},
             }
             output_json(data)
         else:
@@ -218,7 +218,7 @@ def check_folder(conn: sqlite3.Connection, path: str, json_output: bool, verbose
     vis_results = batch_resolve_visibility(conn, "file", ids)
 
     perm_counts = {"allow": 0, "deny": 0}
-    vis_counts = {"visible": 0, "opaque": 0, "hidden": 0}
+    vis_counts = {"full": 0, "opaque": 0, "hidden": 0}
 
     for aid in ids:
         allowed, _ = perm_results.get(aid, (False, "baseline"))
@@ -257,7 +257,7 @@ def check_folder(conn: sqlite3.Connection, path: str, json_output: bool, verbose
         console.print()
         console.print(f"  Permission:  allow: {perm_counts['allow']}   deny: {perm_counts['deny']}")
         console.print(
-            f"  Visibility:  visible: {vis_counts['visible']}   "
+            f"  Visibility:  full: {vis_counts['full']}   "
             f"opaque: {vis_counts['opaque']}   hidden: {vis_counts['hidden']}"
         )
 

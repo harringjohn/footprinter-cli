@@ -72,7 +72,7 @@ class TestSetTriggersRecalculate:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        args = Namespace(scope="global", visibility="visible", permission="allow")
+        args = Namespace(scope="global", visibility="full", permission="allow")
         _set(args)
 
         mock_recalc.assert_called_once_with(conn, "global")

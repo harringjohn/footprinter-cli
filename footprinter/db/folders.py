@@ -123,8 +123,8 @@ def list_folders(
         WITH folder_cte AS (
             SELECT folder.id, folder.path, folder.relative_path, folder.name, folder.source,
                    folder.status, folder.project_id, folder.client_id,
-                   folder.mcp_view, folder.mcp_read,
-                   folder.mcp_view_source, folder.mcp_read_source,
+                   folder.visibility, folder.access,
+                   folder.visibility_source, folder.access_source,
                    folder.direct_file_count, folder.total_size_bytes
             FROM folders folder
             WHERE {where}
@@ -155,10 +155,10 @@ def list_folders(
             "project_id": row["project_id"],
             "client_id": row["client_id"],
             "project_name": row["project_name"] or "",
-            "mcp_view": row["mcp_view"],
-            "mcp_read": row["mcp_read"],
-            "mcp_view_source": row["mcp_view_source"],
-            "mcp_read_source": row["mcp_read_source"],
+            "visibility": row["visibility"],
+            "access": row["access"],
+            "visibility_source": row["visibility_source"],
+            "access_source": row["access_source"],
         }
         for row in rows
     ]
@@ -171,8 +171,8 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
     row = conn.execute(
         """SELECT id, path, relative_path, name, source,
                   direct_file_count, total_size_bytes, scanned_at,
-                  project_id, external_id, account, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  project_id, external_id, account, visibility, access,
+                  visibility_source, access_source
            FROM folders WHERE path = ?""",
         (path,),
     ).fetchone()
@@ -184,8 +184,8 @@ def get_folder_by_relative_path(conn: sqlite3.Connection, relative_path: str) ->
     row = conn.execute(
         """SELECT id, path, relative_path, name, source,
                   direct_file_count, total_size_bytes, scanned_at,
-                  project_id, external_id, account, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  project_id, external_id, account, visibility, access,
+                  visibility_source, access_source
            FROM folders WHERE relative_path = ?""",
         (relative_path,),
     ).fetchone()
@@ -201,7 +201,7 @@ def get_folder_navigation(
 ) -> dict:
     """Return navigation data for a folder: files, subfolders, recursive file count.
 
-    All results include ``mcp_view`` so the service layer can filter by visibility.
+    All results include ``visibility`` so the service layer can filter by visibility.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     Recursive count widens to match. ``status_reason`` is surfaced on files.
     """
@@ -215,8 +215,8 @@ def get_folder_navigation(
     )
     files = conn.execute(
         f"""SELECT id, name, content_type, size_bytes, modified_at, source,
-                  status, status_reason, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  status, status_reason, visibility, access,
+                  visibility_source, access_source
            FROM files
            {file_status_sql}
            ORDER BY name
@@ -232,8 +232,8 @@ def get_folder_navigation(
     )
     subfolders = conn.execute(
         f"""SELECT id, path, relative_path, name, direct_file_count, total_size_bytes,
-                  source, status, status_reason, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  source, status, status_reason, visibility, access,
+                  visibility_source, access_source
            FROM folders
            WHERE path LIKE ? AND path != ? AND path NOT LIKE ?
              {subfolder_status_sql}""",
@@ -253,7 +253,7 @@ def get_folder_navigation(
            WHERE folder_id IN (
                SELECT id FROM folders WHERE path LIKE ? OR path = ?
            )
-             AND COALESCE(mcp_view, 'inherit') != 'hidden'
+             AND COALESCE(visibility, 'inherit') != 'hidden'
              {recursive_status_sql}""",
         [path + "/%", path, *status_params],
     ).fetchone()
@@ -300,8 +300,8 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
         """
         SELECT
             folder.id, folder.path, folder.relative_path, folder.name, folder.source,
-            folder.project_id, folder.mcp_view, folder.mcp_read,
-            folder.mcp_view_source, folder.mcp_read_source,
+            folder.project_id, folder.visibility, folder.access,
+            folder.visibility_source, folder.access_source,
             project.name AS project_name,
             (SELECT COUNT(*) FROM files file
              WHERE file.folder_id = folder.id AND file.status = 'listed'
@@ -345,10 +345,10 @@ def get_folder(conn: sqlite3.Connection, folder_id: int) -> dict | None:
         }
         if row["project_id"]
         else None,
-        "mcp_view": row["mcp_view"],
-        "mcp_read": row["mcp_read"],
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"],
+        "access": row["access"],
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
         "files": [
             {
                 "id": a["id"],

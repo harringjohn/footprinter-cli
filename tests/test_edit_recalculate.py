@@ -66,8 +66,8 @@ class TestFileEditRecalculate:
         _seed(conn)
 
         # Baseline: file 1 has inherit (no project:3 policy)
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Move file 1 to project 4 (which has a 'hidden' policy)
         from footprinter.db.files import update_file_relationships
@@ -79,8 +79,8 @@ class TestFileEditRecalculate:
 
         recalculate_entity(conn, "file", 1)
 
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
     def test_status_change_does_not_recalculate(self, conn):
         """Editing only status does NOT trigger recalculation."""
@@ -96,8 +96,8 @@ class TestFileEditRecalculate:
         update_file_status(conn, 1, "unlisted")
 
         # Visibility should remain 'inherit' (not recalculated to 'hidden')
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "inherit"
 
 
 # ---------------------------------------------------------------------------
@@ -111,8 +111,8 @@ class TestProjectEditRecalculate:
         _seed(conn)
 
         # Baseline: project 3 under client 5 (Acme), no policy → inherit
-        row = conn.execute("SELECT mcp_view FROM projects WHERE id = 3").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM projects WHERE id = 3").fetchone()
+        assert row["visibility"] == "inherit"
 
         # Change project 3's client to 6 (Beta, which has 'hidden' policy)
         from footprinter.db.projects import update_project
@@ -125,12 +125,12 @@ class TestProjectEditRecalculate:
         recalculate_access(conn, "project:3")
 
         # Project itself should be hidden (inherits from client 6)
-        row = conn.execute("SELECT mcp_view FROM projects WHERE id = 3").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM projects WHERE id = 3").fetchone()
+        assert row["visibility"] == "hidden"
 
         # Child file should also be hidden
-        row = conn.execute("SELECT mcp_view FROM files WHERE id = 1").fetchone()
-        assert row["mcp_view"] == "hidden"
+        row = conn.execute("SELECT visibility FROM files WHERE id = 1").fetchone()
+        assert row["visibility"] == "hidden"
 
     def test_non_relationship_edit_no_recalculate(self, conn):
         """Editing description/status/name does NOT trigger recalculation."""
@@ -146,5 +146,5 @@ class TestProjectEditRecalculate:
         update_project(conn, 3, description="Updated desc")
 
         # Visibility should remain 'inherit' (not recalculated to 'hidden')
-        row = conn.execute("SELECT mcp_view FROM projects WHERE id = 3").fetchone()
-        assert row["mcp_view"] == "inherit"
+        row = conn.execute("SELECT visibility FROM projects WHERE id = 3").fetchone()
+        assert row["visibility"] == "inherit"

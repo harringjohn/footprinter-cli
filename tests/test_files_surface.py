@@ -46,7 +46,7 @@ class TestFileItemType:
         )
         tool_db.commit()
         result = get_visibility(tool_db, "file", 1)
-        assert result in ("visible", "opaque", "hidden")
+        assert result in ("full", "opaque", "hidden")
 
 
 class TestSourceFilesScope:
@@ -70,9 +70,9 @@ class TestSourceFilesScope:
             "INSERT INTO files (id, name, path, source, status)"
             " VALUES (1, 'test.txt', '/tmp/test.txt', 'local', 'listed')"
         )
-        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')")
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')")
         tool_db.commit()
-        assert get_visibility(tool_db, "file", 1) == "visible"
+        assert get_visibility(tool_db, "file", 1) == "full"
 
 
 class TestMcpDiscoveryKeys:

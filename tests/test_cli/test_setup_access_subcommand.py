@@ -66,7 +66,7 @@ class TestSeedAccessPolicies:
 
     @patch("footprinter.cli.setup.Confirm")
     def test_visibility_is_visible(self, mock_confirm, policy_db_env):
-        """Global visibility should be 'visible' (open access)."""
+        """Global visibility should be 'full' (open access)."""
         mock_confirm.ask.return_value = False
         from footprinter.cli.setup import seed_access_policies
 
@@ -77,7 +77,7 @@ class TestSeedAccessPolicies:
         conn.close()
 
         assert row is not None
-        assert row[0] == "visible"
+        assert row[0] == "full"
 
     @patch("footprinter.cli.setup.Confirm")
     def test_permission_is_allow(self, mock_confirm, policy_db_env):
@@ -135,7 +135,7 @@ class TestSeedAccessPolicies:
 
         # Should have 2 visibility rows: global + source:files
         assert len(vis_rows) == 2
-        assert ("global", "visible") in vis_rows
+        assert ("global", "full") in vis_rows
         assert ("source:files", "opaque") in vis_rows
 
         # Should have 2 permission rows: global + source:emails
@@ -200,7 +200,7 @@ class TestAccessPolicyExplanation:
             seed_access_policies()
 
         output = buf.getvalue()
-        # Should explain what "visible" means
+        # Should explain what "full" means
         assert "file names" in output.lower() or "filenames" in output.lower()
         assert "path" in output.lower()
         # Should explain what "content allowed" means

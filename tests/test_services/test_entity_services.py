@@ -253,13 +253,13 @@ class TestClientService:
         # Add a hidden project under Acme (client 1, visible)
         service_db.execute(
             """INSERT INTO projects (id, name, status,
-                                     client_id, mcp_view, mcp_read)
+                                     client_id, visibility, access)
                VALUES (10, 'Secret', 'listed',
                        1, 'hidden', 'allow')"""
         )
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, visibility, access)
                VALUES (10, 'secret.py', '/Users/u/Work/secret/secret.py', 'local',
                        'listed', 'python', 500, 10, 'hidden', 'allow')"""
         )
@@ -300,9 +300,9 @@ class TestProjectService:
         """When multiple fuzzy matches exist but one is exact, return it."""
         service_db.execute(
             """INSERT INTO projects (id, name, status,
-                                     client_id, mcp_view, mcp_read)
+                                     client_id, visibility, access)
                VALUES (10, 'Alpha Plus', 'listed',
-                       1, 'visible', 'allow')"""
+                       1, 'full', 'allow')"""
         )
         service_db.commit()
         result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
@@ -313,9 +313,9 @@ class TestProjectService:
         """Multiple fuzzy matches with no exact → disambiguation."""
         service_db.execute(
             """INSERT INTO projects (id, name, status,
-                                     client_id, mcp_view, mcp_read)
+                                     client_id, visibility, access)
                VALUES (10, 'Alpha Plus', 'listed',
-                       1, 'visible', 'allow')"""
+                       1, 'full', 'allow')"""
         )
         service_db.commit()
         result = project_service.resolve_by_name(service_db, "Alph", role=Role.VIEWER)
@@ -541,7 +541,7 @@ class TestFileService:
         assert result.get("suppressed", 0) >= 1
 
     def test_list_viewer_strips_content_for_denied(self, service_db):
-        """File 3 has mcp_read='deny' — snippet should be stripped."""
+        """File 3 has access='deny' — snippet should be stripped."""
         result = file_service.list_(service_db, role=Role.VIEWER)
         opaque_files = [f for f in result["files"] if f["id"] == 3]
         # opaque file still appears (as minimal dict), content stripped
@@ -708,14 +708,14 @@ class TestFolderService:
         service_db.execute(
             """INSERT INTO folders (id, path, relative_path, name, source,
                                     project_id, direct_file_count, total_size_bytes,
-                                    mcp_view, mcp_read)
+                                    visibility, access)
                VALUES (10, '/Users/u/Work/alpha/src/secret', '/Work/alpha/src/secret',
                        'secret', 'local', 1, 0, 0, 'hidden', 'allow')"""
         )
         # Add a hidden file under visible folder 1
         service_db.execute(
             """INSERT INTO files (id, name, path, source, status, content_type,
-                                  size_bytes, project_id, folder_id, mcp_view, mcp_read)
+                                  size_bytes, project_id, folder_id, visibility, access)
                VALUES (10, 'hidden.py', '/Users/u/Work/alpha/src/hidden.py', 'local',
                        'listed', 'python', 100, 1, 1, 'hidden', 'allow')"""
         )

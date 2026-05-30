@@ -135,10 +135,10 @@ class TestInformationOracles:
                 md5_hash TEXT,
                 status TEXT DEFAULT 'listed',
                 status_reason TEXT,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit',
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT DEFAULT 'inherit',
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -152,10 +152,10 @@ class TestInformationOracles:
                 to_addresses TEXT,
                 received_at DATETIME,
                 body_preview TEXT,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit',
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT DEFAULT 'inherit',
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -167,10 +167,10 @@ class TestInformationOracles:
                 created_at DATETIME,
                 updated_at DATETIME,
                 message_count INTEGER,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit',
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT DEFAULT 'inherit',
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -191,10 +191,10 @@ class TestInformationOracles:
                 status_changed_at DATETIME,
                 client TEXT,
                 description TEXT,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit',
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT DEFAULT 'inherit',
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -205,10 +205,10 @@ class TestInformationOracles:
                 client_type TEXT,
                 status TEXT,
                 created_at DATETIME,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT DEFAULT 'inherit',
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT DEFAULT 'inherit',
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -224,10 +224,10 @@ class TestInformationOracles:
                 project_id INTEGER,
                 external_id TEXT,
                 account TEXT,
-                mcp_view TEXT DEFAULT 'inherit',
-                mcp_read TEXT,
-                mcp_view_source TEXT,
-                mcp_read_source TEXT
+                visibility TEXT DEFAULT 'inherit',
+                access TEXT,
+                visibility_source TEXT,
+                access_source TEXT
             )
         """)
         cursor.execute("""
@@ -256,7 +256,7 @@ class TestInformationOracles:
         """)
         # Make it visible by default
         test_db.execute("""
-            INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'visible')
+            INSERT INTO visibility_policies (scope, setting) VALUES ('source:files', 'full')
         """)
         test_db.execute("""
             INSERT INTO permission_policies (scope, setting) VALUES ('source:files', 'allow')

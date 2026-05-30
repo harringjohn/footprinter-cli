@@ -6,9 +6,9 @@ from footprinter.cli._common import verbose_access_cells
 def _row(**kwargs):
     """Build a minimal row dict with defaults for all six access fields."""
     defaults = {
-        "mcp_view": "inherit",
-        "mcp_read": "inherit",
-        "visibility": "visible",
+        "visibility_raw": "inherit",
+        "access_raw": "inherit",
+        "visibility": "full",
         "access": "allow",
         "access_source": "global",
         "visibility_source": "global",
@@ -26,8 +26,8 @@ class TestVerboseAccessCellsCount:
 class TestVerboseAccessCellsOrder:
     def test_cell_order_matches_column_spec(self):
         row = _row(
-            mcp_view="opaque",
-            mcp_read="deny",
+            visibility_raw="opaque",
+            access_raw="deny",
             visibility="hidden",
             access="deny",
             access_source="project:3",
@@ -40,46 +40,46 @@ class TestVerboseAccessCellsOrder:
         assert "project:3" in cells[4]
 
 
-class TestVerboseAccessCellsMcpViewMarkup:
+class TestVerboseAccessCellsVisibilityRawMarkup:
     def test_inherit_is_dim(self):
-        cells = verbose_access_cells(_row(mcp_view="inherit"))
+        cells = verbose_access_cells(_row(visibility_raw="inherit"))
         assert cells[0] == "[dim]inherit[/dim]"
 
-    def test_visible_is_green(self):
-        cells = verbose_access_cells(_row(mcp_view="visible"))
-        assert cells[0] == "[green]visible[/green]"
+    def test_full_is_green(self):
+        cells = verbose_access_cells(_row(visibility_raw="full"))
+        assert cells[0] == "[green]full[/green]"
 
     def test_opaque_is_yellow(self):
-        cells = verbose_access_cells(_row(mcp_view="opaque"))
+        cells = verbose_access_cells(_row(visibility_raw="opaque"))
         assert cells[0] == "[yellow]opaque[/yellow]"
 
     def test_hidden_is_red(self):
-        cells = verbose_access_cells(_row(mcp_view="hidden"))
+        cells = verbose_access_cells(_row(visibility_raw="hidden"))
         assert cells[0] == "[red]hidden[/red]"
 
     def test_missing_key_is_dim_dash(self):
         row = _row()
-        del row["mcp_view"]
+        del row["visibility_raw"]
         cells = verbose_access_cells(row)
         assert cells[0] == "[dim]—[/dim]"
 
 
-class TestVerboseAccessCellsMcpReadMarkup:
+class TestVerboseAccessCellsAccessRawMarkup:
     def test_inherit_is_dim(self):
-        cells = verbose_access_cells(_row(mcp_read="inherit"))
+        cells = verbose_access_cells(_row(access_raw="inherit"))
         assert cells[1] == "[dim]inherit[/dim]"
 
     def test_allow_is_green(self):
-        cells = verbose_access_cells(_row(mcp_read="allow"))
+        cells = verbose_access_cells(_row(access_raw="allow"))
         assert cells[1] == "[green]allow[/green]"
 
     def test_deny_is_red(self):
-        cells = verbose_access_cells(_row(mcp_read="deny"))
+        cells = verbose_access_cells(_row(access_raw="deny"))
         assert cells[1] == "[red]deny[/red]"
 
     def test_missing_key_is_dim_dash(self):
         row = _row()
-        del row["mcp_read"]
+        del row["access_raw"]
         cells = verbose_access_cells(row)
         assert cells[1] == "[dim]—[/dim]"
 
@@ -130,19 +130,19 @@ class TestVerboseAccessCellsIntegration:
         assert cells == [
             "[dim]inherit[/dim]",
             "[dim]inherit[/dim]",
-            "[green]visible[/green]",
+            "[green]full[/green]",
             "[green]allow[/green]",
             "global",
             "[dim]≡[/dim]",
         ]
 
     def test_explicit_cached_row(self):
-        row = _row(mcp_view="visible", mcp_read="allow", access_source="cached", visibility_source="cached")
+        row = _row(visibility_raw="full", access_raw="allow", access_source="cached", visibility_source="cached")
         cells = verbose_access_cells(row)
         assert cells == [
-            "[green]visible[/green]",
+            "[green]full[/green]",
             "[green]allow[/green]",
-            "[green]visible[/green]",
+            "[green]full[/green]",
             "[green]allow[/green]",
             "cached",
             "[dim]≡[/dim]",
@@ -160,8 +160,8 @@ class TestVerboseAccessCellsIntegration:
 
     def test_explicit_folder_source_row(self):
         row = _row(
-            mcp_view="opaque",
-            mcp_read="inherit",
+            visibility_raw="opaque",
+            access_raw="inherit",
             visibility="opaque",
             access="allow",
             access_source="folder:~/Work",
@@ -179,8 +179,8 @@ class TestVerboseAccessCellsIntegration:
 
     def test_split_source_row(self):
         row = _row(
-            mcp_view="opaque",
-            mcp_read="inherit",
+            visibility_raw="opaque",
+            access_raw="inherit",
             visibility="opaque",
             access="allow",
             access_source="global",

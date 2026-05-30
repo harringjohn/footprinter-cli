@@ -5,15 +5,15 @@ Combines the former ``read_service`` (3-stage gating) and ``visibility``
 
 Gating stages (for non-ADMIN roles):
   1. Existence — item must exist in DB
-  2. Visibility — ``mcp_view`` must not be hidden/opaque
-  3. Permission — ``mcp_read`` must not be deny
+  2. Visibility — ``visibility`` must not be hidden/opaque
+  3. Permission — ``access`` must not be deny
 
 Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields,
-'visible' -> full.  'inherit' -> resolves to the global policy at query
+'full' -> full.  'inherit' -> resolves to the global policy at query
 time (loaded by ``load_globals``).  Missing (None) -> treated as 'opaque'
 (fail-closed).
 
-Two-visibility-system: access_service reads the mcp_view and mcp_read
+Two-visibility-system: access_service reads the visibility and access
 values that the visibility pipeline computed at ingest time. It does not
 recompute visibility — it only gates access against pre-resolved columns.
 """
@@ -118,7 +118,7 @@ def resolve_inherit_visibility(value: Optional[str]) -> str:
 
     - ``None`` -> ``'opaque'`` (fail-closed: truly missing data)
     - ``'inherit'`` -> cached global visibility, or ``'opaque'`` baseline
-    - Explicit values (``'hidden'``, ``'opaque'``, ``'visible'``) pass through
+    - Explicit values (``'hidden'``, ``'opaque'``, ``'full'``) pass through
     """
     if value is None:
         return "opaque"
@@ -161,12 +161,12 @@ OPAQUE_CLIENT_FIELDS = {"id", "client_type", "status"}
 
 
 def _read_visibility(result: Dict[str, Any]) -> str:
-    """Read mcp_view from a result dict, resolving ``inherit`` via global policy."""
-    return resolve_inherit_visibility(result.get("mcp_view"))
+    """Read visibility from a result dict, resolving ``inherit`` via global policy."""
+    return resolve_inherit_visibility(result.get("visibility"))
 
 
 def filter_result(item_type: str, full_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Filter a single result dict based on its ``mcp_view`` value.
+    """Filter a single result dict based on its ``visibility`` value.
 
     Returns None if hidden, minimal dict if opaque, full dict if visible.
     """
@@ -186,7 +186,7 @@ def filter_results_list(
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Filter a list of results, returning filtered list and suppressed count.
 
-    Reads ``mcp_view`` from each result dict instead of querying the database.
+    Reads ``visibility`` from each result dict instead of querying the database.
     """
     filtered = []
     suppressed = 0
@@ -228,7 +228,7 @@ def _filter_to_opaque(item_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in result.items() if k in allowed}
 
 
-# Content fields that listing tools must strip when mcp_read != 'allow'
+# Content fields that listing tools must strip when access != 'allow'
 _CONTENT_FIELDS: Dict[str, List[str]] = {
     "chat": ["snippet"],
     "email": ["snippet"],
@@ -250,7 +250,7 @@ def strip_content_for_denied(item_type: str, results: List[Dict[str, Any]]) -> L
         return results
 
     for result in results:
-        if resolve_inherit_permission(result.get("mcp_read")) != "allow":
+        if resolve_inherit_permission(result.get("access")) != "allow":
             for field in fields:
                 result.pop(field, None)
     return results
@@ -325,7 +325,7 @@ def gate_access(
 
     # Stage 3: Visibility (ADMIN bypasses)
     if not role.sees_all:
-        visibility = resolve_inherit_visibility(metadata.get("mcp_view"))
+        visibility = resolve_inherit_visibility(metadata.get("visibility"))
         if visibility == "hidden":
             return {"status": "hidden"}
         if visibility == "opaque":
@@ -336,7 +336,7 @@ def gate_access(
 
     # Stage 4: Permission (ADMIN bypasses)
     if not role.sees_all:
-        if resolve_inherit_permission(metadata.get("mcp_read")) == "deny":
+        if resolve_inherit_permission(metadata.get("access")) == "deny":
             return {
                 "status": "denied",
                 "metadata": _filter_to_opaque(item_type, metadata),

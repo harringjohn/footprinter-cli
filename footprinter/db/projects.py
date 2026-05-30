@@ -59,13 +59,13 @@ def find_project_id_by_key(
 def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     """Find projects matching name with LIKE %name%.
 
-    Returns all columns including mcp_view. Does NOT filter by visibility
+    Returns all columns including visibility. Does NOT filter by visibility
     — the service layer handles that.
     """
     rows = conn.execute(
         """SELECT id, name, status, client,
-                  description, mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  description, visibility, access,
+                  visibility_source, access_source
            FROM projects
            WHERE name LIKE ?""",
         (f"%{name}%",),
@@ -76,7 +76,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
 def count_hidden_by_name(conn: sqlite3.Connection, name: str) -> int:
     """Count hidden projects matching a fuzzy name query (for diagnostics)."""
     row = conn.execute(
-        "SELECT COUNT(*) FROM projects WHERE name LIKE ? AND COALESCE(mcp_view, 'inherit') = 'hidden'",
+        "SELECT COUNT(*) FROM projects WHERE name LIKE ? AND COALESCE(visibility, 'inherit') = 'hidden'",
         (f"%{name}%",),
     ).fetchone()
     return row[0]
@@ -86,9 +86,9 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     """Return navigation aggregates for an MCP project view.
 
     Includes file stats, content type breakdown, folders, and entity counts.
-    All results include mcp_view for service-layer filtering.
+    All results include visibility for service-layer filtering.
     """
-    _not_hidden = "AND COALESCE(mcp_view, 'inherit') != 'hidden'"
+    _not_hidden = "AND COALESCE(visibility, 'inherit') != 'hidden'"
 
     # File stats (removed excluded)
     stats = conn.execute(
@@ -113,8 +113,8 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     # Folders (include all — service layer filters by visibility)
     folders = conn.execute(
         """SELECT id, path, name, direct_file_count, total_size_bytes, source,
-                  mcp_view, mcp_read,
-                  mcp_view_source, mcp_read_source
+                  visibility, access,
+                  visibility_source, access_source
            FROM folders
            WHERE project_id = ?
            ORDER BY path""",
@@ -210,8 +210,8 @@ def list_projects(
     fetch_sql = f"""
         SELECT project.id, project.name,
                project.status, client.name AS client, project.description,
-               project.mcp_view, project.mcp_read,
-               project.mcp_view_source, project.mcp_read_source,
+               project.visibility, project.access,
+               project.visibility_source, project.access_source,
                (SELECT COUNT(*) FROM folders folder
                    WHERE folder.project_id = project.id) as folder_count
         FROM projects project
@@ -254,10 +254,10 @@ def list_projects(
                 "file_count": stats["count"],
                 "size_bytes": stats["size"],
                 "folder_count": row["folder_count"] or 0,
-                "mcp_view": row["mcp_view"] or "inherit",
-                "mcp_read": row["mcp_read"] or "inherit",
-                "mcp_view_source": row["mcp_view_source"],
-                "mcp_read_source": row["mcp_read_source"],
+                "visibility": row["visibility"] or "inherit",
+                "access": row["access"] or "inherit",
+                "visibility_source": row["visibility_source"],
+                "access_source": row["access_source"],
             }
         )
 
@@ -301,8 +301,8 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
         SELECT project.id, project.name, project.description,
                project.status,
                project.client_id, project.client,
-               project.mcp_read, project.mcp_view,
-               project.mcp_view_source, project.mcp_read_source,
+               project.access, project.visibility,
+               project.visibility_source, project.access_source,
                project.created_at, project.updated_at,
                client.name AS client_name,
                (SELECT COUNT(*) FROM files file
@@ -330,10 +330,10 @@ def get_project_detail(conn: sqlite3.Connection, project_id: int) -> Optional[di
         "file_count": row["file_count"],
         "total_size": row["total_size"],
         "folder_count": row["folder_count"],
-        "mcp_view": row["mcp_view"] or "inherit",
-        "mcp_read": row["mcp_read"] or "inherit",
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"] or "inherit",
+        "access": row["access"] or "inherit",
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
     }
     return result
 

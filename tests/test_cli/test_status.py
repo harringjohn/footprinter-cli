@@ -1077,24 +1077,24 @@ class TestAccessResolution:
     def test_access_resolution_returns_stamped_and_total(self, status_db):
         conn, db_path = status_db
         conn.execute(
-            "INSERT INTO files (source, name, path, status, mcp_view) "
-            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+            "INSERT INTO files (source, name, path, status, visibility) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'full')"
         )
         conn.execute(
-            "INSERT INTO files (source, name, path, status, mcp_view) "
+            "INSERT INTO files (source, name, path, status, visibility) "
             "VALUES ('local', 'b.txt', '/b', 'listed', NULL)"
         )
         conn.execute(
-            "INSERT INTO emails (account, message_id, thread_id, received_at, mcp_view) "
-            "VALUES ('test@x.com', 'msg1', 't1', '2026-01-01', 'visible')"
+            "INSERT INTO emails (account, message_id, thread_id, received_at, visibility) "
+            "VALUES ('test@x.com', 'msg1', 't1', '2026-01-01', 'full')"
         )
         conn.execute(
-            "INSERT INTO emails (account, message_id, thread_id, received_at, mcp_view) "
+            "INSERT INTO emails (account, message_id, thread_id, received_at, visibility) "
             "VALUES ('test@x.com', 'msg2', 't2', '2026-01-01', NULL)"
         )
         conn.execute(
-            "INSERT INTO chats (external_id, account, mcp_view) "
-            "VALUES ('c1', 'slack', 'visible')"
+            "INSERT INTO chats (external_id, account, visibility) "
+            "VALUES ('c1', 'slack', 'full')"
         )
         conn.commit()
 
@@ -1107,12 +1107,12 @@ class TestAccessResolution:
     def test_access_resolution_files_only_listed(self, status_db):
         conn, db_path = status_db
         conn.execute(
-            "INSERT INTO files (source, name, path, status, mcp_view) "
-            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+            "INSERT INTO files (source, name, path, status, visibility) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'full')"
         )
         conn.execute(
-            "INSERT INTO files (source, name, path, status, mcp_view) "
-            "VALUES ('local', 'b.txt', '/b', 'removed', 'visible')"
+            "INSERT INTO files (source, name, path, status, visibility) "
+            "VALUES ('local', 'b.txt', '/b', 'removed', 'full')"
         )
         conn.commit()
 
@@ -1132,8 +1132,8 @@ class TestAccessResolution:
     def test_json_output_includes_access_resolution(self, status_db):
         conn, db_path = status_db
         conn.execute(
-            "INSERT INTO files (source, name, path, status, mcp_view) "
-            "VALUES ('local', 'a.txt', '/a', 'listed', 'visible')"
+            "INSERT INTO files (source, name, path, status, visibility) "
+            "VALUES ('local', 'a.txt', '/a', 'listed', 'full')"
         )
         conn.commit()
 

@@ -149,16 +149,16 @@ class TestFtsExcludesOpaque:
         # Insert an opaque file with distinctive content
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
-            "size_bytes, content_preview, mcp_view) "
+            "size_bytes, content_preview, visibility) "
             "VALUES ('budget.xlsx', '/tmp/budget.xlsx', 'local', 'listed', "
             "'spreadsheet', 200, 'classified financial data', 'opaque')"
         )
         # Insert a visible file with different content
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
-            "size_bytes, content_preview, mcp_view) "
+            "size_bytes, content_preview, visibility) "
             "VALUES ('report.txt', '/tmp/report.txt', 'local', 'listed', "
-            "'text', 100, 'public quarterly report', 'visible')"
+            "'text', 100, 'public quarterly report', 'full')"
         )
         fts_db.conn.commit()
 
@@ -177,14 +177,14 @@ class TestFtsExcludesOpaque:
         assert len(rows) == 1, "Opaque file name should still be searchable"
 
     def test_fts_visibility_change_updates_index(self, fts_db):
-        """Changing mcp_view updates FTS content accordingly."""
+        """Changing visibility updates FTS content accordingly."""
         cursor = fts_db.conn.cursor()
         # Insert a visible file with searchable content
         cursor.execute(
             "INSERT INTO files (name, path, source, status, content_type, "
-            "size_bytes, content_preview, mcp_view) "
+            "size_bytes, content_preview, visibility) "
             "VALUES ('memo.txt', '/tmp/memo.txt', 'local', 'listed', "
-            "'text', 50, 'sensitive merger details', 'visible')"
+            "'text', 50, 'sensitive merger details', 'full')"
         )
         fts_db.conn.commit()
 
@@ -196,7 +196,7 @@ class TestFtsExcludesOpaque:
         assert len(rows) == 1, "Visible file content should be in FTS index"
 
         # Change to opaque — content should no longer match
-        cursor.execute("UPDATE files SET mcp_view = 'opaque' WHERE name = 'memo.txt'")
+        cursor.execute("UPDATE files SET visibility = 'opaque' WHERE name = 'memo.txt'")
         fts_db.conn.commit()
 
         rows = cursor.execute(
@@ -206,7 +206,7 @@ class TestFtsExcludesOpaque:
         assert len(rows) == 0, "Opaque file content should be removed from FTS"
 
         # Change back to visible — content should match again
-        cursor.execute("UPDATE files SET mcp_view = 'visible' WHERE name = 'memo.txt'")
+        cursor.execute("UPDATE files SET visibility = 'full' WHERE name = 'memo.txt'")
         fts_db.conn.commit()
 
         rows = cursor.execute(

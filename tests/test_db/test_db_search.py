@@ -130,10 +130,10 @@ class TestSearchEmailsKeyword:
         db_conn.execute(
             """INSERT INTO emails (message_id, thread_id, account, from_address, from_name,
                                    to_addresses, subject, body_preview, received_at,
-                                   labels, status, mcp_view, mcp_read)
+                                   labels, status, visibility, access)
                VALUES ('msg-rm', 'thr-rm', 'work', 'removed@example.com', 'Removed',
                        'alice@example.com', 'Removed Email', 'Gone', '2026-01-15T09:00:00',
-                       'inbox', 'removed', 'visible', 'allow')"""
+                       'inbox', 'removed', 'full', 'allow')"""
         )
         db_conn.commit()
         results = search_emails_keyword(db_conn, terms=[], has_query=False, limit=50)
@@ -186,9 +186,9 @@ class TestSearchChatsKeyword:
     def test_excludes_removed_chats(self, db_conn):
         db_conn.execute(
             """INSERT INTO chats (external_id, account, title, message_count,
-                                  created_at, mcp_view, mcp_read, status)
+                                  created_at, visibility, access, status)
                VALUES ('conv-rm', 'claude', 'Removed Chat', 0,
-                       '2026-01-10', 'visible', 'allow', 'removed')"""
+                       '2026-01-10', 'full', 'allow', 'removed')"""
         )
         db_conn.commit()
         results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=50)
@@ -229,9 +229,9 @@ class TestSearchBrowserKeyword:
 
     def test_excludes_removed_visits(self, db_conn):
         db_conn.execute(
-            """INSERT INTO visits (url, title, visit_time, browser, status, mcp_view, mcp_read)
+            """INSERT INTO visits (url, title, visit_time, browser, status, visibility, access)
                VALUES ('https://removed.example.com', 'Removed Visit',
-                       '2026-01-15 09:00:00', 'safari', 'removed', 'visible', 'allow')"""
+                       '2026-01-15 09:00:00', 'safari', 'removed', 'full', 'allow')"""
         )
         db_conn.commit()
         results = search_browser_keyword(db_conn, terms=[], has_query=False, limit=50)
@@ -308,12 +308,12 @@ class TestFileFts5Fallback:
         assert "relevance_score" in results[0]
 
     def test_snippet_shows_content_when_populated(self, db_conn):
-        """Snippet uses content_preview when populated and mcp_read allows it."""
+        """Snippet uses content_preview when populated and access allows it."""
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
-            "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
+            "size_bytes, modified_at, visibility, access, content_preview) "
             "VALUES (100, 'local', 'report.pdf', '/Users/u/docs/report.pdf', "
-            "'listed', 'pdf', 5000, '2026-01-15', 'visible', 'allow', "
+            "'listed', 'pdf', 5000, '2026-01-15', 'full', 'allow', "
             "'This is the report content preview text')"
         )
         db_conn.commit()
@@ -327,9 +327,9 @@ class TestFileFts5Fallback:
         """Snippet uses name — path when content_preview is NULL."""
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
-            "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
+            "size_bytes, modified_at, visibility, access, content_preview) "
             "VALUES (102, 'local', 'notes.txt', '/Users/u/docs/notes.txt', "
-            "'listed', 'text', 1000, '2026-01-15', 'visible', 'allow', NULL)"
+            "'listed', 'text', 1000, '2026-01-15', 'full', 'allow', NULL)"
         )
         db_conn.commit()
         self._rebuild_fts(db_conn)
@@ -340,12 +340,12 @@ class TestFileFts5Fallback:
         assert "/Users/u/docs/notes.txt" in match["snippet"]
 
     def test_denied_file_no_content_leak(self, db_conn):
-        """File with mcp_read='deny' must not have content_preview in any field."""
+        """File with access='deny' must not have content_preview in any field."""
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
-            "size_bytes, modified_at, mcp_view, mcp_read, content_preview) "
+            "size_bytes, modified_at, visibility, access, content_preview) "
             "VALUES (101, 'local', 'classified.docx', '/Users/u/docs/classified.docx', "
-            "'listed', 'document', 3000, '2026-01-15', 'visible', 'deny', "
+            "'listed', 'document', 3000, '2026-01-15', 'full', 'deny', "
             "'CONFIDENTIAL DATA that must not leak')"
         )
         db_conn.commit()
@@ -371,8 +371,8 @@ class TestEnrichChatVisibility:
         lookup = enrich_chat_visibility(db_conn, [1, 2, 3])
         assert isinstance(lookup, dict)
         assert 1 in lookup
-        assert lookup[1]["mcp_view"] == "visible"
-        assert lookup[2]["mcp_view"] == "hidden"
+        assert lookup[1]["visibility"] == "full"
+        assert lookup[2]["visibility"] == "hidden"
 
     def test_empty_ids_returns_empty(self, db_conn):
         lookup = enrich_chat_visibility(db_conn, [])
@@ -398,7 +398,7 @@ class TestEnrichFileMetadata:
         assert isinstance(lookup, dict)
         assert 1 in lookup
         assert "name" in lookup[1]
-        assert "mcp_view" in lookup[1]
+        assert "visibility" in lookup[1]
 
     def test_excludes_removed(self, db_conn):
         db_conn.execute("UPDATE files SET status = 'removed' WHERE id = 1")
@@ -454,7 +454,7 @@ def _seed_mixed_status(conn, table: str) -> None:
 class TestSearchFilesKeywordStatusMatrix:
     """search_files_keyword respects the status kwarg + surfaces status fields.
 
-    Tests pass ``exclude_hidden=False`` so the mcp_view filter on fixture
+    Tests pass ``exclude_hidden=False`` so the visibility filter on fixture
     rows doesn't interfere with status-only assertions.
     """
 

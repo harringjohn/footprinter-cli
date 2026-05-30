@@ -2,7 +2,7 @@
 
 Maps a policy scope (e.g. "global", "project:3", "folder:~/Work/") to affected
 entity rows, calls the existing batch resolve functions, and writes resolved
-values back to mcp_view / mcp_read columns.
+values back to visibility / access columns.
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ def _is_inherit_source(source: str) -> bool:
 # ---------------------------------------------------------------------------
 # Each entry describes an entity type's table and capabilities.
 #   table:          SQL table name
-#   has_visibility: has mcp_view column
-#   has_permissions: has mcp_read column
+#   has_visibility: has visibility column
+#   has_permissions: has access column
 #   has_status:     has status column (filter WHERE status = 'listed')
 #   has_project_id: has project_id FK
 #   has_client_id:  has client_id FK
@@ -305,15 +305,15 @@ def _get_ids_for_scope(conn: sqlite3.Connection, scope: str) -> dict[str, list[i
 
 
 def _write_back_visibility(conn: sqlite3.Connection, entity_type: str, results: dict[int, tuple]) -> None:
-    """Batch UPDATE mcp_view and mcp_view_source from resolve results.
+    """Batch UPDATE visibility and visibility_source from resolve results.
 
     Entities whose visibility comes from the global policy or the hardcoded
-    baseline are written as ``'inherit'`` with ``mcp_view_source = NULL``.
+    baseline are written as ``'inherit'`` with ``visibility_source = NULL``.
     Entities with a specific policy get the resolved value and source scope.
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_view = ?, mcp_view_source = ? WHERE id = ?",
+        f"UPDATE {table} SET visibility = ?, visibility_source = ? WHERE id = ?",
         [
             ("inherit", None, eid) if _is_inherit_source(source) else (state, source, eid)
             for eid, (state, source) in results.items()
@@ -322,15 +322,15 @@ def _write_back_visibility(conn: sqlite3.Connection, entity_type: str, results: 
 
 
 def _write_back_permissions(conn: sqlite3.Connection, entity_type: str, results: dict[int, tuple]) -> None:
-    """Batch UPDATE mcp_read and mcp_read_source from resolve results.
+    """Batch UPDATE access and access_source from resolve results.
 
     Entities whose permission comes from the global policy or the hardcoded
-    baseline are written as ``'inherit'`` with ``mcp_read_source = NULL``.
+    baseline are written as ``'inherit'`` with ``access_source = NULL``.
     Entities with a specific policy get the resolved value and source scope.
     """
     table = ENTITY_META[entity_type]["table"]
     conn.executemany(
-        f"UPDATE {table} SET mcp_read = ?, mcp_read_source = ? WHERE id = ?",
+        f"UPDATE {table} SET access = ?, access_source = ? WHERE id = ?",
         [
             ("inherit", None, eid) if _is_inherit_source(source) else ("allow" if allowed else "deny", source, eid)
             for eid, (allowed, source) in results.items()

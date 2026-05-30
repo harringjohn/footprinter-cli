@@ -72,7 +72,7 @@ class TestListShowsAllPolicies:
     )
     @patch(
         "footprinter.cli.permission_cmd.list_visibility_policies",
-        return_value=[{"scope": "global", "setting": "visible", "updated_at": "2026-01-01"}],
+        return_value=[{"scope": "global", "setting": "full", "updated_at": "2026-01-01"}],
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
     def test_list_shows_merged_table(self, mock_db, mock_vis, mock_perm, capsys):
@@ -94,10 +94,10 @@ class TestListShowsAllPolicies:
     )
     @patch(
         "footprinter.cli.permission_cmd.list_visibility_policies",
-        return_value=[{"scope": "global", "setting": "visible", "updated_at": "2026-01-01"}],
+        return_value=[{"scope": "global", "setting": "full", "updated_at": "2026-01-01"}],
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_list_translates_visible_to_full(self, mock_db, mock_vis, mock_perm, capsys):
+    def test_list_displays_full_visibility(self, mock_db, mock_vis, mock_perm, capsys):
         from footprinter.cli.permission_cmd import _list
 
         conn = _mock_conn()
@@ -143,7 +143,7 @@ class TestListShowsAllPolicies:
     )
     @patch(
         "footprinter.cli.permission_cmd.list_visibility_policies",
-        return_value=[{"scope": "global", "setting": "visible", "updated_at": "2026-01-01"}],
+        return_value=[{"scope": "global", "setting": "full", "updated_at": "2026-01-01"}],
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
     def test_list_json_mode(self, mock_db, mock_vis, mock_perm, capsys):
@@ -185,7 +185,7 @@ class TestListShowsAllPolicies:
     @patch("footprinter.cli.permission_cmd.list_permission_policies", return_value=[])
     @patch(
         "footprinter.cli.permission_cmd.list_visibility_policies",
-        return_value=[{"scope": "global", "setting": "visible", "updated_at": "2026-01-01"}],
+        return_value=[{"scope": "global", "setting": "full", "updated_at": "2026-01-01"}],
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
     def test_list_conn_closed(self, mock_db, mock_vis, mock_perm):
@@ -202,7 +202,7 @@ class TestListShowsAllPolicies:
     @patch(
         "footprinter.cli.permission_cmd.list_visibility_policies",
         return_value=[
-            {"scope": "global", "setting": "visible", "updated_at": "2026-01-01"},
+            {"scope": "global", "setting": "full", "updated_at": "2026-01-01"},
         ],
     )
     @patch("footprinter.cli.permission_cmd.get_policy_db")
@@ -279,7 +279,7 @@ class TestSetTranslation:
 
         _set(Namespace(scope="global", visibility="full", access=None, dry_run=False))
 
-        mock_set_vis.assert_called_once_with(conn, "global", "visible")
+        mock_set_vis.assert_called_once_with(conn, "global", "full")
 
     @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.permission_cmd.set_visibility_policy")
@@ -343,7 +343,7 @@ class TestSetBehavior:
 
         _set(Namespace(scope="global", visibility="full", access="allow", dry_run=False))
 
-        mock_set_vis.assert_called_once_with(conn, "global", "visible")
+        mock_set_vis.assert_called_once_with(conn, "global", "full")
         mock_set_perm.assert_called_once_with(conn, "global", "allow")
 
     @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)

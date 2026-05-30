@@ -90,9 +90,9 @@ Before checking permissions, MCP enforces a visibility layer that controls wheth
 |-------|-------------|------------------|-------------------|
 | `hidden` | No (excluded) | None | No |
 | `opaque` | Yes (minimal) | `id`, `content_type`, `source` only | No |
-| `visible` | Yes (full) | All fields | Yes (if permitted) |
+| `full` | Yes (full) | All fields | Yes (if permitted) |
 
-**Resolution:** Policies in `visibility_policies` are the source of truth. The recalculation engine (`footprinter/access.py`) resolves policies per entity using most-restrictive-wins semantics (`hidden` > `opaque` > `visible`) and writes cached values to `mcp_view` columns. MCP tools read these cached columns at query time — no live policy resolution during requests.
+**Resolution:** Policies in `visibility_policies` are the source of truth. The recalculation engine (`footprinter/access.py`) resolves policies per entity using most-restrictive-wins semantics (`hidden` > `opaque` > `full`) and writes cached values to `visibility` columns. MCP tools read these cached columns at query time — no live policy resolution during requests.
 
 **Scope hierarchy** (checked in order, most-restrictive-wins):
 - Files: `file:{id}` → folder prefix → folder FK → `project:{id}` → `client:{id}` → `source:files` → `global`
@@ -109,7 +109,7 @@ All tools returning content enforce a two-layer security model. `footprinter_rea
 1. **Visibility check** (above) — determines if item is accessible at all
 2. **Permission check** (below) — determines if content can be read
 
-**Permission Resolution:** Policies in `permission_policies` are the source of truth, resolved and cached to `mcp_read` columns by the same recalculation engine. Deny-wins semantics: if ANY matching policy is `deny`, access is blocked regardless of other allow rules.
+**Permission Resolution:** Policies in `permission_policies` are the source of truth, resolved and cached to `access` columns by the same recalculation engine. Deny-wins semantics: if ANY matching policy is `deny`, access is blocked regardless of other allow rules.
 
 **Scope hierarchy** (checked in order, deny-wins):
 - Files: `file:{id}` → folder prefix → `project:{id}` → `client:{id}` → `source:files` → `global`

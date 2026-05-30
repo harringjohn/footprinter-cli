@@ -63,7 +63,7 @@ def get(
     result.pop("file_count", None)
 
     # Attach includes only when caller has full access to this entity
-    is_full = role.sees_all or _read_visibility(result) == "visible"
+    is_full = role.sees_all or _read_visibility(result) == "full"
     if is_full and includes:
         if "projects" in includes:
             from footprinter.services import project_service
@@ -98,7 +98,7 @@ def list_(
     # Track which items are fully visible before filtering strips fields
     visible_ids: set[int] = set()
     if includes and not role.sees_all:
-        visible_ids = {c["id"] for c in response["clients"] if _read_visibility(c) == "visible"}
+        visible_ids = {c["id"] for c in response["clients"] if _read_visibility(c) == "full"}
 
     if not role.sees_all:
         filtered, suppressed = filter_results_list("client", response["clients"])
@@ -159,7 +159,7 @@ def resolve_by_name(
 
     matches = []
     for r in rows:
-        vis = resolve_inherit_visibility(r.get("mcp_view"))
+        vis = resolve_inherit_visibility(r.get("visibility"))
         if vis == "opaque":
             matches.append({"id": r["id"], "visibility": "restricted"})
         else:

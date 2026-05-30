@@ -4,7 +4,7 @@ Validates:
   1. fp data --help exits 0 and lists import subcommand
   2. Bare fp data shows help
   3. fp data import <noun> <file> executes directly
-  4. writable_columns exclude mcp_view/mcp_read (policy-only columns)
+  4. writable_columns exclude visibility/access (policy-only columns)
 
 Export and template functionality moved to fp view format flags (FPR-1863).
 """
@@ -113,11 +113,11 @@ class TestDataImport:
 
 
 class TestWritableColumnsExcludeMcp:
-    """mcp_view and mcp_read are policy-system output — not writable via import."""
+    """visibility and access are policy-system output — not writable via import."""
 
     def test_writable_columns_exclude_mcp_fields(self):
         for noun, spec in DATA_SOURCE_SPECS.items():
-            for col in ("mcp_view", "mcp_read"):
+            for col in ("visibility", "access"):
                 assert col not in spec.writable_columns, (
                     f"{noun}.writable_columns still contains {col!r}"
                 )
@@ -127,7 +127,7 @@ class TestWritableColumnsExcludeMcp:
 
     def test_import_ignores_mcp_columns_in_csv(self, tmp_path):
         csv_path = tmp_path / "files.csv"
-        csv_path.write_text("id,status,mcp_view,mcp_read\n1,unlisted,visible,allow\n")
+        csv_path.write_text("id,status,visibility,access\n1,unlisted,full,allow\n")
 
         conn = _seeded_inmemory_db()
 
@@ -135,6 +135,6 @@ class TestWritableColumnsExcludeMcp:
             stdout, stderr, code = run_fp("data", "import", "files", str(csv_path))
 
         assert code == 0
-        row = conn.execute("SELECT status, mcp_view FROM files WHERE id = 1").fetchone()
+        row = conn.execute("SELECT status, visibility FROM files WHERE id = 1").fetchone()
         assert row["status"] == "unlisted"
-        assert row["mcp_view"] != "visible", "mcp_view should be ignored from CSV"
+        assert row["visibility"] != "full", "visibility should be ignored from CSV"

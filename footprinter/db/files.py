@@ -53,8 +53,8 @@ def list_files(
         SELECT file.id, file.name, file.path, file.source, file.status, file.content_type,
                file.size_bytes, file.modified_at, file.project_id, file.client_id,
                project.name AS project_name,
-               file.mcp_view, file.mcp_read,
-               file.mcp_view_source, file.mcp_read_source
+               file.visibility, file.access,
+               file.visibility_source, file.access_source
         FROM files file
         LEFT JOIN projects project ON file.project_id = project.id
     """
@@ -103,10 +103,10 @@ def list_files(
             "project_id": r["project_id"],
             "client_id": r["client_id"],
             "project_name": r["project_name"] or "",
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
         }
         for r in rows
     ]
@@ -128,8 +128,8 @@ def get_file(
                file.content_type, file.mime_type, file.size_bytes, file.created_at,
                file.modified_at, file.indexed_at, file.project_id, file.md5_hash,
                file.external_id, file.account,
-               file.mcp_view, file.mcp_read,
-               file.mcp_view_source, file.mcp_read_source,
+               file.visibility, file.access,
+               file.visibility_source, file.access_source,
                project.name AS project_name
         FROM files file
         LEFT JOIN projects project ON file.project_id = project.id
@@ -159,10 +159,10 @@ def get_file(
         "external_id": row["external_id"],
         "account": row["account"],
         "project_name": row["project_name"],
-        "mcp_view": row["mcp_view"] or "inherit",
-        "mcp_read": row["mcp_read"] or "inherit",
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"] or "inherit",
+        "access": row["access"] or "inherit",
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
     }
 
 

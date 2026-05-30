@@ -75,7 +75,7 @@ class TestCsvExportColumns:
         expected = [
             "id", "name", "path", "source", "status", "content_type",
             "size_bytes", "modified_at", "project_id", "client_id",
-            "mcp_view", "mcp_read",
+            "visibility", "access",
         ]
         assert header == expected
 
@@ -148,14 +148,14 @@ class TestTemplateOutput:
         header = _parse_csv_header(stdout)
         assert "id" in header
         assert "path" in header
-        assert "mcp_view" in header
+        assert "visibility" in header
         assert "readme.md" in stdout
 
     def test_template_files_prints_valid_values_to_stderr(self):
         _, stderr, code = run_fp("view", "files", "--template")
         assert code == 0
         assert "Valid values" in stderr
-        assert "mcp_view" in stderr
+        assert "visibility" in stderr
 
     def test_template_clients_has_header(self):
         stdout, _, code = run_fp("view", "clients", "--template")

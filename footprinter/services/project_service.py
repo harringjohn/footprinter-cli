@@ -34,7 +34,7 @@ def get(
         return None
 
     # Attach includes only when caller has full access to this entity
-    is_full = role.sees_all or _read_visibility(result) == "visible"
+    is_full = role.sees_all or _read_visibility(result) == "full"
     if is_full and includes:
         if "files" in includes:
             from footprinter.services import file_service
@@ -75,7 +75,7 @@ def list_(
     # Track which items are fully visible before filtering strips fields
     visible_ids: set[int] = set()
     if includes and not role.sees_all:
-        visible_ids = {p["id"] for p in response["projects"] if _read_visibility(p) == "visible"}
+        visible_ids = {p["id"] for p in response["projects"] if _read_visibility(p) == "full"}
 
     if not role.sees_all:
         filtered, suppressed = filter_results_list("project", response["projects"])
@@ -163,7 +163,7 @@ def _build_disambiguation(rows: list[dict], name_col: str, query: str, role: Rol
 
     matches = []
     for r in rows:
-        vis = resolve_inherit_visibility(r.get("mcp_view"))
+        vis = resolve_inherit_visibility(r.get("visibility"))
         if vis == "opaque":
             matches.append({"id": r["id"], "visibility": "restricted"})
         else:

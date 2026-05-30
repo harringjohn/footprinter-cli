@@ -440,17 +440,17 @@ def pagination_conn():
         """CREATE TABLE chats (
             id INTEGER PRIMARY KEY, external_id TEXT, title TEXT,
             account TEXT, created_at TEXT, updated_at TEXT, message_count INTEGER,
-            mcp_view TEXT DEFAULT 'inherit',
-            mcp_view_source TEXT, mcp_read_source TEXT
+            visibility TEXT DEFAULT 'inherit',
+            visibility_source TEXT, access_source TEXT
         )"""
     )
     conn.execute(
         """CREATE TABLE messages (
             id INTEGER PRIMARY KEY, chat_id INTEGER, message_id TEXT,
             role TEXT, content TEXT, created_at TEXT,
-            mcp_read TEXT DEFAULT 'inherit',
-            mcp_view TEXT DEFAULT 'inherit',
-            mcp_read_source TEXT, mcp_view_source TEXT
+            access TEXT DEFAULT 'inherit',
+            visibility TEXT DEFAULT 'inherit',
+            access_source TEXT, visibility_source TEXT
         )"""
     )
     conn.execute(

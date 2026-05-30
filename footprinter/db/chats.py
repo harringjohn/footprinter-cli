@@ -85,8 +85,8 @@ def list_chats(
                chat.created_at, chat.modified_at, chat.updated_at,
                chat.status, chat.merged_into_id,
                chat.project_id, chat.client_id,
-               chat.mcp_view, chat.mcp_read,
-               chat.mcp_view_source, chat.mcp_read_source
+               chat.visibility, chat.access,
+               chat.visibility_source, chat.access_source
         FROM chats chat
         {where}
         ORDER BY {sort_col_sql} {order_sql}
@@ -108,10 +108,10 @@ def list_chats(
             "merged_into_id": r["merged_into_id"],
             "project_id": r["project_id"],
             "client_id": r["client_id"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
         }
         for r in rows
     ]
@@ -140,8 +140,8 @@ def get_chat_detail(
                chat.message_count,
                chat.created_at, chat.modified_at, chat.status, chat.merged_into_id,
                chat.client_id, chat.project_id,
-               chat.mcp_view, chat.mcp_read,
-               chat.mcp_view_source, chat.mcp_read_source,
+               chat.visibility, chat.access,
+               chat.visibility_source, chat.access_source,
                project.name AS project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
@@ -168,10 +168,10 @@ def get_chat_detail(
         "project_id": row["project_id"],
         "project_name": row["project_name"],
         "client_name": row["client_name"],
-        "mcp_view": row["mcp_view"] or "inherit",
-        "mcp_read": row["mcp_read"] or "inherit",
-        "mcp_view_source": row["mcp_view_source"],
-        "mcp_read_source": row["mcp_read_source"],
+        "visibility": row["visibility"] or "inherit",
+        "access": row["access"] or "inherit",
+        "visibility_source": row["visibility_source"],
+        "access_source": row["access_source"],
     }
 
     msg_cursor = conn.execute(

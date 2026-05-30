@@ -110,7 +110,7 @@ class TestOpenDbLoadsGlobals:
         db_path = tmp_path / "test_globals.db"
         db = Database(str(db_path))
         db.conn.execute(
-            "INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'visible')"
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')"
         )
         db.conn.commit()
         db.close()
@@ -120,8 +120,8 @@ class TestOpenDbLoadsGlobals:
         _vis._global_permission = None
         try:
             with open_db(db_path=db_path):
-                assert _vis._global_visibility == "visible"
-                assert resolve_inherit_visibility("inherit") == "visible"
+                assert _vis._global_visibility == "full"
+                assert resolve_inherit_visibility("inherit") == "full"
         finally:
             _vis._global_visibility = old_vis
             _vis._global_permission = old_perm

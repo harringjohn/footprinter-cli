@@ -187,7 +187,7 @@ def search_files_keyword(
         where.append("file.mime_type = ?")
         params.append(mime_type)
     if exclude_hidden:
-        where.append("file.mcp_view != 'hidden'")
+        where.append("file.visibility != 'hidden'")
     params.append(limit)
 
     where_sql = (" AND ".join(where)) if where else "1=1"
@@ -196,7 +196,7 @@ def search_files_keyword(
         f"""
         SELECT file.id, file.source, file.name, file.path, file.content_type,
                file.size_bytes, file.modified_at, file.account, file.mime_type,
-               file.mcp_view, file.status, file.status_reason,
+               file.visibility, file.status, file.status_reason,
                project.name AS project_name, client.name AS client
         FROM files file
         {fts_join}
@@ -222,7 +222,7 @@ def search_files_keyword(
             "mime_type": r["mime_type"],
             "project": r["project_name"],
             "client": r["client"],
-            "mcp_view": r["mcp_view"],
+            "visibility": r["visibility"],
             "status": r["status"],
             "status_reason": r["status_reason"],
         }
@@ -287,7 +287,7 @@ def search_emails_keyword(
     if days_back is not None and int(days_back) > 0:
         where.append(f"email.received_at >= datetime('now', '-{int(days_back)} days')")
     if exclude_hidden:
-        where.append("email.mcp_view != 'hidden'")
+        where.append("email.visibility != 'hidden'")
     params.append(limit)
 
     where_sql = (" AND ".join(where)) if where else "1=1"
@@ -297,8 +297,8 @@ def search_emails_keyword(
         SELECT email.id, email.message_id, email.subject, email.from_address,
                email.from_name, email.to_addresses, email.received_at,
                email.account, email.labels, email.body_preview,
-               email.mcp_view, email.mcp_read,
-               email.mcp_view_source, email.mcp_read_source,
+               email.visibility, email.access,
+               email.visibility_source, email.access_source,
                email.status,
                project.name AS project_name, client.name AS client_name
         FROM emails email
@@ -325,10 +325,10 @@ def search_emails_keyword(
             "snippet": r["body_preview"],
             "project_name": r["project_name"],
             "client_name": r["client_name"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
             "status": r["status"],
         }
         for r in rows
@@ -378,7 +378,7 @@ def search_chats_keyword(
         where.append("chat.created_at <= ?")
         params.append(date_to)
     if exclude_hidden:
-        where.append("chat.mcp_view != 'hidden'")
+        where.append("chat.visibility != 'hidden'")
     params.append(limit)
 
     where_sql = (" AND ".join(where)) if where else "1=1"
@@ -387,8 +387,8 @@ def search_chats_keyword(
         f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title,
                chat.created_at, chat.modified_at,
-               chat.message_count, chat.mcp_view, chat.mcp_read,
-               chat.mcp_view_source, chat.mcp_read_source, chat.status,
+               chat.message_count, chat.visibility, chat.access,
+               chat.visibility_source, chat.access_source, chat.status,
                project.name AS project_name, client.name AS client_name
         FROM chats chat
         LEFT JOIN projects project ON chat.project_id = project.id
@@ -410,10 +410,10 @@ def search_chats_keyword(
             "message_count": r["message_count"],
             "project_name": r["project_name"],
             "client_name": r["client_name"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
             "status": r["status"],
         }
         for r in rows
@@ -433,8 +433,8 @@ def search_browser_keyword(
 ) -> list[dict]:
     """Keyword search for browser visits with optional filters.
 
-    Returns list of dicts with visit metadata including cached ``mcp_view``
-    and ``mcp_read`` columns for per-row access filtering.
+    Returns list of dicts with visit metadata including cached ``visibility``
+    and ``access`` columns for per-row access filtering.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     The visits table has no ``status_reason`` column, so only ``status`` is surfaced.
     """
@@ -445,7 +445,7 @@ def search_browser_keyword(
     params.extend(status_params)
 
     if exclude_hidden:
-        where.append("mcp_view != 'hidden'")
+        where.append("visibility != 'hidden'")
 
     if has_query:
         cond, cond_params = build_term_conditions(["url", "title"], list(terms))
@@ -464,8 +464,8 @@ def search_browser_keyword(
 
     rows = conn.execute(
         f"""
-        SELECT id, url, title, visit_time, browser, status, mcp_view, mcp_read,
-               mcp_view_source, mcp_read_source
+        SELECT id, url, title, visit_time, browser, status, visibility, access,
+               visibility_source, access_source
         FROM visits
         WHERE {where_sql}
         ORDER BY visit_time DESC
@@ -482,10 +482,10 @@ def search_browser_keyword(
             "visit_time": r["visit_time"],
             "browser": r["browser"],
             "status": r["status"],
-            "mcp_view": r["mcp_view"],
-            "mcp_read": r["mcp_read"],
-            "mcp_view_source": r["mcp_view_source"],
-            "mcp_read_source": r["mcp_read_source"],
+            "visibility": r["visibility"],
+            "access": r["access"],
+            "visibility_source": r["visibility_source"],
+            "access_source": r["access_source"],
         }
         for r in rows
     ]
@@ -555,7 +555,7 @@ def file_fts5_fallback(
 
     Returns dicts shaped for semantic_service consumption: id, source, name,
     path, content_type, size_bytes, modified_at, relevance_score, snippet,
-    mcp_view, mcp_read.
+    visibility, access.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     terms = split_query_terms(query)
@@ -569,8 +569,8 @@ def file_fts5_fallback(
     rows = conn.execute(
         "SELECT file.id, file.source, file.name, file.path, "
         "file.content_type, file.size_bytes, "
-        "file.modified_at, file.mcp_view, file.mcp_read, "
-        "file.mcp_view_source, file.mcp_read_source, "
+        "file.modified_at, file.visibility, file.access, "
+        "file.visibility_source, file.access_source, "
         "file.status, file.status_reason, file.content_preview "
         "FROM files file "
         "JOIN files_fts fts ON fts.rowid = file.id "
@@ -581,7 +581,7 @@ def file_fts5_fallback(
 
     results = []
     for row in rows:
-        if row["content_preview"] and row["mcp_read"] != "deny":
+        if row["content_preview"] and row["access"] != "deny":
             snippet = row["content_preview"][:200]
         else:
             snippet = f"{row['name']} — {row['path']}"
@@ -596,10 +596,10 @@ def file_fts5_fallback(
                 "modified_at": row["modified_at"],
                 "relevance_score": 0.5,
                 "snippet": snippet,
-                "mcp_view": row["mcp_view"],
-                "mcp_read": row["mcp_read"],
-                "mcp_view_source": row["mcp_view_source"],
-                "mcp_read_source": row["mcp_read_source"],
+                "visibility": row["visibility"],
+                "access": row["access"],
+                "visibility_source": row["visibility_source"],
+                "access_source": row["access_source"],
                 "status": row["status"],
                 "status_reason": row["status_reason"],
             }
@@ -620,7 +620,7 @@ def enrich_chat_visibility(
 ) -> dict[int, dict]:
     """Fetch visibility fields for a set of chat IDs.
 
-    Returns {chat_id: {account, mcp_view, mcp_read, status}} lookup dict.
+    Returns {chat_id: {account, visibility, access, status}} lookup dict.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     if not chat_ids:
@@ -629,7 +629,7 @@ def enrich_chat_visibility(
     status_conds, status_params = _status_clause(status, column="status")
     extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
-        f"SELECT id, account, mcp_view, mcp_read, mcp_view_source, mcp_read_source, status FROM chats "
+        f"SELECT id, account, visibility, access, visibility_source, access_source, status FROM chats "
         f"WHERE id IN ({ph}){extra_where}",
         [*chat_ids, *status_params],
     ).fetchall()
@@ -654,7 +654,7 @@ def enrich_file_metadata(
     extra_where = (" AND " + " AND ".join(status_conds)) if status_conds else ""
     rows = conn.execute(
         f"SELECT id, source, name, path, content_type, size_bytes, "
-        f"modified_at, mcp_view, mcp_read, mcp_view_source, mcp_read_source, status, status_reason "
+        f"modified_at, visibility, access, visibility_source, access_source, status, status_reason "
         f"FROM files WHERE id IN ({ph}){extra_where}",
         [*file_ids, *status_params],
     ).fetchall()

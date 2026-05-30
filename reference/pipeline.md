@@ -33,7 +33,7 @@ The orchestrator runs stages in a fixed order. Each stage is independent and can
 
 | Stage | Description | Tables |
 |-------|-------------|--------|
-| `access_resolution` | Stamp visibility + permissions on ingested entities | files, emails, chats, folders, projects, clients (mcp_view, mcp_read) |
+| `access_resolution` | Stamp visibility + permissions on ingested entities | files, emails, chats, folders, projects, clients (visibility, access) |
 
 Runs last in every pipeline (`local`, `all`, and connector pipelines). Incremental mode only stamps entities added since the last run. Full mode (`--full`) recalculates everything. First run acts as a backfill for existing databases.
 

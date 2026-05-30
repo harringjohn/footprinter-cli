@@ -88,14 +88,14 @@ class TestSearchVisibility:
             assert "id" in f
 
     def test_content_stripped_for_denied(self, service_db):
-        """Chat summary/snippet stripped when mcp_read='deny'."""
+        """Chat summary/snippet stripped when access='deny'."""
         result = search_service.search(
             service_db,
             query="",
             sources=["chats"],
             role=Role.VIEWER,
         )
-        # Chat 3 is opaque (mcp_view='opaque'), so it's minimized
+        # Chat 3 is opaque (visibility='opaque'), so it's minimized
         # Chat 1 is visible with allow — should keep summary
         visible_chats = [c for c in result["chats"] if c.get("title") == "Visible Chat"]
         if visible_chats:
@@ -194,12 +194,12 @@ class TestSearchIncludeFlags:
     def _seed_unlisted_and_removed_files(self, conn) -> None:
         conn.execute(
             """INSERT INTO files (id, name, path, source, status, status_reason,
-                                  content_type, size_bytes, mcp_view, mcp_read)
+                                  content_type, size_bytes, visibility, access)
                VALUES
                    (10, 'archived.md', '/Users/u/Work/alpha/archived.md', 'local',
-                    'unlisted', 'user_hidden', 'markdown', 100, 'visible', 'allow'),
+                    'unlisted', 'user_hidden', 'markdown', 100, 'full', 'allow'),
                    (11, 'gone.md',     '/Users/u/Work/alpha/gone.md',     'local',
-                    'removed',  'deleted_by_user', 'markdown', 200, 'visible', 'allow')"""
+                    'removed',  'deleted_by_user', 'markdown', 200, 'full', 'allow')"""
         )
         conn.commit()
 
