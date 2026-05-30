@@ -1,6 +1,6 @@
 """Tests for removed `fp ingest --preview` flag.
 
-The --preview flag was removed in FPR-1859. Ingest is incremental and safe
+The --preview flag was removed. Ingest is incremental and safe
 to run directly; preview added ceremony with no value for a single-user tool.
 """
 

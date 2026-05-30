@@ -339,7 +339,7 @@ class TestSuperEntityColumnMigration:
     """Verify _ensure_super_entity_columns() adds slug/status_changed_at to old DBs."""
 
     def test_projects_slug_added_on_old_db(self, temp_db):
-        """Simulate pre-FPR-1849 DB missing slug and status_changed_at on projects."""
+        """Simulate legacy DB missing slug and status_changed_at on projects."""
         import sqlite3 as _sqlite3
 
         from footprinter.ingest.database import Database
@@ -387,7 +387,7 @@ class TestSuperEntityColumnMigration:
         db2.close()
 
     def test_clients_slug_added_on_old_db(self, temp_db):
-        """Simulate pre-FPR-1849 DB missing slug and status_changed_at on clients."""
+        """Simulate legacy DB missing slug and status_changed_at on clients."""
         import sqlite3 as _sqlite3
 
         from footprinter.ingest.database import Database
@@ -415,7 +415,7 @@ class TestSuperEntityColumnMigration:
         db2.close()
 
     def test_folders_status_changed_at_added_on_old_db(self, temp_db):
-        """Simulate pre-FPR-1849 DB missing status_changed_at on folders."""
+        """Simulate legacy DB missing status_changed_at on folders."""
         import sqlite3 as _sqlite3
 
         from footprinter.ingest.database import Database
