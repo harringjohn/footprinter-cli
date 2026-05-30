@@ -104,6 +104,7 @@ class SchemaMixin:
         self.conn.execute("PRAGMA foreign_keys=ON")
 
         self._migrate_access_columns()
+        self._ensure_super_entity_columns()
 
         # ========================================
         # Files Table (unified content metadata)
@@ -836,6 +837,25 @@ class SchemaMixin:
                     self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
+                        raise
+
+    _SUPER_ENTITY_COLUMNS: dict[str, list[tuple[str, str]]] = {
+        "projects": [("slug", "TEXT"), ("status_changed_at", "DATETIME")],
+        "clients": [("slug", "TEXT"), ("status_changed_at", "DATETIME")],
+        "folders": [("status_changed_at", "DATETIME")],
+    }
+
+    def _ensure_super_entity_columns(self):
+        """Add slug/status_changed_at to super-entity tables (idempotent upgrade)."""
+        for table, columns in self._SUPER_ENTITY_COLUMNS.items():
+            for col_name, col_type in columns:
+                try:
+                    self.conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"
+                    )
+                except sqlite3.OperationalError as e:
+                    msg = str(e).lower()
+                    if "duplicate column" not in msg and "no such table" not in msg:
                         raise
 
     _VECTORIZE_TABLES = ("files", "messages", "chats")

@@ -335,6 +335,106 @@ class TestVectorizeColumnMigration:
         assert msg_row[0] == 0, "message vectorize=0 backfilled"
 
 
+class TestSuperEntityColumnMigration:
+    """Verify _ensure_super_entity_columns() adds slug/status_changed_at to old DBs."""
+
+    def test_projects_slug_added_on_old_db(self, temp_db):
+        """Simulate pre-FPR-1849 DB missing slug and status_changed_at on projects."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("DROP INDEX IF EXISTS idx_projects_slug")
+        conn.execute("ALTER TABLE projects DROP COLUMN slug")
+        conn.execute("ALTER TABLE projects DROP COLUMN status_changed_at")
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        cursor = db2.conn.cursor()
+        cursor.execute("PRAGMA table_info(projects)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "slug" in cols, "slug not added to projects"
+        assert "status_changed_at" in cols, "status_changed_at not added to projects"
+
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_projects_slug'"
+        )
+        assert cursor.fetchone() is not None, "idx_projects_slug not created"
+        db2.close()
+
+    def test_idempotent_on_fresh_db(self, temp_db):
+        """Init DB twice — no crash (duplicate column path handled)."""
+        from footprinter.ingest.database import Database
+
+        db1 = Database(temp_db)
+        cursor = db1.conn.cursor()
+        cursor.execute("PRAGMA table_info(projects)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "slug" in cols
+        assert "status_changed_at" in cols
+        db1.close()
+
+        db2 = Database(temp_db)
+        cursor = db2.conn.cursor()
+        cursor.execute("PRAGMA table_info(projects)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "slug" in cols
+        assert "status_changed_at" in cols
+        db2.close()
+
+    def test_clients_slug_added_on_old_db(self, temp_db):
+        """Simulate pre-FPR-1849 DB missing slug and status_changed_at on clients."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("DROP INDEX IF EXISTS idx_clients_slug")
+        conn.execute(
+            "CREATE TABLE clients_bak AS SELECT id, name, client_type, status, "
+            "status_reason, created_at, updated_at, access, visibility, "
+            "access_source, visibility_source, display_name FROM clients"
+        )
+        conn.execute("DROP TABLE clients")
+        conn.execute("ALTER TABLE clients_bak RENAME TO clients")
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        cursor = db2.conn.cursor()
+        cursor.execute("PRAGMA table_info(clients)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "slug" in cols, "slug not added to clients"
+        assert "status_changed_at" in cols, "status_changed_at not added to clients"
+        db2.close()
+
+    def test_folders_status_changed_at_added_on_old_db(self, temp_db):
+        """Simulate pre-FPR-1849 DB missing status_changed_at on folders."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("ALTER TABLE folders DROP COLUMN status_changed_at")
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        cursor = db2.conn.cursor()
+        cursor.execute("PRAGMA table_info(folders)")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "status_changed_at" in cols, "status_changed_at not added to folders"
+        db2.close()
+
+
 class TestAccessColumnMigration:
     """Verify _migrate_access_columns() renames mcp_view/mcp_read → visibility/access."""
 
