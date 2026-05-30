@@ -333,16 +333,18 @@ def check_project(
             data["file_count"] = len(file_rows)
             data["permission_counts"] = perm_counts
             data["visibility_counts"] = vis_counts
-            data["files"] = [
-                {
+            file_details = []
+            for r in file_rows:
+                allowed, p_src = perm_results.get(r["id"], (False, "baseline"))
+                v_state, v_src = vis_results.get(r["id"], ("opaque", "baseline"))
+                file_details.append({
                     "name": r["name"],
-                    "permission": "allow" if perm_results.get(r["id"], (False,))[0] else "deny",
-                    "permission_source": perm_results.get(r["id"], (False, "baseline"))[1],
-                    "visibility": vis_results.get(r["id"], ("opaque", "baseline"))[0],
-                    "visibility_source": vis_results.get(r["id"], ("opaque", "baseline"))[1],
-                }
-                for r in file_rows
-            ]
+                    "permission": "allow" if allowed else "deny",
+                    "permission_source": p_src,
+                    "visibility": v_state,
+                    "visibility_source": v_src,
+                })
+            data["files"] = file_details
         output_json(data)
     else:
         console.print(f"\nProject Check: [bold]{row['name']}[/bold]  (id={project_id})")
@@ -428,17 +430,19 @@ def check_client(
             data["project_count"] = len(proj_rows)
             data["permission_counts"] = perm_counts
             data["visibility_counts"] = vis_counts
-            data["projects"] = [
-                {
+            proj_details = []
+            for r in proj_rows:
+                allowed, p_src = perm_results.get(r["id"], (False, "baseline"))
+                v_state, v_src = vis_results.get(r["id"], ("opaque", "baseline"))
+                proj_details.append({
                     "id": r["id"],
                     "name": r["name"],
-                    "permission": "allow" if perm_results.get(r["id"], (False,))[0] else "deny",
-                    "permission_source": perm_results.get(r["id"], (False, "baseline"))[1],
-                    "visibility": vis_results.get(r["id"], ("opaque", "baseline"))[0],
-                    "visibility_source": vis_results.get(r["id"], ("opaque", "baseline"))[1],
-                }
-                for r in proj_rows
-            ]
+                    "permission": "allow" if allowed else "deny",
+                    "permission_source": p_src,
+                    "visibility": v_state,
+                    "visibility_source": v_src,
+                })
+            data["projects"] = proj_details
         output_json(data)
     else:
         console.print(f"\nClient Check: [bold]{row['name']}[/bold]  (id={client_id})")
