@@ -210,15 +210,15 @@ def _handle_import(args) -> None:
             updated += 1
 
         ingest_svc.complete(
-                ingest_id,
-                result={
-                    "items_processed": updated + skipped + errors,
-                    "items_updated": updated,
-                    "items_skipped": skipped,
-                    "errors": errors,
-                },
-                metadata={"error_details": error_details} if error_details else None,
-            )
+            ingest_id,
+            result={
+                "items_processed": updated + skipped + errors,
+                "items_updated": updated,
+                "items_skipped": skipped,
+                "errors": errors,
+            },
+            metadata={"error_details": error_details} if error_details else None,
+        )
 
     summary: dict = {
         "total": updated + skipped + errors,
