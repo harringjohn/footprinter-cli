@@ -488,6 +488,29 @@ class TestDoctorFtsHealth:
         data = json.loads(stdout)
         assert any(c["name"] == "fts_health" for c in data)
 
+    def test_db_closed_when_check_fts_health_raises(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from footprinter.cli.doctor import _check_fts_health
+
+        db_path = tmp_path / "footprinter.db"
+        _create_minimal_db(db_path)
+        monkeypatch.setattr(
+            "footprinter.paths.get_db_path", lambda: db_path
+        )
+
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value = mock_db
+        mock_db.__exit__.return_value = False
+        mock_db.check_fts_health.side_effect = RuntimeError("boom")
+        mock_cls = MagicMock(return_value=mock_db)
+        monkeypatch.setattr("footprinter.ingest.database.Database", mock_cls)
+
+        result = _check_fts_health()
+
+        assert result.status == "WARN"
+        mock_db.__exit__.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # 11. Flags removed from ingest
