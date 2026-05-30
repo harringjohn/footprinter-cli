@@ -43,7 +43,7 @@ class TestSetTriggersRecalculate:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        args = Namespace(scope="project:3", visibility="hidden", permission=None, yes=False)
+        args = Namespace(scope="project:3", visibility="hidden", permission=None)
         _set(args)
 
         mock_recalc.assert_called_once_with(conn, "project:3")
@@ -57,7 +57,7 @@ class TestSetTriggersRecalculate:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        args = Namespace(scope="folder:~/Work", visibility=None, permission="deny", yes=False)
+        args = Namespace(scope="folder:~/Work", visibility=None, permission="deny")
         _set(args)
 
         mock_recalc.assert_called_once_with(conn, "folder:~/Work")
@@ -72,7 +72,7 @@ class TestSetTriggersRecalculate:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        args = Namespace(scope="global", visibility="full", permission="allow", yes=False)
+        args = Namespace(scope="global", visibility="full", permission="allow")
         _set(args)
 
         mock_recalc.assert_called_once_with(conn, "global")
@@ -95,7 +95,7 @@ class TestResetScopeTriggersRecalculate:
         conn.execute.return_value.fetchone.return_value = MagicMock()
         mock_db.return_value = conn
 
-        args = Namespace(scope="project:3", all=False, yes=False)
+        args = Namespace(scope="project:3", all=False)
         _reset(args)
 
         mock_recalc.assert_called_once_with(conn, "project:3")
@@ -111,7 +111,7 @@ class TestResetScopeTriggersRecalculate:
         conn.execute.return_value.fetchone.return_value = None
         mock_db.return_value = conn
 
-        args = Namespace(scope="project:99", all=False, yes=False)
+        args = Namespace(scope="project:99", all=False)
         _reset(args)
 
         mock_recalc.assert_not_called()
@@ -195,49 +195,10 @@ class TestSetNeverPrompts:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
+        args = Namespace(scope="global", visibility="hidden", permission=None)
         _set(args)
 
         mock_confirm.assert_not_called()
-        mock_recalc.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# Set handler: --dry-run skips recalculate and policy writes
-# ---------------------------------------------------------------------------
-
-
-class TestSetDryRunSkipsRecalculate:
-    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_dry_run_skips_policy_and_recalculate(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=True)
-        _set(args)
-
-        mock_set_vis.assert_not_called()
-        mock_recalc.assert_not_called()
-        captured = capsys.readouterr().out
-        assert "Dry run" in captured
-
-    @patch("footprinter.cli.mcp_cmd.count_affected_entities", return_value={"file": 10})
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.set_visibility_policy")
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_non_dry_run_applies_normally(self, mock_db, mock_set_vis, mock_recalc, mock_count):
-        from footprinter.cli.mcp_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-        args = Namespace(scope="folder:~/Work", visibility="hidden", permission=None, yes=False, dry_run=False)
-        _set(args)
-
-        mock_set_vis.assert_called_once()
         mock_recalc.assert_called_once()
 
 
@@ -256,7 +217,7 @@ class TestSetEntityCountPreview:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        args = Namespace(scope="global", visibility="hidden", permission=None)
         _set(args)
 
         captured = capsys.readouterr().out
@@ -272,7 +233,7 @@ class TestSetEntityCountPreview:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=True)
+        args = Namespace(scope="global", visibility="hidden", permission=None)
         _set(args)
 
         captured = capsys.readouterr().out
@@ -296,7 +257,7 @@ class TestSetNoConfirmationPrompt:
 
         conn = _mock_conn()
         mock_db.return_value = conn
-        args = Namespace(scope="global", visibility="hidden", permission=None, yes=False, dry_run=False)
+        args = Namespace(scope="global", visibility="hidden", permission=None)
         _set(args)
 
         mock_confirm.assert_not_called()
@@ -304,52 +265,29 @@ class TestSetNoConfirmationPrompt:
 
 
 # ---------------------------------------------------------------------------
-# Confirmation UX for unified reset
+# Individual scope reset: no confirmation prompt
 # ---------------------------------------------------------------------------
 
 
-class TestResetScopeConfirmation:
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=True)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
+class TestResetScopeNoConfirmation:
+    @patch("footprinter.cli._policy_helpers.Confirm.ask")
     @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.mcp_cmd.delete_visibility_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.delete_permission_policy", return_value=True)
     @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_prompts_confirmation(
-        self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm,
+    def test_scope_reset_executes_without_prompting(
+        self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_confirm,
     ):
         from footprinter.cli.mcp_cmd import _reset
 
         conn = _mock_conn()
         conn.execute.return_value.fetchone.return_value = MagicMock()
         mock_db.return_value = conn
-        args = Namespace(scope="global", all=False, yes=False)
+        args = Namespace(scope="global", all=False)
         _reset(args)
 
-        mock_confirm.assert_called_once()
+        mock_confirm.assert_not_called()
         mock_recalc.assert_called_once()
-
-    @patch("footprinter.cli._policy_helpers.Confirm.ask", return_value=False)
-    @patch("footprinter.cli._policy_helpers.count_affected_entities", return_value=MOCK_LARGE_COUNTS)
-    @patch("footprinter.cli.mcp_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.mcp_cmd.delete_visibility_policy", return_value=True)
-    @patch("footprinter.cli.mcp_cmd.delete_permission_policy", return_value=True)
-    @patch("footprinter.cli.mcp_cmd.get_policy_db")
-    def test_large_scope_cancelled_skips_recalculate(
-        self, mock_db, mock_del_perm, mock_del_vis, mock_recalc, mock_count, mock_confirm,
-    ):
-        from footprinter.cli.mcp_cmd import _reset
-
-        conn = _mock_conn()
-        conn.execute.return_value.fetchone.return_value = MagicMock()
-        mock_db.return_value = conn
-        args = Namespace(scope="global", all=False, yes=False)
-        _reset(args)
-
-        mock_confirm.assert_called_once()
-        mock_del_vis.assert_not_called()
-        mock_del_perm.assert_not_called()
-        mock_recalc.assert_not_called()
 
 
 class TestResetAllConfirmation:
@@ -386,7 +324,7 @@ class TestRecalculateStatsPrinted:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        args = Namespace(scope="project:3", visibility="hidden", permission=None, yes=False)
+        args = Namespace(scope="project:3", visibility="hidden", permission=None)
         _set(args)
 
         output = capsys.readouterr().out

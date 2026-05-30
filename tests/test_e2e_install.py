@@ -341,10 +341,10 @@ class TestMCPSetupE2E:
     """End-to-end tests for the MCP config helper."""
 
     def test_full_write_cycle(self, tmp_path):
-        """generate → write → check should succeed end-to-end."""
+        """generate → write → read-back should succeed end-to-end."""
         from footprinter.cli.mcp_setup import (
-            check_config,
             generate_snippet,
+            has_footprinter_entry,
             write_config,
         )
 
@@ -360,13 +360,10 @@ class TestMCPSetupE2E:
         assert ok is True
         assert config_path.exists()
 
-        # Read back and verify valid JSON
+        # Read back and verify valid JSON with footprinter entry
         config = json.loads(config_path.read_text())
         assert "footprinter" in config["mcpServers"]
-
-        # Check should report configured
-        result = check_config(config_path=config_path)
-        assert result == 0
+        assert has_footprinter_entry(config)
 
     def test_merge_preserves_existing_servers(self, tmp_path):
         """Writing footprinter config should not clobber other MCP servers."""
@@ -400,15 +397,6 @@ class TestMCPSetupE2E:
         backups = list(tmp_path.glob("*.backup_*.json"))
         assert len(backups) >= 1
 
-    def test_dry_run_does_not_modify(self, tmp_path):
-        """--dry-run should not create or modify the config file."""
-        from footprinter.cli.mcp_setup import generate_snippet, write_config
-
-        config_path = tmp_path / "claude_desktop_config.json"
-        ok = write_config(generate_snippet(), config_path=config_path, dry_run=True)
-        assert ok is True
-        assert not config_path.exists()
-
     def test_snippet_uses_sys_executable(self):
         """MCP snippet command should be sys.executable when no run_mcp.sh exists."""
         from unittest.mock import patch as _patch
@@ -425,14 +413,12 @@ class TestMCPSetupE2E:
         command = snippet["mcpServers"]["footprinter"]["command"]
         assert command == sys.executable
 
-    def test_check_returns_2_for_missing_footprinter(self, tmp_path):
-        """check_config should return 2 when config exists but has no footprinter."""
-        from footprinter.cli.mcp_setup import check_config
+    def test_has_footprinter_entry_false_for_missing(self, tmp_path):
+        """has_footprinter_entry returns False when footprinter is not configured."""
+        from footprinter.cli.mcp_setup import has_footprinter_entry
 
-        config_path = tmp_path / "claude_desktop_config.json"
-        config_path.write_text(json.dumps({"mcpServers": {"other": {}}}))
-        result = check_config(config_path=config_path)
-        assert result == 2
+        config = {"mcpServers": {"other": {}}}
+        assert has_footprinter_entry(config) is False
 
 
 # ═══════════════════════════════════════════════════════════════════════

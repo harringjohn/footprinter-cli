@@ -4,7 +4,7 @@ Covers:
   - Parser tree: help exits 0 for all subcommands
   - Server start: bare ``fp mcp`` calls server.main()
   - Unified check: no-args (show all), path, folder, project, client, --json
-  - Set: unified policy setter (--visibility / --permission / --dry-run)
+  - Set: unified policy setter (--visibility / --permission)
   - Reset: unified policy delete / reseed
 """
 
@@ -319,30 +319,12 @@ class TestMcpSet:
         assert vis["setting"] == "hidden"
         assert perm["setting"] == "deny"
 
-    def test_set_dry_run(self, policy_db):
-        """--dry-run previews without writing policies."""
-        stdout, stderr, code = run_fp(
+    def test_set_dry_run_flag_rejected(self, policy_db):
+        """--dry-run is no longer accepted on mcp set."""
+        _stdout, _stderr, code = run_fp(
             "mcp", "set", "folder:~/Work", "--visibility", "hidden", "--dry-run",
         )
-        assert code == 0
-        assert "Dry run" in stdout
-
-        conn = sqlite3.connect(str(policy_db))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT setting FROM visibility_policies WHERE scope = 'folder:~/Work'"
-        ).fetchone()
-        conn.close()
-        assert row is None, "dry-run should not write policy rows"
-
-    def test_set_dry_run_no_recalculate(self, policy_db):
-        """--dry-run should not trigger recalculation."""
-        stdout, stderr, code = run_fp(
-            "mcp", "set", "global", "--permission", "allow", "--dry-run",
-        )
-        assert code == 0
-        assert "Dry run" in stdout
-        assert "Recalculated" not in stdout
+        assert code != 0, "fp mcp set --dry-run should fail (removed)"
 
 
 # ---------------------------------------------------------------------------

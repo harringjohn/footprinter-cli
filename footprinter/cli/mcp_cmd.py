@@ -190,7 +190,6 @@ def _check(args) -> None:
 def _set(args) -> None:
     visibility = getattr(args, "visibility", None)
     permission = getattr(args, "permission", None)
-    dry_run = getattr(args, "dry_run", False)
 
     if not visibility and not permission:
         console.print("[red]Specify at least one setting:[/red] --visibility or --permission")
@@ -233,10 +232,6 @@ def _set(args) -> None:
         )
         console.print(f"  Setting: {', '.join(settings_desc)}")
 
-        if dry_run:
-            console.print("\n[dim]Dry run — no changes made.[/dim]")
-            return
-
         if visibility:
             set_visibility_policy(conn, args.scope, visibility)
         if permission:
@@ -276,9 +271,8 @@ def _reset(args) -> None:
         raise SystemExit(1)
 
     try:
-        yes = getattr(args, "yes", False)
-
         if reset_all:
+            yes = getattr(args, "yes", False)
             if not confirm_recalculation(conn, "global", yes=yes):
                 console.print("[dim]Cancelled.[/dim]")
                 return
@@ -302,10 +296,6 @@ def _reset(args) -> None:
 
         if not vis_exists and not perm_exists:
             console.print(f"No policies found for scope [cyan]{scope}[/cyan]")
-            return
-
-        if not confirm_recalculation(conn, scope, yes=yes):
-            console.print("[dim]Cancelled.[/dim]")
             return
 
         parts = []
@@ -344,7 +334,7 @@ def register(subparsers) -> None:
             "  fp mcp check                        Show all policies\n"
             "  fp mcp check ~/Work/file.py          Check combined resolution\n"
             "  fp mcp set global --visibility visible --permission allow\n"
-            "  fp mcp set folder:~/Work --visibility hidden --dry-run\n"
+            "  fp mcp set folder:~/Work --visibility hidden\n"
             "  fp mcp reset folder:~/Work           Remove folder policy\n"
             "\n"
             "tip: use 'fp mcp <command> --help' for details on any command."
@@ -395,7 +385,7 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp mcp set global --visibility visible --permission allow\n"
             "  fp mcp set folder:~/Work --visibility hidden\n"
-            "  fp mcp set folder:~/Work --permission deny --dry-run\n"
+            "  fp mcp set folder:~/Work --permission deny\n"
             "  fp mcp set project:3 --permission deny\n"
             "  fp mcp set source:emails --visibility opaque --permission deny"
         ),
@@ -404,8 +394,6 @@ def register(subparsers) -> None:
     set_parser.add_argument("scope", help="Policy scope (e.g. global, folder:~/Work, project:3)")
     set_parser.add_argument("--visibility", default=None, help="Visibility: visible, opaque, or hidden")
     set_parser.add_argument("--permission", default=None, help="Permission: allow or deny")
-    set_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Preview changes without applying")
-    set_parser.add_argument("--yes", "-y", action="store_true", help="Accepted for compatibility (no-op; set never prompts)")
     set_parser.set_defaults(func=_set)
 
     # -- reset (unified delete / reseed) --
@@ -426,5 +414,5 @@ def register(subparsers) -> None:
     )
     reset_parser.add_argument("scope", nargs="?", default=None, help="Scope to reset")
     reset_parser.add_argument("--all", action="store_true", help="Clear ALL policies and re-seed defaults")
-    reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    reset_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt (--all only)")
     reset_parser.set_defaults(func=_reset)

@@ -11,7 +11,6 @@ from rich.console import Console as RichConsole
 
 from footprinter.cli.mcp_setup import (
     _is_dev_checkout,
-    check_config,
     detect_config_path,
     generate_snippet,
     get_mcp_command,
@@ -235,108 +234,6 @@ class TestMCPCommandFpEntryPoint:
 
 
 # ---------------------------------------------------------------------------
-# TestCheckConfig — 4 tests
-# ---------------------------------------------------------------------------
-class TestCheckConfig:
-    """Tests for check_config()."""
-
-    def test_returns_1_when_missing(self, tmp_path):
-        path = tmp_path / "missing.json"
-        assert check_config(config_path=path) == 1
-
-    def test_returns_0_when_configured(self, tmp_path):
-        path = tmp_path / "claude_desktop_config.json"
-        config = {"mcpServers": {"footprinter": {"command": "/bin/true"}}}
-        path.write_text(json.dumps(config))
-        assert check_config(config_path=path) == 0
-
-    def test_returns_2_when_not_configured(self, tmp_path):
-        path = tmp_path / "claude_desktop_config.json"
-        config = {"mcpServers": {"other-server": {"command": "/bin/other"}}}
-        path.write_text(json.dumps(config))
-        assert check_config(config_path=path) == 2
-
-    def test_returns_1_for_invalid_json(self, tmp_path):
-        path = tmp_path / "claude_desktop_config.json"
-        path.write_text("not valid json {{{")
-        assert check_config(config_path=path) == 1
-
-    # -- Multi-client check tests --
-
-    def _capture_check(self, **kwargs) -> tuple[str, int]:
-        """Run check_config() and capture Rich output."""
-        buf = io.StringIO()
-        fake_console = RichConsole(file=buf, force_terminal=False)
-        with (
-            patch("footprinter.cli.mcp_setup.console", fake_console),
-            patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True),
-        ):
-            result = check_config(**kwargs)
-        return buf.getvalue(), result
-
-    def test_multi_client_reports_all_found(self, tmp_path):
-        """Multi-client check reports all clients with footprinter configured."""
-        cd_path = tmp_path / "claude_desktop_config.json"
-        cd_path.write_text(json.dumps({"mcpServers": {"footprinter": {"command": "fp"}}}))
-        cursor_path = tmp_path / "cursor_mcp.json"
-        cursor_path.write_text(json.dumps({"mcpServers": {"footprinter": {"command": "fp"}}}))
-
-        clients = [("Claude Desktop", cd_path), ("Cursor", cursor_path)]
-        with patch("footprinter.cli.mcp_setup._get_checkable_clients", return_value=clients, create=True):
-            output, result = self._capture_check()
-
-        assert result == 0
-        assert "Claude Desktop" in output
-        assert "Cursor" in output
-
-    def test_multi_client_returns_0_if_any_configured(self, tmp_path):
-        """Returns 0 if footprinter configured in at least one client."""
-        cd_path = tmp_path / "claude_desktop_config.json"
-        cd_path.write_text(json.dumps({"mcpServers": {"footprinter": {"command": "fp"}}}))
-        cursor_path = tmp_path / "cursor_mcp.json"
-        cursor_path.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
-
-        clients = [("Claude Desktop", cd_path), ("Cursor", cursor_path)]
-        with patch("footprinter.cli.mcp_setup._get_checkable_clients", return_value=clients, create=True):
-            output, result = self._capture_check()
-
-        assert result == 0
-        assert "not configured" in output.lower()
-
-    def test_multi_client_returns_2_if_none_configured(self, tmp_path):
-        """Returns 2 if configs exist but footprinter not in any."""
-        cd_path = tmp_path / "claude_desktop_config.json"
-        cd_path.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
-        cursor_path = tmp_path / "cursor_mcp.json"
-        cursor_path.write_text(json.dumps({"mcpServers": {"other2": {"command": "y"}}}))
-
-        clients = [("Claude Desktop", cd_path), ("Cursor", cursor_path)]
-        with patch("footprinter.cli.mcp_setup._get_checkable_clients", return_value=clients, create=True):
-            _, result = self._capture_check()
-
-        assert result == 2
-
-    def test_multi_client_returns_1_if_all_missing(self, tmp_path):
-        """Returns 1 if all config files are missing."""
-        clients = [
-            ("Claude Desktop", tmp_path / "nonexistent1.json"),
-            ("Cursor", tmp_path / "nonexistent2.json"),
-        ]
-        with patch("footprinter.cli.mcp_setup._get_checkable_clients", return_value=clients, create=True):
-            _, result = self._capture_check()
-
-        assert result == 1
-
-    def test_config_path_override_single_client(self, tmp_path):
-        """config_path parameter checks only that single path (backward compat)."""
-        path = tmp_path / "custom_config.json"
-        path.write_text(json.dumps({"mcpServers": {"footprinter": {"command": "fp"}}}))
-
-        _, result = self._capture_check(config_path=path)
-        assert result == 0
-
-
-# ---------------------------------------------------------------------------
 # TestWriteConfig — 5 tests
 # ---------------------------------------------------------------------------
 class TestWriteConfig:
@@ -372,12 +269,6 @@ class TestWriteConfig:
 
         backups = list(tmp_path.glob("*.backup_*.json"))
         assert len(backups) == 1
-
-    def test_dry_run_does_not_write(self, tmp_path):
-        path = tmp_path / "claude_desktop_config.json"
-        snippet = generate_snippet()
-        assert write_config(snippet, config_path=path, dry_run=True) is True
-        assert not path.exists()
 
     def test_creates_parent_directories(self, tmp_path):
         path = tmp_path / "Claude" / "claude_desktop_config.json"
@@ -509,33 +400,6 @@ class TestWriteConfigEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# TestCheckConfigEdgeCases — 2 tests
-# ---------------------------------------------------------------------------
-class TestCheckConfigEdgeCases:
-    """Tests for check_config() edge cases."""
-
-    def test_returns_1_for_unsupported_platform(self):
-        """No checkable clients → check_config() returns 1."""
-        with patch("footprinter.cli.mcp_setup._get_checkable_clients", return_value=[], create=True):
-            result = check_config()
-        assert result == 1
-
-    def test_returns_0_even_with_extra_servers(self, tmp_path):
-        """Footprinter found among many servers → returns 0."""
-        path = tmp_path / "claude_desktop_config.json"
-        config = {
-            "mcpServers": {
-                "server1": {"command": "/bin/s1"},
-                "footprinter": {"command": "/bin/fp"},
-                "server2": {"command": "/bin/s2"},
-                "server3": {"command": "/bin/s3"},
-            }
-        }
-        path.write_text(json.dumps(config))
-        assert check_config(config_path=path) == 0
-
-
-# ---------------------------------------------------------------------------
 # TestMultiClientPaths — 4 tests
 # ---------------------------------------------------------------------------
 class TestMultiClientPaths:
@@ -616,14 +480,3 @@ class TestCLIFlags:
             parser.parse_args(["setup", "mcp", "--chatgpt"])
         assert exc_info.value.code == 2
 
-    def test_dry_run_help_references_claude(self):
-        """--dry-run help text references --claude, not --write."""
-        import contextlib
-
-        parser = self._build_mcp_parser()
-        help_buf = io.StringIO()
-        with contextlib.redirect_stdout(help_buf), pytest.raises(SystemExit):
-            parser.parse_args(["setup", "mcp", "--help"])
-        help_output = help_buf.getvalue()
-        assert "--claude" in help_output
-        assert "--write" not in help_output

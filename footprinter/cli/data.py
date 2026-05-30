@@ -2,7 +2,6 @@
 
 Import metadata corrections:
     ``fp data import files corrections.csv``
-    ``fp data import files corrections.csv --commit``
 
 Export and template functionality moved to ``fp view`` format flags
 (``--csv``, ``--json``, ``--template``).
@@ -104,12 +103,6 @@ def _handle_import(args) -> None:
     noun = args.noun
     spec = DATA_SOURCE_SPECS[noun]
     csv_path = Path(args.file)
-    has_dry_run = getattr(args, "dry_run", False)
-    has_commit = getattr(args, "commit", False)
-    if has_dry_run and has_commit:
-        console.print("[red]Cannot use --dry-run and --commit together.[/red]")
-        sys.exit(1)
-    dry_run = not has_commit
 
     # Read and validate CSV
     if not csv_path.exists():
@@ -157,18 +150,14 @@ def _handle_import(args) -> None:
     error_details: list[dict] = []
 
     with open_db() as conn:
-        # Begin ingest tracking before data writes (matches upsert.py pattern)
-        ingest_svc = None
-        ingest_id = None
-        if not dry_run:
-            from footprinter.services.ingest_service import IngestService
+        from footprinter.services.ingest_service import IngestService
 
-            ingest_svc = IngestService(conn)
-            ingest_id = ingest_svc.begin(
-                f"import_{noun}",
-                mode="bulk",
-                trigger="cli:data:import",
-            )
+        ingest_svc = IngestService(conn)
+        ingest_id = ingest_svc.begin(
+            f"import_{noun}",
+            mode="bulk",
+            trigger="cli:data:import",
+        )
 
         for i, row in enumerate(rows, 1):
             row_id = row.get("id", "").strip()
@@ -213,20 +202,15 @@ def _handle_import(args) -> None:
                 skipped += 1
                 continue
 
-            if dry_run:
-                updated += 1
-            else:
-                update_sql = (
-                    f"UPDATE {spec.table} SET {', '.join(set_parts)} "  # noqa: S608
-                    f"WHERE id = ?"
-                )
-                set_params.append(row_id_int)
-                conn.execute(update_sql, set_params)
-                updated += 1
+            update_sql = (
+                f"UPDATE {spec.table} SET {', '.join(set_parts)} "  # noqa: S608
+                f"WHERE id = ?"
+            )
+            set_params.append(row_id_int)
+            conn.execute(update_sql, set_params)
+            updated += 1
 
-        # Complete ingest tracking and commit everything together
-        if ingest_svc is not None and ingest_id is not None:
-            ingest_svc.complete(
+        ingest_svc.complete(
                 ingest_id,
                 result={
                     "items_processed": updated + skipped + errors,
@@ -248,19 +232,6 @@ def _handle_import(args) -> None:
 
     if getattr(args, "json", False):
         output_json(summary)
-    elif dry_run:
-        table = Table(title=f"Dry run — import {noun}")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Count", justify="right")
-        table.add_row("Would update", str(updated))
-        table.add_row("Skipped (no changes)", str(skipped))
-        table.add_row("Errors", str(errors))
-        table.add_row("Total rows", str(updated + skipped + errors))
-        console.print(table)
-        if error_details:
-            for ed in error_details:
-                console.print(f"  [red]Row {ed['row']}: {ed['error']}[/red]")
-        console.print("[dim]Pass --commit to apply these changes.[/dim]")
     else:
         table = Table(title=f"Import {noun}")
         table.add_column("Metric", style="cyan")
@@ -298,8 +269,7 @@ def register(subparsers) -> None:
             "Import metadata corrections for data-source entities.\n\n"
             "Reads a CSV file with an 'id' column and updates writable metadata\n"
             "columns. Pipeline-managed fields (path, external_id, etc.) are\n"
-            "read-only and ignored during import.\n\n"
-            "Default mode is dry-run (preview only). Pass --commit to apply."
+            "read-only and ignored during import."
         ),
         formatter_class=FORMATTER,
     )
@@ -311,18 +281,6 @@ def register(subparsers) -> None:
     import_parser.add_argument(
         "file",
         help="Path to CSV file",
-    )
-    import_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        help="Preview changes without writing (default behavior)",
-    )
-    import_parser.add_argument(
-        "--commit",
-        action="store_true",
-        default=False,
-        help="Apply changes to the database",
     )
     add_json_flag(import_parser)
     import_parser.set_defaults(func=_handle_import)

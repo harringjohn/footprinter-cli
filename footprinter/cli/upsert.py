@@ -413,42 +413,6 @@ def _process_folder_csv_rows(
     return assigned, errors, error_details
 
 
-def _dry_run_folder_csv_rows(
-    conn,
-    rows: list[dict],
-) -> tuple[int, int, int, list[dict]]:
-    """Validate folder CSV rows without writing.
-
-    Returns (would_assign, already_matched, errors, error_details).
-    """
-    would_assign = 0
-    already_matched = 0
-    errors = 0
-    error_details: list[dict] = []
-
-    for i, row in enumerate(rows, 1):
-        kwargs, err = _resolve_folder_row(conn, row, i)
-        if err or kwargs is None:
-            errors += 1
-            error_details.append(err or {"row": i, "error": "Unknown"})
-            continue
-
-        folder_row = kwargs["folder_row"]
-        current_pid = folder_row.get("project_id")
-        current_cid = folder_row.get("client_id")
-        matches = True
-        if kwargs["project_id"] is not None and current_pid != kwargs["project_id"]:
-            matches = False
-        if kwargs["client_id"] is not None and current_cid != kwargs["client_id"]:
-            matches = False
-        if matches:
-            already_matched += 1
-        else:
-            would_assign += 1
-
-    return would_assign, already_matched, errors, error_details
-
-
 def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
     """Check whether a record matching *kwargs* already exists."""
     if entity_type == "client":
@@ -462,92 +426,8 @@ def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
     return False
 
 
-def _dry_run_csv_rows(
-    conn,
-    rows: list[dict],
-    service,
-    entity_type: str,
-    required_cols: list[str],
-    optional_cols: list[str],
-    int_cols: list[str],
-) -> tuple[int, int, int, list[dict]]:
-    """Validate CSV rows without writing. Returns (would_create, would_update, errors, error_details)."""
-    from footprinter.db.clients import VALID_CLIENT_TYPES
-
-    would_create = 0
-    would_update = 0
-    errors = 0
-    error_details: list[dict] = []
-
-    for i, row in enumerate(rows, 1):
-        kwargs: dict = {}
-        for col in required_cols + optional_cols:
-            val = row.get(col)
-            if val is not None and val != "":
-                kwargs[col] = val
-
-        # Coerce int columns
-        row_bad = False
-        for col in int_cols:
-            if col in kwargs:
-                try:
-                    kwargs[col] = int(kwargs[col])
-                except (ValueError, TypeError):
-                    errors += 1
-                    error_details.append(
-                        {
-                            "row": i,
-                            "error": f"Invalid {col}: {kwargs[col]!r}",
-                        }
-                    )
-                    row_bad = True
-                    break
-        if row_bad:
-            continue
-
-        # Check required values
-        missing_vals = [c for c in required_cols if c not in kwargs]
-        if missing_vals:
-            errors += 1
-            error_details.append(
-                {
-                    "row": i,
-                    "error": f"Missing required values: {', '.join(missing_vals)}",
-                }
-            )
-            continue
-
-        # Validate controlled values
-        if entity_type == "client":
-            ct = kwargs.get("client_type", "")
-            if ct not in VALID_CLIENT_TYPES:
-                errors += 1
-                error_details.append(
-                    {
-                        "row": i,
-                        "error": (
-                            f"Invalid client_type: {ct!r}."
-                            f" Must be one of: {', '.join(sorted(VALID_CLIENT_TYPES))}"
-                        ),
-                    }
-                )
-                continue
-
-        # Probe existence
-        if _check_exists(conn, entity_type, kwargs):
-            would_update += 1
-        else:
-            would_create += 1
-
-    return would_create, would_update, errors, error_details
-
-
 def _handle_bulk(args) -> None:
-    """Handle plural noun: ``fp upsert clients data.csv``.
-
-    Default mode is dry-run (validate without writing). Pass ``--commit``
-    to apply changes.
-    """
+    """Handle plural noun: ``fp upsert clients data.csv``."""
     from footprinter.services.ingest_service import IngestService
 
     noun = args.noun
@@ -555,12 +435,6 @@ def _handle_bulk(args) -> None:
     service = _get_service(svc_name)
     required_cols, optional_cols, int_cols = CSV_COLUMNS[entity_type]
     csv_path = Path(args.file)
-    has_dry_run = getattr(args, "dry_run", False)
-    has_commit = getattr(args, "commit", False)
-    if has_dry_run and has_commit:
-        console.print("[red]Cannot use --dry-run and --commit together.[/red]")
-        sys.exit(1)
-    dry_run = not has_commit
 
     rows = _validate_and_read_csv(csv_path, required_cols)
 
@@ -571,42 +445,6 @@ def _handle_bulk(args) -> None:
             console.print("[dim]No rows in CSV — nothing to do.[/dim]")
         return
 
-    if dry_run:
-        with open_db() as conn:
-            would_create, would_update, errors, error_details = _dry_run_csv_rows(
-                conn,
-                rows,
-                service,
-                entity_type,
-                required_cols,
-                optional_cols,
-                int_cols,
-            )
-
-        summary = {
-            "total": would_create + would_update + errors,
-            "would_create": would_create,
-            "would_update": would_update,
-            "errors": errors,
-        }
-        if error_details:
-            summary["error_details"] = error_details
-
-        if getattr(args, "json", False):
-            output_json(summary)
-        else:
-            table = Table(title=f"Dry run — {noun}")
-            table.add_column("Metric", style="cyan")
-            table.add_column("Count", justify="right")
-            table.add_row("Would create", str(would_create))
-            table.add_row("Would update", str(would_update))
-            table.add_row("Errors", str(errors))
-            table.add_row("Total", str(would_create + would_update + errors))
-            console.print(table)
-            console.print("[dim]Pass --commit to apply these changes.[/dim]")
-        return
-
-    # Commit mode — write through service layer with ingest tracking
     pipe_name = f"upsert_{entity_type}"
 
     with open_db() as conn:
@@ -807,12 +645,6 @@ def _handle_folder_csv(args) -> None:
 
     service = _get_service("folder_service")
     csv_path = Path(args.file)
-    has_dry_run = getattr(args, "dry_run", False)
-    has_commit = getattr(args, "commit", False)
-    if has_dry_run and has_commit:
-        console.print("[red]Cannot use --dry-run and --commit together.[/red]")
-        sys.exit(1)
-    dry_run = not has_commit
 
     rows = _validate_and_read_csv(csv_path, ["folder_path"])
 
@@ -821,35 +653,6 @@ def _handle_folder_csv(args) -> None:
             output_json({"total": 0, "assigned": 0, "errors": 0})
         else:
             console.print("[dim]No rows in CSV — nothing to do.[/dim]")
-        return
-
-    if dry_run:
-        with open_db() as conn:
-            would_assign, already_matched, errors, error_details = _dry_run_folder_csv_rows(
-                conn, rows,
-            )
-
-        summary: dict = {
-            "total": would_assign + already_matched + errors,
-            "would_assign": would_assign,
-            "already_matched": already_matched,
-            "errors": errors,
-        }
-        if error_details:
-            summary["error_details"] = error_details
-
-        if getattr(args, "json", False):
-            output_json(summary)
-        else:
-            table = Table(title="Dry run — folder assignments")
-            table.add_column("Metric", style="cyan")
-            table.add_column("Count", justify="right")
-            table.add_row("Would assign", str(would_assign))
-            table.add_row("Already matched", str(already_matched))
-            table.add_row("Errors", str(errors))
-            table.add_row("Total", str(would_assign + already_matched + errors))
-            console.print(table)
-            console.print("[dim]Pass --commit to apply these changes.[/dim]")
         return
 
     with open_db() as conn:
@@ -987,8 +790,6 @@ def register(subparsers) -> None:
             "  Acme Corp,external\n"
             "  Internal Tools,internal\n"
             "\n"
-            "modes:\n"
-            "  Default is dry-run (validate only). Pass --commit to write.\n"
             "  Existing records (matched by name) are updated, new ones created."
         ),
         "projects": (
@@ -1004,8 +805,6 @@ def register(subparsers) -> None:
             "  my-api,Acme Corp,Acme public API\n"
             "  docs-site,,Documentation site\n"
             "\n"
-            "modes:\n"
-            "  Default is dry-run (validate only). Pass --commit to write.\n"
             "  Existing records (matched by name) are updated, new ones created."
         ),
     }
@@ -1019,18 +818,6 @@ def register(subparsers) -> None:
             formatter_class=FORMATTER,
         )
         p.add_argument("file", help="Path to CSV file")
-        p.add_argument(
-            "--dry-run",
-            action="store_true",
-            default=False,
-            help="Validate and preview changes without writing (default behavior)",
-        )
-        p.add_argument(
-            "--commit",
-            action="store_true",
-            default=False,
-            help="Apply validated changes to the database",
-        )
         add_json_flag(p)
         p.set_defaults(func=_handle_bulk)
 
@@ -1068,7 +855,7 @@ def register(subparsers) -> None:
         help="Assign folders via CSV or under a folder path",
         description=(
             "Assign folders to projects/clients. Two modes:\n"
-            "  CSV:    fp upsert folders assignments.csv [--commit]\n"
+            "  CSV:    fp upsert folders assignments.csv\n"
             "  Path:   fp upsert folders --folder /path --project-id N\n"
         ),
         epilog=(
@@ -1082,10 +869,7 @@ def register(subparsers) -> None:
             "example CSV:\n"
             "  folder_path,project_name\n"
             "  /Work/acme/docs,Acme Docs\n"
-            "  /Work/internal/api,Internal API\n"
-            "\n"
-            "modes:\n"
-            "  Default is dry-run (validate only). Pass --commit to write."
+            "  /Work/internal/api,Internal API"
         ),
         formatter_class=FORMATTER,
     )
@@ -1093,17 +877,5 @@ def register(subparsers) -> None:
     p.add_argument("--folder", default=None, help="Folder path to assign under (legacy mode)")
     p.add_argument("--project-id", type=int, default=None, dest="project_id", help="Project ID to assign")
     p.add_argument("--client-id", type=int, default=None, dest="client_id", help="Client ID to assign")
-    p.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        help="Validate and preview changes without writing (default behavior, CSV mode)",
-    )
-    p.add_argument(
-        "--commit",
-        action="store_true",
-        default=False,
-        help="Apply validated changes to the database (CSV mode)",
-    )
     add_json_flag(p)
     p.set_defaults(func=_handle_folders_dispatch)
