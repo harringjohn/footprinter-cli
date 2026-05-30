@@ -161,25 +161,24 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "id": "1", "name": "readme.md", "path": "/Users/me/Work/readme.md",
             "source": "local", "status": "listed", "content_type": "markdown",
             "size_bytes": "1024", "modified_at": "2026-01-15T10:00:00Z",
-            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+            "project_id": "1", "client_id": "1",
         },
         {
             "id": "2", "name": "notes.txt", "path": "/Users/me/Work/notes.txt",
             "source": "local", "status": "hidden", "content_type": "text",
             "size_bytes": "512", "modified_at": "2026-02-01T10:00:00Z",
-            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+            "project_id": "", "client_id": "",
         },
     ],
     "folder": [
         {
             "id": "1", "path": "/Users/me/Work", "relative_path": "Work", "name": "Work",
             "source": "local", "status": "listed", "project_id": "1", "client_id": "",
-            "visibility": "full", "access": "allow",
         },
         {
             "id": "2", "path": "/Users/me/Personal", "relative_path": "Personal",
             "name": "Personal", "source": "local", "status": "listed",
-            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+            "project_id": "", "client_id": "",
         },
     ],
     "email": [
@@ -187,13 +186,13 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "id": "1", "message_id": "msg-001@example.com", "account": "work",
             "subject": "Project Update", "from_address": "sender@example.com",
             "received_at": "2026-02-01T09:00:00Z", "status": "listed",
-            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+            "project_id": "1", "client_id": "1",
         },
         {
             "id": "2", "message_id": "msg-002@example.com", "account": "personal",
             "subject": "Newsletter", "from_address": "news@example.com",
             "received_at": "2026-02-02T09:00:00Z", "status": "listed",
-            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+            "project_id": "", "client_id": "",
         },
     ],
     "chat": [
@@ -201,13 +200,13 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "id": "1", "external_id": "conv-001", "account": "personal",
             "title": "Architecture Chat", "message_count": "5", "status": "listed",
             "created_at": "2026-01-10T08:00:00Z", "updated_at": "2026-01-10T09:00:00Z",
-            "project_id": "1", "client_id": "1", "visibility": "full", "access": "allow",
+            "project_id": "1", "client_id": "1",
         },
         {
             "id": "2", "external_id": "conv-002", "account": "personal",
             "title": "Random Chat", "message_count": "3", "status": "listed",
             "created_at": "2026-01-11T08:00:00Z", "updated_at": "2026-01-11T09:00:00Z",
-            "project_id": "", "client_id": "", "visibility": "inherit", "access": "inherit",
+            "project_id": "", "client_id": "",
         },
     ],
     "visit": [
@@ -215,16 +214,16 @@ TEMPLATE_ROWS: dict[str, list[dict]] = {
             "id": "1", "url": "https://example.com", "title": "Example",
             "visit_time": "2026-03-01T12:00:00Z", "browser": "safari",
             "status": "listed", "project_id": "1", "client_id": "1",
-            "visibility": "full", "access": "allow",
         },
         {
             "id": "2", "url": "https://news.com", "title": "News",
             "visit_time": "2026-03-02T12:00:00Z", "browser": "chrome",
             "status": "listed", "project_id": "", "client_id": "",
-            "visibility": "inherit", "access": "inherit",
         },
     ],
 }
+
+_NON_TEMPLATE_COLS = {"visibility", "access"}
 
 _POLICY_VALUES = "hidden, opaque, full, inherit"
 _ACCESS_VALUES = "allow, deny, inherit"
@@ -311,9 +310,11 @@ def _handle_collection(args) -> None:
 
     if getattr(args, "template", False):
         export_cols = EXPORT_COLUMNS.get(entity_type)
+        template_cols = [c for c in export_cols if c not in _NON_TEMPLATE_COLS]
         template_data = TEMPLATE_ROWS.get(entity_type, [])
-        output_csv(template_data, columns=export_cols)
-        notes = VALID_VALUES_NOTES.get(entity_type, {})
+        output_csv(template_data, columns=template_cols)
+        notes = {k: v for k, v in VALID_VALUES_NOTES.get(entity_type, {}).items()
+                 if k not in _NON_TEMPLATE_COLS}
         if notes:
             print("\nValid values:", file=sys.stderr)
             for fld, values in notes.items():

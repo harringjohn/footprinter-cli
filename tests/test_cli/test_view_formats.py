@@ -13,6 +13,8 @@ import io
 from contextlib import contextmanager
 from unittest.mock import patch
 
+import pytest
+
 from conftest import run_fp
 
 
@@ -148,20 +150,43 @@ class TestTemplateOutput:
         header = _parse_csv_header(stdout)
         assert "id" in header
         assert "path" in header
-        assert "visibility" in header
         assert "readme.md" in stdout
 
     def test_template_files_prints_valid_values_to_stderr(self):
         _, stderr, code = run_fp("view", "files", "--template")
         assert code == 0
         assert "Valid values" in stderr
-        assert "visibility" in stderr
+        assert "status" in stderr
 
     def test_template_clients_has_header(self):
         stdout, _, code = run_fp("view", "clients", "--template")
         assert code == 0
         assert "name" in stdout
         assert "client_type" in stdout
+
+    def test_template_files_excludes_non_writable_columns(self):
+        stdout, _, code = run_fp("view", "files", "--template")
+        assert code == 0
+        header = _parse_csv_header(stdout)
+        assert "visibility" not in header
+        assert "access" not in header
+
+    @pytest.mark.parametrize("noun", ["files", "folders", "emails", "chats", "visits"])
+    def test_template_excludes_non_writable_for_all_entity_types(self, noun):
+        stdout, _, code = run_fp("view", noun, "--template")
+        assert code == 0
+        header = _parse_csv_header(stdout)
+        assert "visibility" not in header, f"{noun} template should not include 'visibility'"
+        assert "access" not in header, f"{noun} template should not include 'access'"
+
+    def test_csv_files_still_includes_access_columns(self):
+        conn = _seeded_format_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, _, code = run_fp("view", "files", "--csv", "--all")
+        assert code == 0
+        header = _parse_csv_header(stdout)
+        assert "visibility" in header
+        assert "access" in header
 
 
 # ---------------------------------------------------------------------------
