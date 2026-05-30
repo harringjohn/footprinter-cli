@@ -1590,7 +1590,7 @@ def print_summary(
     console.print()
     console.print("[bold]Ready to explore your data:[/bold]")
     console.print('  [cyan]fp search[/cyan] [dim]"query"[/dim]          Search your files')
-    console.print("  [cyan]fp ingest status[/cyan]           Show data counts")
+    console.print("  [cyan]fp status[/cyan]                  Show data counts")
     console.print("  [cyan]fp ingest[/cyan]                  Re-index (incremental)")
     console.print()
     console.print("[dim]Run fp -h or fp <command> --help for more.[/dim]")

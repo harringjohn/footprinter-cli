@@ -1012,7 +1012,7 @@ class TestUXImprovements:
 
         source = inspect.getsource(print_summary)
         assert "fp search" in source
-        assert "fp ingest status" in source
+        assert "fp status" in source
         assert "fp -h" in source
 
     def test_print_summary_has_no_dashboard_launched_param(self):
@@ -1879,7 +1879,7 @@ class TestSWE866SetupSummaryOverhaul:
         print_summary()
         printed = _extract_printed_text(mock_console)
         assert "fp search" in printed
-        assert "fp ingest status" in printed
+        assert "fp status" in printed
         assert "fp -h" in printed or "fp <command> --help" in printed
 
     @patch("footprinter.cli.setup._get_indexing_counts")

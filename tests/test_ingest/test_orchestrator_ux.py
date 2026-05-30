@@ -1,7 +1,7 @@
 """
 Tests for orchestrator Rich UX output.
 
-Covers: --quiet flag, Rich print_status/print_results, _stage_detail_string,
+Covers: --quiet flag, Rich print_results, _stage_detail_string,
 _print_completion_summary, and Rich auto-detection behavior.
 """
 
@@ -190,65 +190,6 @@ class TestStageDetailString:
         assert "500 processed" in detail
 
 
-class TestPrintStatus:
-    """Test print_status() Rich output."""
-
-    def test_quiet_mode(self):
-        """quiet=True should produce no output."""
-        from footprinter.ingest.status import print_status
-
-        console, buf = _make_console()
-        print_status({"files": {}, "files_total": 0}, quiet=True, console=console)
-        output = buf.getvalue()
-        assert output == ""
-
-    def test_with_data(self):
-        """Should render table with data."""
-        from footprinter.ingest.status import print_status
-
-        console, buf = _make_console()
-        status = {
-            "files_total": 100,
-            "files": {
-                "local": {"count": 80, "size_mb": 50.0},
-                "drive:work": {"count": 20, "size_mb": 10.0},
-            },
-            "folders": {"local": 30},
-            "visits": 500,
-            "emails": 1000,
-            "chats": {"claude": 5},
-            "messages": 200,
-            "projects": 10,
-            # classifications removed — retention is app-scope
-        }
-        print_status(status, console=console)
-        output = buf.getvalue()
-        assert "Data Pipeline Status" in output
-        assert "80" in output
-        assert "500" in output
-        assert "1,000" in output
-
-    def test_empty_data(self):
-        """Should handle empty/zero data without crashing."""
-        from footprinter.ingest.status import print_status
-
-        console, buf = _make_console()
-        status = {
-            "files_total": 0,
-            "files": {},
-            "folders": {},
-            "visits": 0,
-            "emails": 0,
-            "chats": {},
-            "messages": 0,
-            "projects": 0,
-            # classifications removed — retention is app-scope
-        }
-        print_status(status, console=console)
-        output = buf.getvalue()
-        assert "Data Pipeline Status" in output
-
-
 class TestRichAutoDetection:
     """Test Rich Console behavior in non-terminal contexts."""
 
@@ -396,26 +337,7 @@ class TestCompletedWithErrorsDisplay:
 # Bug 6: TestQuietFlagBehavior — quiet suppresses all output
 # ---------------------------------------------------------------------------
 class TestQuietFlagBehavior:
-    """Verify print_status and print_results produce zero output when quiet=True."""
-
-    def test_print_status_quiet_zero_output(self):
-        """print_status(quiet=True) should produce zero output."""
-        from footprinter.ingest.status import print_status
-
-        console, buf = _make_console()
-        status = {
-            "files": {"local": {"count": 10, "size_mb": 5.0}},
-            "files_total": 10,
-            "visits": 5,
-            "emails": 3,
-            "chats": {},
-            "messages": 0,
-            "projects": 1,
-            # classifications removed — retention is app-scope
-            "folders": {},
-        }
-        print_status(status, quiet=True, console=console)
-        assert buf.getvalue() == ""
+    """Verify print_results produces zero output when quiet=True."""
 
     def test_print_results_quiet_zero_output(self):
         """print_results(quiet=True) should produce zero output."""

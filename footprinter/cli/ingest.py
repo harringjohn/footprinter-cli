@@ -32,7 +32,6 @@ def _build_parser(subparsers, name):
             "  fp ingest refresh local                Re-scan local files (incremental)\n"
             "  fp ingest refresh all --full            Re-scan all sources (full)\n"
             "  fp ingest --pipe local_files,browser   Specific internal pipes\n"
-            "  fp ingest status                       Show pipeline diagnostics\n"
             "  fp ingest import export.zip            Import a chat export"
         ),
         formatter_class=FORMATTER,
@@ -67,15 +66,6 @@ def _build_parser(subparsers, name):
 
     # Sub-subparsers for ingest actions
     subs = parser.add_subparsers(dest="ingest_action", metavar="COMMAND", title="commands (one required)")
-
-    # status (deprecated — use fp status)
-    status_p = subs.add_parser(
-        "status",
-        help="[deprecated] Use 'fp status' instead",
-        description="[DEPRECATED] Use 'fp status' instead.\n\nShow data counts and pipeline health diagnostics.",
-        formatter_class=FORMATTER,
-    )
-    add_json_flag(status_p)
 
     # import
     import_p = subs.add_parser(
@@ -144,7 +134,6 @@ def _handle_ingest(args) -> None:
         return
 
     handlers = {
-        "status": _ingest_status,
         "import": _ingest_import,
         "refresh": _ingest_refresh,
     }
@@ -455,35 +444,6 @@ def _ingest_pipeline(args) -> None:
 
         file_ids = _extract_touched_file_ids(results) if pipes is not None else None
         run_vectorization_stage(quiet=quiet, file_ids=file_ids)
-
-
-def _ingest_status(args) -> None:
-    """Show pipeline diagnostics (data counts). DEPRECATED: use fp status."""
-    from rich.console import Console as _C
-
-    _C(stderr=True).print(
-        "[yellow]Warning:[/yellow] 'fp ingest status' is deprecated. "
-        "Use [bold]fp status[/bold] instead.",
-    )
-
-    from footprinter.paths import get_db_path
-
-    db_path = get_db_path()
-    if not db_path.exists():
-        if getattr(args, "json", False):
-            output_json({})
-        else:
-            console.print("[dim]No database found. Run [bold]fp ingest[/bold] to start indexing.[/dim]")
-        return
-
-    from footprinter.ingest.status import get_status, print_status
-
-    status = get_status(str(db_path))
-
-    if getattr(args, "json", False):
-        output_json(status)
-    else:
-        print_status(status, quiet=getattr(args, "quiet", False))
 
 
 def _ingest_import(args) -> None:
