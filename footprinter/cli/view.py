@@ -53,6 +53,8 @@ _FILTER_SUPPORT: dict[str, set[str]] = {
     "files": {"project_id"},
     "folders": {"project_id"},
     "emails": {"project_id", "client_id"},
+    "chats": {"project_id", "client_id"},
+    "visits": {"project_id", "client_id"},
 }
 
 # ---------------------------------------------------------------------------
