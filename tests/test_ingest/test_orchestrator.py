@@ -178,55 +178,6 @@ browsers:
         assert called_db is orchestrator.db
 
 
-class TestOrchestratorStatus:
-    """Test orchestrator status reporting."""
-
-    def test_get_status_returns_dict(self, temp_db):
-        """get_status should return a dictionary with expected keys."""
-        import sqlite3
-
-        from footprinter.ingest.orchestrator import DataPipelineOrchestrator
-
-        # Create a minimal database with required tables
-        conn = sqlite3.connect(temp_db)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE files (
-                id INTEGER PRIMARY KEY,
-                source TEXT,
-                size_bytes INTEGER,
-                status TEXT DEFAULT 'listed'
-            )
-        """)
-        cursor.execute("CREATE TABLE folders (id INTEGER PRIMARY KEY, source TEXT)")
-        cursor.execute("CREATE TABLE visits (id INTEGER PRIMARY KEY)")
-        cursor.execute("CREATE TABLE emails (id INTEGER PRIMARY KEY)")
-        cursor.execute("CREATE TABLE chats (id INTEGER PRIMARY KEY, account TEXT)")
-        cursor.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY)")
-        cursor.execute("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
-        cursor.execute("CREATE TABLE classifications (id INTEGER PRIMARY KEY, classification TEXT)")
-        conn.commit()
-        conn.close()
-
-        # Patch get_db_path to use temp database — get_status now lives in status.py
-        with patch("footprinter.ingest.status.get_db_path", return_value=temp_db):
-            with patch.object(DataPipelineOrchestrator, "__init__", lambda x, *args, **kwargs: None):
-                orchestrator = DataPipelineOrchestrator()
-                orchestrator.config = {}
-                orchestrator.db = None
-                orchestrator.full_mode = False
-
-                status = orchestrator.get_status()
-
-        assert isinstance(status, dict)
-        assert "files" in status
-        assert "files_total" in status
-        assert "folders" in status
-        assert "visits" in status
-        assert "emails" in status
-        assert "projects" in status
-
-
 class TestOrchestratorStageExecution:
     """Test individual stage execution."""
 
@@ -384,34 +335,6 @@ class TestOrchestratorStageExecution:
 
 class TestPrintFunctions:
     """Test output formatting functions (Rich-based)."""
-
-    def test_print_status_no_error(self):
-        """print_status should not raise errors."""
-        import io
-
-        from rich.console import Console
-
-        from footprinter.ingest.status import print_status
-
-        status = {
-            "files_total": 100,
-            "files": {"local": {"count": 50, "size_mb": 10.5}},
-            "folders": {"local": 20},
-            "visits": 500,
-            "emails": 1000,
-            "chats": {"claude": 10},
-            "messages": 200,
-            "projects": 5,
-            "classifications": {"KEEP": 30, "DELETE": 20},
-        }
-
-        buf = io.StringIO()
-        console = Console(file=buf, force_terminal=False)
-        print_status(status, console=console)
-
-        output = buf.getvalue()
-        assert "Data Pipeline Status" in output
-        assert "50" in output  # local file count
 
     def test_print_results_no_error(self):
         """print_results should not raise errors."""
@@ -1233,12 +1156,6 @@ class TestThinFacade:
         source = inspect.getsource(mod)
         line_count = len(source.strip().splitlines())
         assert line_count < 135, f"orchestrator.py is {line_count} lines, target < 135"
-
-    def test_get_status_importable_from_status(self):
-        """get_status should be a standalone function in status.py."""
-        from footprinter.ingest.status import get_status
-
-        assert callable(get_status)
 
     def test_processing_no_longer_exports_app_scope_functions(self):
         """processing.py must not contain app-scope functions after extraction."""

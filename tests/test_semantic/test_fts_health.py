@@ -127,19 +127,6 @@ class TestRepairFts:
             assert isinstance(result[table]["after"], int)
 
 
-class TestStatusIncludesFts:
-    def test_status_includes_fts_health(self, fts_db):
-        """get_status() includes FTS row count data."""
-        from footprinter.ingest.status import get_status
-
-        status = get_status(db_path=str(fts_db.db_path))
-
-        assert "fts" in status
-        assert "files_fts" in status["fts"]
-        assert "base_rows" in status["fts"]["files_fts"]
-        assert "fts_rows" in status["fts"]["files_fts"]
-
-
 class TestFtsExcludesOpaque:
     """FTS5 indexes must not contain content columns for opaque/hidden files."""
 

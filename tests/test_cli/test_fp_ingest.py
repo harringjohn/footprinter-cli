@@ -3,7 +3,7 @@
 Validates:
   1. fp ingest --help lists available subcommands and pipeline flags
   2. Pipeline routing: bare ingest, --pipe, --full, --rebuild-vectors
-  3. Status: get_status() + print_status() or JSON output
+  3. Status subcommand removed (was deprecated in FPR-1861)
   4. Import: ChatIndexer.upload() routing
   5. Refresh: validates source, runs correct stages in full_mode
   6. Gated commands: classify/backfill/purge/report not registered
@@ -33,8 +33,9 @@ class TestIngestHelp:
     def test_help_lists_subcommands(self):
         stdout, stderr, code = run_fp("ingest", "--help")
         output = stdout + stderr
-        for name in ("status", "import", "refresh"):
+        for name in ("import", "refresh"):
             assert name in output, f"'{name}' not in fp ingest --help"
+        assert "status" not in output, "'status' should not be in fp ingest --help"
 
     def test_help_excludes_gated_commands(self):
         """classify/backfill/purge/report are excluded from v1.0."""
@@ -124,33 +125,12 @@ class TestIngestPipeline:
 # ---------------------------------------------------------------------------
 
 
-class TestIngestStatus:
-    """fp ingest status calls get_status() and supports --json."""
+class TestIngestStatusRemoved:
+    """fp ingest status was removed — verify it's no longer recognized."""
 
-    @patch("footprinter.ingest.status.print_status")
-    @patch("footprinter.ingest.status.get_status")
-    def test_status_calls_get_status(self, mock_get, _print, tmp_path):
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get.return_value = {"files_total": 42}
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            run_fp("ingest", "status")
-
-        mock_get.assert_called_once()
-
-    @patch("footprinter.ingest.status.get_status")
-    def test_status_json_output(self, mock_get, tmp_path):
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get.return_value = {"files_total": 42}
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            stdout, stderr, code = run_fp("ingest", "status", "--json")
-
-        assert code == 0
-        data = json.loads(stdout)
-        assert data["files_total"] == 42
+    def test_ingest_status_not_a_subcommand(self):
+        _, _, code = run_fp("ingest", "status")
+        assert code != 0, "'fp ingest status' should not be a recognized subcommand"
 
 
 # ---------------------------------------------------------------------------
@@ -817,36 +797,3 @@ class TestExtractTouchedFileIds:
         assert _extract_touched_file_ids(results) == []
 
 
-# ---------------------------------------------------------------------------
-# Deprecation: fp ingest status
-# ---------------------------------------------------------------------------
-
-
-class TestIngestStatusDeprecation:
-    """fp ingest status prints a deprecation warning."""
-
-    @patch("footprinter.ingest.status.print_status")
-    @patch("footprinter.ingest.status.get_status")
-    def test_deprecation_warning_shown(self, mock_get, _print, tmp_path):
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get.return_value = {"files_total": 0}
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            stdout, stderr, code = run_fp("ingest", "status")
-
-        assert "deprecated" in (stdout + stderr).lower()
-        assert "fp status" in (stdout + stderr)
-
-    @patch("footprinter.ingest.status.get_status")
-    def test_json_still_works(self, mock_get, tmp_path):
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get.return_value = {"files_total": 42}
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            stdout, stderr, code = run_fp("ingest", "status", "--json")
-
-        assert code == 0
-        data = json.loads(stdout)
-        assert data["files_total"] == 42

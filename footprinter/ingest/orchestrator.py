@@ -122,11 +122,6 @@ class DataPipelineOrchestrator:
         """Run the vectorization follow-up stage after the main pipeline."""
         return run_vectorization(self._get_db(), full_mode=self.full_mode, on_progress=on_progress, file_ids=file_ids)
 
-    def get_status(self) -> Dict:
-        """Return current data counts and pipeline health."""
-        from footprinter.ingest.status import get_status
-        return get_status(str(get_db_path()))
-
     def close(self):
         """Close the database connection and release resources."""
         if self.db:

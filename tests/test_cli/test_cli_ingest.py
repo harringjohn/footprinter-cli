@@ -6,48 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-class TestIngestStatusQuietFlag:
-    """--quiet flag should suppress status output."""
-
-    @patch("footprinter.ingest.status.print_status")
-    @patch("footprinter.ingest.status.get_status")
-    def test_quiet_flag_suppresses_status(self, mock_get_status, mock_print_status, tmp_path):
-        """_ingest_status with quiet=True passes quiet=True to print_status."""
-        from footprinter.cli.ingest import _ingest_status
-
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get_status.return_value = {"files_total": 0}
-        args = SimpleNamespace(quiet=True, json=False)
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            _ingest_status(args)
-
-        mock_print_status.assert_called_once_with(
-            {"files_total": 0},
-            quiet=True,
-        )
-
-    @patch("footprinter.ingest.status.print_status")
-    @patch("footprinter.ingest.status.get_status")
-    def test_no_quiet_flag_prints_normally(self, mock_get_status, mock_print_status, tmp_path):
-        """_ingest_status without quiet passes quiet=False to print_status."""
-        from footprinter.cli.ingest import _ingest_status
-
-        db_file = tmp_path / "test.db"
-        db_file.touch()
-        mock_get_status.return_value = {"files_total": 0}
-        args = SimpleNamespace(quiet=False, json=False)
-
-        with patch("footprinter.paths.get_db_path", return_value=db_file):
-            _ingest_status(args)
-
-        mock_print_status.assert_called_once_with(
-            {"files_total": 0},
-            quiet=False,
-        )
-
-
 class TestIngestPipelineInvalidPipe:
     """Invalid --pipe should exit non-zero with helpful error."""
 

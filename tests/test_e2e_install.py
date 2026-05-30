@@ -257,8 +257,8 @@ class TestOrchestratorE2E:
         assert "Pipeline" in output
 
     def test_quiet_mode_suppresses_everything(self):
-        """With quiet=True, both print_results and print_status emit nothing."""
-        from footprinter.ingest.status import print_results, print_status
+        """With quiet=True, print_results emits nothing."""
+        from footprinter.ingest.status import print_results
 
         buf = io.StringIO()
         console = Console(file=buf, force_terminal=False)
@@ -269,25 +269,6 @@ class TestOrchestratorE2E:
             console=console,
         )
         assert buf.getvalue() == ""
-
-        buf2 = io.StringIO()
-        console2 = Console(file=buf2, force_terminal=False)
-        print_status(
-            {
-                "files_total": 100,
-                "files": {},
-                "folders": {},
-                "visits": 50,
-                "emails": 0,
-                "chats": {},
-                "messages": 0,
-                "projects": 5,
-                "classifications": {},
-            },
-            quiet=True,
-            console=console2,
-        )
-        assert buf2.getvalue() == ""
 
     def test_error_messages_preserve_context(self):
         """Error messages longer than 60 chars should not be truncated away."""
