@@ -1076,3 +1076,87 @@ class TestCheckClientVerbose:
         assert data["project_count"] == 1
         assert len(data["projects"]) == 1
         assert data["projects"][0]["name"] == "Listed Project"
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: verbose on single-file target (FPR-1888)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckFilePathVerbose:
+    """--verbose on a single-file target should not be silently ignored."""
+
+    def _make_conn(self, file_row, project_row=None):
+        conn = _mock_conn()
+        cursors = []
+
+        file_cursor = MagicMock()
+        file_cursor.fetchone.return_value = file_row
+        cursors.append(file_cursor)
+
+        if file_row and file_row.get("project_id") is not None:
+            proj_cursor = MagicMock()
+            proj_cursor.fetchone.return_value = project_row
+            cursors.append(proj_cursor)
+
+        policy_cursor = MagicMock()
+        policy_cursor.fetchone.return_value = None
+        policy_cursor.fetchall.return_value = []
+        cursors.append(policy_cursor)
+
+        conn.execute.side_effect = lambda *a, **kw: cursors.pop(0) if cursors else policy_cursor
+        return conn
+
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.cli._policy_helpers.build_policy_chain", return_value=[])
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_file_path_verbose_prints_note(
+        self, mock_console, mock_perm, mock_vis, mock_chain, mock_print_chain
+    ):
+        from footprinter.cli._policy_helpers import check_file_path
+
+        file_row = {"id": 1, "name": "test.py", "project_id": None}
+        conn = self._make_conn(file_row)
+
+        check_file_path(conn, "/tmp/test.py", json_output=False, verbose=True)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "verbose" in printed.lower()
+        assert "policy chain" in printed.lower()
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.cli._policy_helpers.build_policy_chain", return_value=[])
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    def test_check_file_path_verbose_json_includes_note(
+        self, mock_perm, mock_vis, mock_chain, mock_json
+    ):
+        from footprinter.cli._policy_helpers import check_file_path
+
+        file_row = {"id": 1, "name": "test.py", "project_id": None}
+        conn = self._make_conn(file_row)
+
+        check_file_path(conn, "/tmp/test.py", json_output=True, verbose=True)
+
+        data = mock_json.call_args[0][0]
+        assert "verbose_note" in data
+
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.cli._policy_helpers.build_policy_chain", return_value=[])
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_file_path_nonverbose_no_note(
+        self, mock_console, mock_perm, mock_vis, mock_chain, mock_print_chain
+    ):
+        from footprinter.cli._policy_helpers import check_file_path
+
+        file_row = {"id": 1, "name": "test.py", "project_id": None}
+        conn = self._make_conn(file_row)
+
+        check_file_path(conn, "/tmp/test.py", json_output=False, verbose=False)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "verbose" not in printed.lower()
