@@ -20,6 +20,8 @@ import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from conftest import run_fp
 
 
@@ -44,11 +46,12 @@ def _csv_test_db():
 
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE files (id INTEGER PRIMARY KEY, status TEXT, "
-        "project_id INTEGER, client_id INTEGER, "
-        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
-    )
+    for table in ("files", "folders", "emails", "chats", "visits"):
+        conn.execute(
+            f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, status TEXT, "
+            "project_id INTEGER, client_id INTEGER, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
     conn.execute(
         "CREATE TABLE ingests ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -513,20 +516,25 @@ class TestUpdateBulkCsv:
         assert row[0] is None
         conn.close()
 
-    def test_bulk_csv_stamps_updated_at(self, tmp_path):
+    @pytest.mark.parametrize("noun", ["files", "folders", "emails", "chats", "visits"])
+    def test_bulk_csv_stamps_updated_at(self, noun, tmp_path):
+        from argparse import Namespace
+
+        from footprinter.cli.update import _handle_bulk_csv
+
         conn = _csv_test_db()
         conn.execute(
-            "INSERT INTO files (id, status, updated_at) VALUES (1, 'listed', '2000-01-01')"
+            f"INSERT INTO {noun} (id, status, updated_at) VALUES (1, 'listed', '2000-01-01')"
         )
         conn.commit()
 
         csv_path = _write_csv(tmp_path, ["id,status", "1,unlisted"])
+        args = Namespace(noun=noun, file=csv_path, json=False)
 
         with patch("footprinter.cli.update.open_db", return_value=_open_db_stub(conn)):
-            _, _, code = run_fp("update", "files", csv_path)
+            _handle_bulk_csv(args)
 
-        assert code == 0
-        row = conn.execute("SELECT updated_at FROM files WHERE id = 1").fetchone()
+        row = conn.execute(f"SELECT updated_at FROM {noun} WHERE id = 1").fetchone()
         assert row[0] is not None
         assert row[0] > "2000-01-01"
         conn.close()
