@@ -3,8 +3,8 @@
 Routes ``fp delete client 42`` through the service layer's ``delete()``
 function, which removes the row from the database (irreversible).
 Deletion is blocked when dependent records (files, projects, etc.) point
-at the entity — reassign or remove those first, or use ``fp upsert
---status removed`` for a soft-delete. Requires confirmation unless
+at the entity — reassign or remove those first, or use ``fp update
+<noun> <id> --status removed`` for a soft-delete. Requires confirmation unless
 ``--yes`` is passed.
 """
 
@@ -104,7 +104,7 @@ def register(subparsers) -> None:
             "Hard delete a super-entity record from the database (irreversible). "
             "Blocked when dependent records (files, projects, etc.) point at the "
             "entity — reassign or remove those first, or use "
-            "'fp upsert <noun> --status removed' for a soft-delete."
+            "'fp update <noun> <id> --status removed' for a soft-delete."
         ),
         epilog=(
             "examples:\n"

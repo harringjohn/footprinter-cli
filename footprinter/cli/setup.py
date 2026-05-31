@@ -546,7 +546,7 @@ def _offer_csv_import(conn) -> None:
     console.print("\n[bold]Import clients/projects from CSV[/bold]")
     console.print(
         "  If you have a spreadsheet of clients or projects, paste the file path.\n"
-        "  [dim]Leave blank to skip. You can import later with: fp upsert clients data.csv[/dim]"
+        "  [dim]Leave blank to skip. You can import later with: fp add clients data.csv[/dim]"
     )
 
     while True:
@@ -1267,7 +1267,7 @@ def collect_chat_export_path() -> str | None:
     console.print("\n[bold]3. Chat history[/bold]")
     console.print(
         "  Optionally import Claude or ChatGPT chat exports.\n"
-        "  [dim]You can also import later with: fp ingest import <file>[/dim]"
+        "  [dim]You can also import later with: fp add chats <file>[/dim]"
     )
     if not Confirm.ask("  Do you have Claude or ChatGPT exports to import?", default=False):
         return None
@@ -1316,7 +1316,7 @@ def import_chat_export(path: str) -> dict:
         return result if isinstance(result, dict) else {}
     except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised
         console.print(f"  [yellow]Chat import failed: {e}[/yellow]")
-        console.print(f"  [dim]Run manually: fp ingest import {path}[/dim]")
+        console.print(f"  [dim]Run manually: fp add chats {path}[/dim]")
         return {}
 
 
@@ -1602,7 +1602,7 @@ def print_summary(
         extras.append("fp connect")
     chat_count = counts.get("chats", 0) if counts else 0
     if (chat_result is None or not chat_result) and chat_count == 0:
-        extras.append("fp ingest import <file>")
+        extras.append("fp add chats <file>")
     if extras:
         console.print()
         console.print(f"[dim]Not yet set up: {', '.join(extras)}[/dim]")

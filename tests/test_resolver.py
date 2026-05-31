@@ -338,7 +338,7 @@ class TestHardDeleteHelpers:
     """Hard-delete helpers exist on db.projects and db.clients.
 
     Replaces the old "no delete_project" guardrail: the trichotomy work
-    splits soft-delete (fp upsert --status removed) from hard-delete
+    splits soft-delete (fp update --status removed) from hard-delete
     (fp delete → DELETE FROM ... blocked when dependents exist).
     """
 

@@ -77,7 +77,7 @@ fp ingest
 fp ingest --full
 
 # Show current data counts
-fp ingest status
+fp status
 
 # Re-scan a specific data source (incremental by default)
 fp ingest refresh google

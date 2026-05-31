@@ -1,6 +1,6 @@
 # CSV import — clients and projects
 
-`fp setup` (and `fp upsert`) can import clients and projects from CSV files. Two starter templates ship with Footprinter; copy and edit them to match your data.
+`fp setup` (and `fp add`) can import clients and projects from CSV files. Two starter templates ship with Footprinter; copy and edit them to match your data.
 
 - [`reference/clients-template.csv`](clients-template.csv)
 - [`reference/projects-template.csv`](projects-template.csv)
@@ -10,8 +10,8 @@ Import order matters: **import clients first**, then projects. The projects CSV 
 Post-setup, the same files import via:
 
 ```bash
-fp upsert clients path/to/clients.csv --commit
-fp upsert projects path/to/projects.csv --commit
+fp add clients path/to/clients.csv --commit
+fp add projects path/to/projects.csv --commit
 ```
 
 ## Clients
