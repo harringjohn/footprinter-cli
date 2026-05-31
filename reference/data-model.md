@@ -131,7 +131,7 @@ Organizational containers that group and influence content entities.
 | Aspect | Detail |
 |--------|--------|
 | **Created by** | User via `fp add` (projects, clients) or pipeline-discovered (folders) |
-| **Status management** | User-controlled via `fp update --status` (soft-delete) or `fp delete` (hard delete) |
+| **Status management** | User-controlled via `fp update <noun> <id> --status removed` (soft-delete) or `fp delete` (hard delete) |
 | **Influence on children** | Scope-based policy propagation (`project:{id}`, `client:{id}`, `folder:{path}`) affects children's visibility and permissions |
 | **Status cascade** | Status does **not** cascade to children — only policies propagate |
 | **Child references** | Children reference super entities via FK columns (`project_id`, `client_id`, `folder_id`) |

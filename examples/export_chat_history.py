@@ -26,7 +26,7 @@ if len(sys.argv) > 1:
 else:
     result = list_chats(conn, limit=1, sort_by="modified_at", order="desc")
     if not result["chats"]:
-        print("No chats found. Import chat exports with 'fp ingest import <file>'.")
+        print("No chats found. Import chat exports with 'fp add chats <file>'.")
         sys.exit(0)
     chat_id = result["chats"][0]["id"]
 
