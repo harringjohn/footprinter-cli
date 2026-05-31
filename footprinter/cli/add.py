@@ -137,10 +137,12 @@ DATA_CSV_SPECS: dict[str, tuple[list[str], list[str], str, str]] = {
 }
 
 DATA_EXISTENCE_KEYS: dict[str, tuple[str, list[tuple[str, str]], dict[str, str]]] = {
+    # insert_file always writes source='local'; match that in the guard
     "files": ("files", [("file_path", "path")], {"source": "local"}),
     "emails": ("emails", [("message_id", "message_id"), ("account", "account")], {}),
     "visits": ("visits", [("url", "url"), ("visit_time", "visit_time"), ("browser", "browser")], {}),
     "folders": ("folders", [("source", "source"), ("external_id", "external_id")], {}),
+    # messages: no stable natural key — backstop result-classification handles them
 }
 
 # ---------------------------------------------------------------------------
@@ -321,10 +323,13 @@ def _data_entity_exists(conn: sqlite3.Connection, noun: str, data: dict) -> bool
         return False
     table, key_cols, defaults = spec
     where_parts: list[str] = []
-    params: list = []
+    params: list[str | None] = []
     for csv_col, db_col in key_cols:
+        val = data.get(csv_col)
+        if val is None:
+            return False
         where_parts.append(f"{db_col} = ?")
-        params.append(data.get(csv_col))
+        params.append(val)
     for db_col, val in defaults.items():
         where_parts.append(f"{db_col} = ?")
         params.append(val)

@@ -12,11 +12,14 @@ Validates:
   9. Bulk CSV edge cases (missing columns, empty CSV, file not found)
   10. Data entity CSV routes to DB insert functions
   11. Data entity CSV error handling
+  11b. Data entity CSV real-DB mutation guard (FPR-1885)
   12. Chat archive import routes to ChatIndexer.upload()
   13. Argument validation errors
 """
 
 import json
+import sqlite3
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from conftest import run_fp
@@ -557,7 +560,6 @@ class TestAddDataBulkCsvNoMutation:
     @staticmethod
     def _open_db_ctx(conn):
         """Return a context manager that yields *conn* (replaces ``open_db``)."""
-        from contextlib import contextmanager
 
         @contextmanager
         def _ctx():
@@ -567,12 +569,10 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_add_files_csv_does_not_mutate_existing_row(self, temp_db, tmp_path):
         """Seed a file, run CSV add with same path, assert columns unchanged."""
-        import sqlite3 as _sqlite3
-
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
-        db.conn.row_factory = _sqlite3.Row
+        db.conn.row_factory = sqlite3.Row
         original = self._seed_file(db.conn)
 
         csv_path = _write_csv(tmp_path, [
@@ -600,12 +600,10 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_add_files_csv_existing_reports_error_without_mutation(self, temp_db, tmp_path):
         """Existing row → errors == 1, created == 0, 'already exists'."""
-        import sqlite3 as _sqlite3
-
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
-        db.conn.row_factory = _sqlite3.Row
+        db.conn.row_factory = sqlite3.Row
         self._seed_file(db.conn)
 
         csv_path = _write_csv(tmp_path, [
@@ -630,12 +628,10 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_add_files_csv_new_row_still_inserts_real_db(self, temp_db, tmp_path):
         """New file path inserts successfully via the real insert function."""
-        import sqlite3 as _sqlite3
-
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
-        db.conn.row_factory = _sqlite3.Row
+        db.conn.row_factory = sqlite3.Row
 
         csv_path = _write_csv(tmp_path, [
             "file_path,file_name",
@@ -662,12 +658,10 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_data_entity_exists_returns_false_for_messages(self, temp_db):
         """Messages have no natural key — existence check always returns False."""
-        import sqlite3 as _sqlite3
-
         from footprinter.ingest.database import Database
 
         db = Database(temp_db)
-        db.conn.row_factory = _sqlite3.Row
+        db.conn.row_factory = sqlite3.Row
 
         from footprinter.cli.add import _data_entity_exists
 
