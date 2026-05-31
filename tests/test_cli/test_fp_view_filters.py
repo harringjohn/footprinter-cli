@@ -251,6 +251,16 @@ class TestClientFilterChats:
         assert "Acme Sprint Planning" in stdout
         assert "Beta Onboarding" not in stdout
 
+    def test_nonexistent_client_errors(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("view", "chats", "--client", "999")
+
+        assert code == 1
+        output = stdout + stderr
+        assert "999" in output
+        assert "not found" in output.lower()
+
 
 # ---------------------------------------------------------------------------
 # 2c. Visit filtering (FPR-1871)
@@ -270,6 +280,16 @@ class TestProjectFilterVisits:
         assert "Acme API" in stdout
         assert "Beta Start" not in stdout
 
+    def test_nonexistent_project_errors(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("view", "visits", "--project", "999")
+
+        assert code == 1
+        output = stdout + stderr
+        assert "999" in output
+        assert "not found" in output.lower()
+
 
 class TestClientFilterVisits:
     """fp view visits --client <id> filters by client_id."""
@@ -283,6 +303,16 @@ class TestClientFilterVisits:
         assert "Acme Docs" in stdout
         assert "Acme API" in stdout
         assert "Beta Start" not in stdout
+
+    def test_nonexistent_client_errors(self):
+        conn = _seeded_view_db()
+        with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+            stdout, stderr, code = run_fp("view", "visits", "--client", "999")
+
+        assert code == 1
+        output = stdout + stderr
+        assert "999" in output
+        assert "not found" in output.lower()
 
 
 # ---------------------------------------------------------------------------
