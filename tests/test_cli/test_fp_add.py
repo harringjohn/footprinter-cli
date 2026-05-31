@@ -12,11 +12,14 @@ Validates:
   9. Bulk CSV edge cases (missing columns, empty CSV, file not found)
   10. Data entity CSV routes to DB insert functions
   11. Data entity CSV error handling
+  11b. Data entity CSV real-DB mutation guard (FPR-1885)
   12. Chat archive import routes to ChatIndexer.upload()
   13. Argument validation errors
 """
 
 import json
+import sqlite3
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from conftest import run_fp
@@ -25,6 +28,7 @@ from conftest import run_fp
 def _patched_open_db(mock_open_db):
     """Wire a MagicMock returned by patch() to behave as a context manager."""
     mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = None
     mock_open_db.return_value.__enter__.return_value = mock_conn
     mock_open_db.return_value.__exit__.return_value = False
     return mock_conn
@@ -518,6 +522,151 @@ class TestAddDataBulkCsv:
         ])
         _, _, code = run_fp("add", "files", csv_path)
         assert code != 0
+
+
+# ---------------------------------------------------------------------------
+# 11b. Data entity CSV — real-DB mutation guard (FPR-1885)
+# ---------------------------------------------------------------------------
+
+
+class TestAddDataBulkCsvNoMutation:
+    """Verify that ``fp add files data.csv`` does not mutate existing rows.
+
+    Uses a real SQLite database (not mocked ``_get_insert_fn``) so the
+    actual write path is exercised.
+    """
+
+    @staticmethod
+    def _seed_file(conn, *, path="/tmp/existing.txt"):
+        """Insert a fully-populated file record and return the row dict."""
+        from footprinter.db.files import insert_file
+
+        result = insert_file(conn, {
+            "file_path": path,
+            "file_name": "existing.txt",
+            "content_type": "text/plain",
+            "size_bytes": 999,
+            "sha256_hash": "aaa111",
+            "content_preview": "hello world",
+        })
+        assert result[0] == "inserted"
+        conn.commit()
+        row = conn.execute(
+            "SELECT sha256_hash, size_bytes, vectorized_at FROM files WHERE path = ?",
+            (path,),
+        ).fetchone()
+        return dict(row)
+
+    @staticmethod
+    def _open_db_ctx(conn):
+        """Return a context manager that yields *conn* (replaces ``open_db``)."""
+
+        @contextmanager
+        def _ctx():
+            yield conn
+
+        return _ctx
+
+    def test_add_files_csv_does_not_mutate_existing_row(self, temp_db, tmp_path):
+        """Seed a file, run CSV add with same path, assert columns unchanged."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+        original = self._seed_file(db.conn)
+
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/existing.txt,existing.txt",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        after = db.conn.execute(
+            "SELECT sha256_hash, size_bytes, vectorized_at FROM files WHERE path = ?",
+            ("/tmp/existing.txt",),
+        ).fetchone()
+        after = dict(after)
+        db.conn.close()
+
+        assert after["sha256_hash"] == original["sha256_hash"]
+        assert after["size_bytes"] == original["size_bytes"]
+        assert after["vectorized_at"] == original["vectorized_at"]
+
+    def test_add_files_csv_existing_reports_error_without_mutation(self, temp_db, tmp_path):
+        """Existing row → errors == 1, created == 0, 'already exists'."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+        self._seed_file(db.conn)
+
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/existing.txt,existing.txt",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        db.conn.close()
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert result["created"] == 0
+        assert result["errors"] == 1
+        assert "already exists" in result["error_details"][0]["error"].lower()
+
+    def test_add_files_csv_new_row_still_inserts_real_db(self, temp_db, tmp_path):
+        """New file path inserts successfully via the real insert function."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+
+        csv_path = _write_csv(tmp_path, [
+            "file_path,file_name",
+            "/tmp/brand_new.txt,brand_new.txt",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "files", csv_path, "--json")
+
+        result = json.loads(stdout)
+        row = db.conn.execute(
+            "SELECT id FROM files WHERE path = ?",
+            ("/tmp/brand_new.txt",),
+        ).fetchone()
+        db.conn.close()
+
+        assert code == 0
+        assert result["created"] == 1
+        assert row is not None
+
+    def test_data_entity_exists_returns_false_for_messages(self, temp_db):
+        """Messages have no natural key — existence check always returns False."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+
+        from footprinter.cli.add import _data_entity_exists
+
+        assert _data_entity_exists(db.conn, "messages", {"chat_id": "c1", "role": "user"}) is False
+        db.conn.close()
 
 
 # ---------------------------------------------------------------------------
