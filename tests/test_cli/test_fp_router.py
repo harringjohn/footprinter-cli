@@ -76,7 +76,6 @@ class TestStubSubcommands:
         """Each subcommand module exposes a callable register()."""
         module_map = {
             "ingest": "ingest",
-            "api": "api_cmd",
             "status": "status",
             "search": "search",
             "setup": "setup",
