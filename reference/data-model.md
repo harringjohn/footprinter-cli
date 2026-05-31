@@ -130,8 +130,8 @@ Organizational containers that group and influence content entities.
 
 | Aspect | Detail |
 |--------|--------|
-| **Created by** | User via `fp upsert` (projects, clients) or pipeline-discovered (folders) |
-| **Status management** | User-controlled via `fp upsert --status` (soft-delete) or `fp delete` (hard delete) |
+| **Created by** | User via `fp add` (projects, clients) or pipeline-discovered (folders) |
+| **Status management** | User-controlled via `fp update --status` (soft-delete) or `fp delete` (hard delete) |
 | **Influence on children** | Scope-based policy propagation (`project:{id}`, `client:{id}`, `folder:{path}`) affects children's visibility and permissions |
 | **Status cascade** | Status does **not** cascade to children — only policies propagate |
 | **Child references** | Children reference super entities via FK columns (`project_id`, `client_id`, `folder_id`) |
@@ -146,7 +146,7 @@ Data items discovered by the ingest pipeline and categorized by the user.
 |--------|--------|
 | **Created by** | Pipeline-discovered during `fp ingest` |
 | **Status management** | Pipeline-managed (`_determine_file_status`, `mark_removed_files`) — not directly by user |
-| **User interaction** | Categorized via `fp upsert <entity> <id> --project-id <n>` (sets `project_id`/`client_id` FK) |
+| **User interaction** | Categorized via `fp update <entity> <id> --project-id <n>` (sets `project_id`/`client_id` FK) |
 | **Visibility resolution** | Resolved through the scope hierarchy of their parent super entities |
 
 ### Folders: A Special Super Entity
@@ -167,11 +167,12 @@ A handful of CLI verbs cover the lifecycle of every entity. Mirrors the data sco
 
 | Verb | Applies to | Effect |
 |------|-----------|--------|
-| `fp upsert` | Super entities (projects, clients) | Create or edit the entity itself. `--status removed` for soft-delete. Example: `fp upsert client --name Acme --type external`. |
-| `fp upsert` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Example: `fp upsert file 42 --project-id 3`. Bulk path form: `fp upsert files --folder /path --project-id 3`. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
+| `fp add` | Super entities (projects, clients) | Create the entity. Example: `fp add client --name Acme --type external`. |
+| `fp update` | Super entities (projects, clients) | Edit the entity. `--status removed` for soft-delete. Example: `fp update client 42 --status removed`. |
+| `fp update` | Content entities (files, emails, chats, visits) and folders | Set `project_id`/`client_id` FK — categorizes without changing status. Example: `fp update file 42 --project-id 3`. Bulk path form: `fp update files --folder /path --project-id 3`. Folders accept assignment despite being super entities (see [Folders: A Special Super Entity](#folders-a-special-super-entity)). |
 | `fp delete` | Super entities only | Hard `DELETE FROM` — permanently removes the record. Refuses when dependent rows exist. |
 
-The CLI `fp upsert` for content entities delegates to service-layer `assign()` methods (`file_service.assign()`, `folder_service.assign()`, etc.) — useful to know when navigating the codebase, but `assign` is not itself a CLI subcommand.
+The CLI `fp update` for content entities delegates to service-layer `assign()` methods (`file_service.assign()`, `folder_service.assign()`, etc.) — useful to know when navigating the codebase, but `assign` is not itself a CLI subcommand.
 
 ---
 
@@ -1020,19 +1021,19 @@ Every FK relationship and how it is populated. Content entities [C] reference su
 |---|---|---|---|---|---|
 | `files` | C | `folders` | S | `folder_id` | Auto-linked by parent directory path during ingest |
 | `files` | C | `projects` | S | `project_id` | Path-prefix match or folder inheritance at ingest; preserved on re-index |
-| `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp upsert`) |
+| `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp update`) |
 | `folders` | S | `folders` | S | `parent_folder_id` | Filesystem hierarchy (local) or Drive API parent (remote) |
-| `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp upsert`), cascaded to descendants |
-| `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp upsert`), cascaded to descendants |
-| `projects` | S | `clients` | S | `client_id` | User assignment via CLI (`fp upsert`) |
+| `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp update`), cascaded to descendants |
+| `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp update`), cascaded to descendants |
+| `projects` | S | `clients` | S | `client_id` | User assignment via CLI (`fp update`) |
 | `projects` | S | `folders` | S | `root_folder_id` | Links project to its root folder entry |
 | `messages` | C | `chats` | C | `chat_id` | Set on insert from chat export data |
-| `chats` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
+| `chats` | C | `projects` | S | `project_id` | User assignment (`fp update`) |
 | `chats` | C | `clients` | S | `client_id` | Follows project or direct assignment |
 | `chats` | C | `chats` | C | `merged_into_id` | Historical — column preserved, merge functionality removed |
-| `emails` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
+| `emails` | C | `projects` | S | `project_id` | User assignment (`fp update`) |
 | `emails` | C | `clients` | S | `client_id` | Follows project or direct assignment |
-| `visits` | C | `projects` | S | `project_id` | User assignment (`fp upsert`) |
+| `visits` | C | `projects` | S | `project_id` | User assignment (`fp update`) |
 | `visits` | C | `clients` | S | `client_id` | Follows project or direct assignment |
 
 ### Local↔Remote File Matching
@@ -1081,7 +1082,7 @@ The same pattern applies to `name_source` on the `projects` table: user-set proj
 
 ### Status Model Lifecycle
 
-See [Status & Exclusion Model](#status--exclusion-model) for the full behavioral contract: valid values per table, soft-delete semantics (`fp upsert --status removed`), default query filtering via `build_status_filter()` with `default_exclude=["removed"]`, re-indexing implications, and `status_reason` codes.
+See [Status & Exclusion Model](#status--exclusion-model) for the full behavioral contract: valid values per table, soft-delete semantics (`fp update --status removed`), default query filtering via `build_status_filter()` with `default_exclude=["removed"]`, re-indexing implications, and `status_reason` codes.
 
 The three exclusion mechanisms operate at different pipeline stages — config exclusions prevent scanning, hidden-file detection marks records at index time, and manual status changes update records after the fact. All three converge on the `status` column as the single source of truth for record visibility.
 
@@ -1157,7 +1158,7 @@ Files and directories starting with `.` (dot-files, dot-directories) are indexed
 
 ### 3. Manual status changes — post-hoc updates
 
-Direct database updates or CLI commands that set `status` and `status_reason` on existing records. Soft-delete is performed by `fp upsert <noun> <id> --status removed` (records stay in the database with `status='removed'`).
+Direct database updates or CLI commands that set `status` and `status_reason` on existing records. Soft-delete is performed by `fp update <noun> <id> --status removed` (records stay in the database with `status='removed'`).
 
 **Use case:** Retroactively excluding content that was already indexed, soft-deleting entities via CLI.
 
@@ -1174,7 +1175,7 @@ The standard query filter excludes `removed` only and is built via `build_status
 - `removed` records — **excluded** from queries
 - Any new status values added in the future — **included** by default unless explicitly excluded (the exclude pattern is forward-compatible)
 
-MCP tools, CLI commands, and `fp ingest status` all use this filter. To query only listed records, pass `status="listed"`; to bypass filtering, pass `status="all"`.
+MCP tools, CLI commands, and `fp status` all use this filter. To query only listed records, pass `status="listed"`; to bypass filtering, pass `status="all"`.
 
 ### `status_reason` column
 
@@ -1184,7 +1185,7 @@ Records why an entity has its current status. Present on `files`, `clients`, and
 |-------|---------|--------|
 | `dot_file` | File name starts with `.` | `_determine_file_status()` |
 | `in_dot_folder` | File is inside a dot-directory | `_determine_file_status()` |
-| `cli:delete` | Soft-deleted via `fp upsert --status removed` | CLI / service `upsert()` |
+| `cli:delete` | Soft-deleted via `fp update --status removed` | CLI / service `upsert()` |
 | `regeneratable_cache` | node_modules, venv, build artifacts | Manual |
 | `system_excluded` | Downloads, app caches, system dotfiles | Manual |
 | `removed_from_disk` | File no longer exists locally | Manual |
@@ -1255,4 +1256,4 @@ ORDER BY COUNT(*) DESC;
 
 ## Row Counts
 
-Run `fp ingest status` for current counts.
+Run `fp status` for current counts.

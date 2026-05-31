@@ -7,6 +7,8 @@ Validates:
 """
 
 import importlib
+import re
+from pathlib import Path
 
 import pytest
 from conftest import run_fp
@@ -107,3 +109,46 @@ class TestOldCommandsGone:
         stdout, stderr, code = run_fp("ingest", "--help")
         assert code == 0
         assert "import" not in (stdout + stderr).lower()
+
+
+# ---------------------------------------------------------------------------
+# 4. No stale references to removed commands in source or docs
+# ---------------------------------------------------------------------------
+
+_STALE_PATTERN = r"fp (upsert|data |vectorize|ingest status|ingest import)"
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+class TestNoStaleReferences:
+    """Ensure removed CLI commands are not referenced in runtime code or docs."""
+
+    def test_no_stale_runtime_references(self):
+        """No .py file under footprinter/ (excluding tests) mentions removed commands."""
+        hits = []
+        for py_file in sorted(_ROOT.joinpath("footprinter").rglob("*.py")):
+            if "test" in py_file.parts:
+                continue
+            text = py_file.read_text()
+            for m in re.finditer(_STALE_PATTERN, text):
+                hits.append(f"{py_file.relative_to(_ROOT)}:{m.group()}")
+        assert hits == [], f"Stale command references in runtime code:\n" + "\n".join(hits)
+
+    def test_no_stale_doc_references(self):
+        """No stale command references in README or reference/ docs."""
+        hits = []
+        doc_paths = [_ROOT / "README.md"] + sorted(
+            _ROOT.joinpath("reference").rglob("*.md")
+        )
+        for doc in doc_paths:
+            if not doc.exists():
+                continue
+            text = doc.read_text()
+            for m in re.finditer(_STALE_PATTERN, text):
+                hits.append(f"{doc.relative_to(_ROOT)}:{m.group()}")
+        assert hits == [], f"Stale command references in docs:\n" + "\n".join(hits)
+
+    def test_setup_wizard_uses_current_commands(self):
+        """The setup wizard module has no references to fp upsert or fp ingest import."""
+        setup_src = _ROOT.joinpath("footprinter", "cli", "setup.py").read_text()
+        assert "fp upsert" not in setup_src, "setup.py still references 'fp upsert'"
+        assert "fp ingest import" not in setup_src, "setup.py still references 'fp ingest import'"

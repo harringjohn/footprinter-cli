@@ -122,7 +122,7 @@ Status filtering and visibility/permissions serve different purposes:
 | Aspect | Layer 0 (Status) | Layers 1–2 (Visibility + Permissions) |
 |--------|-----------------|--------------------------------------|
 | **Purpose** | Data lifecycle management | Security and access control |
-| **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp upsert --status`) | User via policy commands (`fp permission set`) |
+| **Who sets it** | Pipeline (`_determine_file_status`, `mark_removed_files`) or user (`fp update --status`) | User via policy commands (`fp permission set`) |
 | **Storage** | `status` column on entity tables | `visibility_policies` and `permission_policies` tables, cached in `visibility`/`access` columns |
 | **Semantics** | Exact match (listed/unlisted/removed) | Most-restrictive-wins (visibility), deny-wins (permissions) |
 | **ADMIN bypass** | ADMIN filters by default but can opt in to non-listed items | ADMIN bypasses entirely |

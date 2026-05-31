@@ -26,10 +26,10 @@ You have two options:
 - **Anytime after setup**:
 
   ```bash
-  fp ingest import ~/Downloads/claude-export.zip
-  fp ingest import ~/Downloads/chatgpt-export.zip
+  fp add chats ~/Downloads/claude-export.zip
+  fp add chats ~/Downloads/chatgpt-export.zip
   ```
 
-`fp ingest import` accepts either a `.zip` file or an extracted directory. Format (Claude vs. ChatGPT) is auto-detected from the archive contents. Re-importing the same archive is safe — duplicate conversations are skipped by UUID.
+`fp add chats` accepts either a `.zip` file or an extracted directory. Format (Claude vs. ChatGPT) is auto-detected from the archive contents. Re-importing the same archive is safe — duplicate conversations are skipped by UUID.
 
-See [`reference/cli-reference.md`](cli-reference.md) § `fp ingest import` for full command details.
+See [`reference/cli-reference.md`](cli-reference.md) § `fp add chats` for full command details.

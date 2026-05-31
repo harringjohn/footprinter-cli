@@ -27,10 +27,8 @@ The `fp` command is installed by `pip install footprinter-cli`. All business log
 | `fp search` | Search across indexed content |
 | `fp connect` | Manage optional integrations |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
-| `fp add` | Create new entity records |
-| `fp update` | Update existing entity records by ID |
-| `fp upsert` | Create or update records, assign relationships, or soft-delete via `--status removed` |
-| `fp data` | Import metadata corrections from CSV |
+| `fp add` | Create new entity records or import from CSV |
+| `fp update` | Update existing records by ID — status, assignments, metadata |
 | `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp permission` | Manage visibility and access policies |
 | `fp-mcp` | Start the MCP server (standalone binary) |
@@ -46,9 +44,10 @@ Three commands cover the lifecycle of indexed entities. They look similar but ha
 
 | Operation | Command | What it does | Reversible? |
 |-----------|---------|--------------|-------------|
-| **Create / edit** super entity | `fp upsert client --name Acme --type external` | Creates or updates a client/project record. `--status` accepts `listed` / `unlisted` / `removed`. | Yes |
-| **Assign** content entity | `fp upsert file 42 --project-id 3` | Sets `project_id` / `client_id` FKs on files, folders, emails, chats, or visits. Does not change `status`. Bulk path form: `fp upsert files --folder /path --project-id 3`. | Yes — re-assign or pass `0` to clear |
-| **Soft-delete** | `fp upsert client 42 --status removed` | Hides the record from default listings (`default_exclude=["removed"]`) but preserves the row and FK references. | Yes — `--status listed` to restore |
+| **Create** super entity | `fp add client --name Acme --type external` | Creates a new client/project record. `--status` accepts `listed` / `unlisted` / `removed`. | Yes |
+| **Update** super entity | `fp update client 42 --name Acme` | Updates an existing client/project record by ID. | Yes |
+| **Assign** content entity | `fp update file 42 --project-id 3` | Sets `project_id` / `client_id` FKs on files, folders, emails, chats, or visits. Does not change `status`. Bulk path form: `fp update files --folder /path --project-id 3`. | Yes — re-assign or pass `0` to clear |
+| **Soft-delete** | `fp update client 42 --status removed` | Hides the record from default listings (`default_exclude=["removed"]`) but preserves the row and FK references. | Yes — `--status listed` to restore |
 | **Hard-delete** | `fp delete client 42` | `DELETE FROM clients WHERE id = 42`. Refuses to run when any dependent record (project, file, folder, etc.) points at the entity — reassign or remove those first. | **No** |
 
 Listings everywhere use the standardized exclude pattern via `build_status_filter()`: by default `removed` is hidden, all other statuses are visible. Pass `--status all` (or `status="all"` in service calls) to bypass; pass an explicit status to filter to it.

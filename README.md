@@ -108,10 +108,9 @@ All commands use the `fp` entry point.
 | `fp connect` | Manage optional integrations |
 | `fp permission` | Manage access policies (visibility, permissions) |
 | `fp view` | Browse indexed data (files, folders, projects, clients, chats, emails, visits) |
-| `fp upsert` | Create/update records, assign relationships, or soft-delete via `--status removed` |
-| `fp data` | Import metadata corrections from CSV |
+| `fp add` | Create new entity records or import from CSV |
+| `fp update` | Update existing records by ID — status, assignments, metadata |
 | `fp delete` | Hard-delete a super entity (irreversible) |
-| `fp vectorize` | Manage per-record vectorization control |
 | `fp doctor` | Post-install health check (Python version, platform, FDA, MCP wiring) |
 | `fp uninstall` | Remove Footprinter — MCP entry, user data, package |
 

@@ -253,7 +253,7 @@ def delete(
     Returns ``{"id", "deleted": True}`` on success, ``None`` if not found.
     Raises ``ValueError`` (with a per-table dependent count summary) when the
     client has dependent records — callers must reassign or remove children
-    first. Soft-delete is available via ``fp upsert --status removed``.
+    first. Soft-delete is available via ``fp update client <id> --status removed``.
     Raises ``PermissionError`` if role cannot write.
     """
     if not role.can_write:
