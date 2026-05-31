@@ -405,7 +405,7 @@ def check_client(
         from footprinter.visibility import batch_resolve_visibility
 
         proj_rows = conn.execute(
-            "SELECT id, name FROM projects WHERE client_id = ?",
+            "SELECT id, name FROM projects WHERE client_id = ? AND status = 'listed'",
             (client_id,),
         ).fetchall()
         ids = [r["id"] for r in proj_rows]
