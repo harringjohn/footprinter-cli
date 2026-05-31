@@ -28,6 +28,21 @@ def _mock_conn():
     return conn
 
 
+def _render_table(mock_console) -> str:
+    """Extract and render the first Rich Table from mock_console.print calls."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    for call_args in mock_console.print.call_args_list:
+        if call_args[0] and isinstance(call_args[0][0], Table):
+            buf = StringIO()
+            RichConsole(file=buf, width=120).print(call_args[0][0])
+            return buf.getvalue()
+    raise AssertionError("Rich Table was not printed")
+
+
 # ---------------------------------------------------------------------------
 # Parser tree tests
 # ---------------------------------------------------------------------------
@@ -992,6 +1007,61 @@ class TestCheckProjectVerbose:
         assert "files" not in data
         assert "file_count" not in data
 
+    @patch("footprinter.cli._policy_helpers.console")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_project_verbose_table_output(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
+    ):
+        from footprinter.cli._policy_helpers import check_project
+
+        project_row = {"id": 3, "name": "My Project"}
+        file_rows = [{"id": 10, "name": "report.pdf"}, {"id": 11, "name": "notes.md"}]
+        conn = self._make_conn(project_row, file_rows)
+
+        mock_batch_perm.return_value = {10: (True, "baseline"), 11: (False, "policy:5")}
+        mock_batch_vis.return_value = {10: ("full", "baseline"), 11: ("hidden", "policy:5")}
+
+        check_project(conn, 3, json_output=False, verbose=True)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "Files: 2" in printed
+        assert "allow: 1" in printed
+        assert "deny: 1" in printed
+        assert "full: 1" in printed
+        assert "hidden: 1" in printed
+
+        rendered = _render_table(mock_console)
+        assert "report.pdf" in rendered
+        assert "notes.md" in rendered
+
+    @patch("footprinter.cli._policy_helpers.console")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_project_verbose_table_renders_columns(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
+    ):
+        from footprinter.cli._policy_helpers import check_project
+
+        project_row = {"id": 3, "name": "My Project"}
+        file_rows = [{"id": 10, "name": "report.pdf"}]
+        conn = self._make_conn(project_row, file_rows)
+
+        mock_batch_perm.return_value = {10: (True, "baseline")}
+        mock_batch_vis.return_value = {10: ("full", "baseline")}
+
+        check_project(conn, 3, json_output=False, verbose=True)
+
+        rendered = _render_table(mock_console)
+        assert "Name" in rendered
+        assert "Permission" in rendered
+        assert "Source" in rendered
+        assert "Visibility" in rendered
+
 
 class TestCheckClientVerbose:
     def _make_conn(self, client_row, project_rows):
@@ -1076,6 +1146,60 @@ class TestCheckClientVerbose:
         assert data["project_count"] == 1
         assert len(data["projects"]) == 1
         assert data["projects"][0]["name"] == "Listed Project"
+
+    @patch("footprinter.cli._policy_helpers.console")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_client_verbose_table_output(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
+    ):
+        from footprinter.cli._policy_helpers import check_client
+
+        client_row = {"id": 5, "name": "Acme Corp"}
+        project_rows = [{"id": 20, "name": "Project A"}, {"id": 21, "name": "Project B"}]
+        conn = self._make_conn(client_row, project_rows)
+
+        mock_batch_perm.return_value = {20: (True, "baseline"), 21: (True, "policy:8")}
+        mock_batch_vis.return_value = {20: ("full", "baseline"), 21: ("opaque", "policy:8")}
+
+        check_client(conn, 5, json_output=False, verbose=True)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "Projects: 2" in printed
+        assert "allow: 2" in printed
+        assert "full: 1" in printed
+        assert "opaque: 1" in printed
+
+        rendered = _render_table(mock_console)
+        assert "Project A" in rendered
+        assert "Project B" in rendered
+
+    @patch("footprinter.cli._policy_helpers.console")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_client_verbose_table_renders_columns(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
+    ):
+        from footprinter.cli._policy_helpers import check_client
+
+        client_row = {"id": 5, "name": "Acme Corp"}
+        project_rows = [{"id": 20, "name": "Project A"}]
+        conn = self._make_conn(client_row, project_rows)
+
+        mock_batch_perm.return_value = {20: (True, "baseline")}
+        mock_batch_vis.return_value = {20: ("full", "baseline")}
+
+        check_client(conn, 5, json_output=False, verbose=True)
+
+        rendered = _render_table(mock_console)
+        assert "Name" in rendered
+        assert "Permission" in rendered
+        assert "Source" in rendered
+        assert "Visibility" in rendered
 
 
 # ---------------------------------------------------------------------------
