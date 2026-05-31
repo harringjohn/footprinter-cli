@@ -1049,3 +1049,30 @@ class TestCheckClientVerbose:
         data = mock_json.call_args[0][0]
         assert "projects" not in data
         assert "project_count" not in data
+
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.visibility.batch_resolve_visibility")
+    @patch("footprinter.permissions.batch_resolve_permissions")
+    def test_check_client_verbose_excludes_unlisted(
+        self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_json
+    ):
+        from footprinter.cli._policy_helpers import check_client
+
+        client_row = {"id": 5, "name": "Acme Corp"}
+        listed_only = [{"id": 20, "name": "Listed Project"}]
+        conn = self._make_conn(client_row, listed_only)
+
+        mock_batch_perm.return_value = {20: (True, "baseline")}
+        mock_batch_vis.return_value = {20: ("full", "baseline")}
+
+        check_client(conn, 5, json_output=True, verbose=True)
+
+        proj_query = conn.execute.call_args_list[1][0][0]
+        assert "status = 'listed'" in proj_query
+
+        data = mock_json.call_args[0][0]
+        assert data["project_count"] == 1
+        assert len(data["projects"]) == 1
+        assert data["projects"][0]["name"] == "Listed Project"
