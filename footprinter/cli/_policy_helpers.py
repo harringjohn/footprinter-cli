@@ -161,6 +161,8 @@ def check_file_path(conn: sqlite3.Connection, path: str, json_output: bool, verb
             "visibility": {"resolved": vis_val, "source": vis_src},
             "chain": chain,
         }
+        if verbose:
+            data["verbose_note"] = "single-file output already includes the full policy chain"
         output_json(data)
     else:
         console.print(f"\nAccess Check: [bold]{display_path}[/bold]")
@@ -173,6 +175,8 @@ def check_file_path(conn: sqlite3.Connection, path: str, json_output: bool, verb
         if chain:
             console.print()
             print_policy_chain(chain)
+        if verbose:
+            console.print("  [dim](--verbose has no effect — single-file output already includes the full policy chain)[/dim]")
 
     return 0
 
