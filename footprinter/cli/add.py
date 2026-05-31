@@ -11,6 +11,7 @@ Chat import: ``fp add chats export.zip``
 
 import csv
 import importlib
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -133,6 +134,13 @@ DATA_CSV_SPECS: dict[str, tuple[list[str], list[str], str, str]] = {
         "footprinter.db.folders",
         "insert_drive_folder",
     ),
+}
+
+DATA_EXISTENCE_KEYS: dict[str, tuple[str, list[tuple[str, str]], dict[str, str]]] = {
+    "files": ("files", [("file_path", "path")], {"source": "local"}),
+    "emails": ("emails", [("message_id", "message_id"), ("account", "account")], {}),
+    "visits": ("visits", [("url", "url"), ("visit_time", "visit_time"), ("browser", "browser")], {}),
+    "folders": ("folders", [("source", "source"), ("external_id", "external_id")], {}),
 }
 
 # ---------------------------------------------------------------------------
@@ -304,6 +312,27 @@ def _check_exists(conn, entity_type: str, kwargs: dict) -> bool:
 
         return find_project_id_by_key(conn, name=kwargs.get("name")) is not None
     return False
+
+
+def _data_entity_exists(conn: sqlite3.Connection, noun: str, data: dict) -> bool:
+    """Check whether a data entity matching *data*'s natural key already exists."""
+    spec = DATA_EXISTENCE_KEYS.get(noun)
+    if spec is None:
+        return False
+    table, key_cols, defaults = spec
+    where_parts: list[str] = []
+    params: list = []
+    for csv_col, db_col in key_cols:
+        where_parts.append(f"{db_col} = ?")
+        params.append(data.get(csv_col))
+    for db_col, val in defaults.items():
+        where_parts.append(f"{db_col} = ?")
+        params.append(val)
+    cursor = conn.execute(
+        f"SELECT 1 FROM {table} WHERE {' AND '.join(where_parts)} LIMIT 1",
+        params,
+    )
+    return cursor.fetchone() is not None
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +552,11 @@ def _handle_data_bulk(args) -> None:
                 if missing_vals:
                     errors += 1
                     error_details.append({"row": i, "error": f"Missing required values: {', '.join(missing_vals)}"})
+                    continue
+
+                if _data_entity_exists(conn, noun, data):
+                    errors += 1
+                    error_details.append({"row": i, "error": "Record already exists"})
                     continue
 
                 try:
