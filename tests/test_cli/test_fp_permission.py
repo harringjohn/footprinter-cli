@@ -28,6 +28,21 @@ def _mock_conn():
     return conn
 
 
+def _render_table(mock_console) -> str:
+    """Extract and render the first Rich Table from mock_console.print calls."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    for call_args in mock_console.print.call_args_list:
+        if call_args[0] and isinstance(call_args[0][0], Table):
+            buf = StringIO()
+            RichConsole(file=buf, width=120).print(call_args[0][0])
+            return buf.getvalue()
+    raise AssertionError("Rich Table was not printed")
+
+
 # ---------------------------------------------------------------------------
 # Parser tree tests
 # ---------------------------------------------------------------------------
@@ -1000,11 +1015,6 @@ class TestCheckProjectVerbose:
     def test_check_project_verbose_table_output(
         self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
     ):
-        from io import StringIO
-
-        from rich.console import Console as RichConsole
-        from rich.table import Table
-
         from footprinter.cli._policy_helpers import check_project
 
         project_row = {"id": 3, "name": "My Project"}
@@ -1023,15 +1033,9 @@ class TestCheckProjectVerbose:
         assert "full: 1" in printed
         assert "hidden: 1" in printed
 
-        table_obj = None
-        for call_args in mock_console.print.call_args_list:
-            if call_args[0] and isinstance(call_args[0][0], Table):
-                table_obj = call_args[0][0]
-        assert table_obj is not None, "Rich Table was not printed"
-        buf = StringIO()
-        RichConsole(file=buf, width=120).print(table_obj)
-        rendered = buf.getvalue()
+        rendered = _render_table(mock_console)
         assert "report.pdf" in rendered
+        assert "notes.md" in rendered
 
     @patch("footprinter.cli._policy_helpers.console")
     @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
@@ -1041,11 +1045,6 @@ class TestCheckProjectVerbose:
     def test_check_project_verbose_table_renders_columns(
         self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
     ):
-        from io import StringIO
-
-        from rich.console import Console as RichConsole
-        from rich.table import Table
-
         from footprinter.cli._policy_helpers import check_project
 
         project_row = {"id": 3, "name": "My Project"}
@@ -1057,16 +1056,10 @@ class TestCheckProjectVerbose:
 
         check_project(conn, 3, json_output=False, verbose=True)
 
-        table_obj = None
-        for call_args in mock_console.print.call_args_list:
-            if call_args[0] and isinstance(call_args[0][0], Table):
-                table_obj = call_args[0][0]
-        assert table_obj is not None, "Rich Table was not printed"
-        buf = StringIO()
-        RichConsole(file=buf, width=120).print(table_obj)
-        rendered = buf.getvalue()
+        rendered = _render_table(mock_console)
         assert "Name" in rendered
         assert "Permission" in rendered
+        assert "Source" in rendered
         assert "Visibility" in rendered
 
 
@@ -1162,11 +1155,6 @@ class TestCheckClientVerbose:
     def test_check_client_verbose_table_output(
         self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
     ):
-        from io import StringIO
-
-        from rich.console import Console as RichConsole
-        from rich.table import Table
-
         from footprinter.cli._policy_helpers import check_client
 
         client_row = {"id": 5, "name": "Acme Corp"}
@@ -1184,15 +1172,9 @@ class TestCheckClientVerbose:
         assert "full: 1" in printed
         assert "opaque: 1" in printed
 
-        table_obj = None
-        for call_args in mock_console.print.call_args_list:
-            if call_args[0] and isinstance(call_args[0][0], Table):
-                table_obj = call_args[0][0]
-        assert table_obj is not None, "Rich Table was not printed"
-        buf = StringIO()
-        RichConsole(file=buf, width=120).print(table_obj)
-        rendered = buf.getvalue()
+        rendered = _render_table(mock_console)
         assert "Project A" in rendered
+        assert "Project B" in rendered
 
     @patch("footprinter.cli._policy_helpers.console")
     @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
@@ -1202,11 +1184,6 @@ class TestCheckClientVerbose:
     def test_check_client_verbose_table_renders_columns(
         self, mock_batch_perm, mock_batch_vis, mock_perm, mock_vis, mock_console
     ):
-        from io import StringIO
-
-        from rich.console import Console as RichConsole
-        from rich.table import Table
-
         from footprinter.cli._policy_helpers import check_client
 
         client_row = {"id": 5, "name": "Acme Corp"}
@@ -1218,16 +1195,10 @@ class TestCheckClientVerbose:
 
         check_client(conn, 5, json_output=False, verbose=True)
 
-        table_obj = None
-        for call_args in mock_console.print.call_args_list:
-            if call_args[0] and isinstance(call_args[0][0], Table):
-                table_obj = call_args[0][0]
-        assert table_obj is not None, "Rich Table was not printed"
-        buf = StringIO()
-        RichConsole(file=buf, width=120).print(table_obj)
-        rendered = buf.getvalue()
+        rendered = _render_table(mock_console)
         assert "Name" in rendered
         assert "Permission" in rendered
+        assert "Source" in rendered
         assert "Visibility" in rendered
 
 
