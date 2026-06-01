@@ -56,13 +56,11 @@ Listings everywhere use the standardized exclude pattern via `build_status_filte
 
 | Group | What it enables |
 |-------|-----------------|
-| *(base)* | Core indexing, CLI formatting |
-| `mcp` | MCP server for AI assistants |
+| *(base)* | Core indexing, CLI formatting, MCP server, and HTTP API (all ship in the base package) |
 | `semantic` | Semantic vector search (ChromaDB + ONNX) |
-| `docs` | PDF, Word, Excel, PowerPoint content extraction |
-| `api` | HTTP API server (FastAPI + Uvicorn) |
-| `full` | All optional extras (semantic + docs + mcp + api) |
-| `dev` | pytest, ruff, httpx |
+| `parse` | PDF, Word, Excel, PowerPoint content extraction |
+| `full` | All optional extras (`semantic` + `parse`) |
+| `dev` | pytest, pytest-cov, ruff, httpx |
 
 Additional data sources are installed as connector packages via `fp connect install`, not pip extras.
 
@@ -74,7 +72,6 @@ The MCP server gives AI assistants (Claude Desktop, Claude Code) structured acce
 
 ```bash
 fp setup mcp --claude    # Write MCP config into Claude Desktop
-fp setup mcp --check     # Verify configuration
 ```
 
 #### Tools
@@ -89,7 +86,7 @@ fp setup mcp --check     # Verify configuration
 | `footprinter_folder` | Folder metadata and contents |
 | `footprinter_read` | Read file content (subject to permission checks) |
 
-All tools respect the two-layer access control model (visibility + permissions). See [mcp-access-control.md](mcp-access-control.md) for the full security model.
+All tools respect the two-layer access control model (visibility + access). See [mcp-access-control.md](mcp-access-control.md) for the full security model.
 
 ### HTTP API
 
@@ -243,8 +240,9 @@ email_service.assign(conn, email_id: int, *, role, project_id=None, client_id=No
 
 ```python
 chat_service.get(conn, chat_id: int, *, role) -> dict | None
-chat_service.list_(conn, *, role, account=None, query=None, sort_by="modified_at",
-                   order="desc", status=None, limit=50, page=1) -> dict
+chat_service.list_(conn, *, role, account=None, query=None, project_id=None,
+                   client_id=None, sort_by="modified_at", order="desc", status=None,
+                   limit=50, page=1) -> dict
 chat_service.assign(conn, chat_id: int, *, role, project_id=None, client_id=None) -> dict | None
 ```
 
@@ -252,7 +250,8 @@ chat_service.assign(conn, chat_id: int, *, role, project_id=None, client_id=None
 
 ```python
 visit_service.get(conn, entry_id: int, *, role) -> dict | None
-visit_service.list_(conn, *, role, limit=50, page=1) -> dict
+visit_service.list_(conn, *, role, project_id=None, client_id=None, status=None,
+                    limit=50, page=1) -> dict
 visit_service.assign(conn, entry_id: int, *, role, project_id=None, client_id=None) -> dict | None
 ```
 
@@ -260,7 +259,7 @@ visit_service.assign(conn, entry_id: int, *, role, project_id=None, client_id=No
 
 ```python
 folder_service.get(conn, folder_id: int, *, role) -> dict | None
-folder_service.list_(conn, *, role, project_id=None, depth=1, include_hidden=False,
+folder_service.list_(conn, *, role, project_id=None, depth=None, include_hidden=False,
                      sort_by="size", limit=50, page=1) -> dict
 folder_service.get_by_path(conn, path: str, *, role) -> dict | None
 folder_service.assign(conn, folder_id: int, *, role, project_id=None, client_id=None) -> dict | None
@@ -273,17 +272,16 @@ folder_service.assign(conn, folder_id: int, *, role, project_id=None, client_id=
 ```python
 project_service.get(conn, project_id: int, *, role, include=None) -> dict | None
 project_service.list_(conn, *, role, include=None, status=None, client=None,
-                      project_type=None, limit=50, page=1) -> dict
+                      limit=50, page=1) -> dict
 project_service.resolve_by_name(conn, name: str, *, role) -> dict | None
-project_service.upsert(conn, *, project_name: str, role, root_path=None, client_id=None,
-                        project_type=None, description=None, github_url=None,
+project_service.upsert(conn, *, name: str, role, client_id=None, description=None,
                         status=None, status_reason=None) -> dict
 project_service.delete(conn, project_id: int, *, role) -> dict | None
 ```
 
 - `include` accepts `["files"]` and/or `["folders"]` to attach nested data
 - `resolve_by_name()` returns navigation data for a single match, disambiguation dict for multiple
-- `upsert()` matches on `root_path` first, then `project_name`
+- `upsert()` matches on `name` (first match)
 - `delete()` is a hard delete (`DELETE FROM projects`); raises `ValueError` if dependent records exist. Use `upsert(... status='removed', status_reason='cli:delete')` for a soft-delete.
 
 #### client_service
@@ -292,8 +290,8 @@ project_service.delete(conn, project_id: int, *, role) -> dict | None
 client_service.get(conn, client_id: int, *, role, include=None) -> dict | None
 client_service.list_(conn, *, role, include=None, status=None, limit=50, page=1) -> dict
 client_service.resolve_by_name(conn, name: str, *, role) -> dict | None
-client_service.upsert(conn, *, name: str, client_type: str, role, path_pattern=None,
-                       status=None, status_reason=None, slug=None) -> dict
+client_service.upsert(conn, *, name: str, client_type: str, role,
+                       status=None, status_reason=None) -> dict
 client_service.delete(conn, client_id: int, *, role) -> dict | None
 ```
 
@@ -343,7 +341,7 @@ System status aggregates. ADMIN gets full system status including config checks.
 access_service.gate_access(conn, item_type: str, item_id: int, *, role) -> dict
 ```
 
-Three-stage access gating for a single item. Used internally by MCP tools before reading content.
+Four-stage access gating for a single item. Used internally by MCP tools before reading content.
 
 - `item_type` — `"file"`, `"email"`, or `"chat"`
 - Returns on success:
@@ -354,6 +352,8 @@ Three-stage access gating for a single item. Used internally by MCP tools before
   - `"hidden"` — `{"status": "hidden"}` (item hidden from this role)
   - `"opaque"` — `{"status": "opaque", "metadata": {...}}` (minimal fields only)
   - `"denied"` — `{"status": "denied", "metadata": {...}}` (permission denied, opaque metadata included)
+  - `"removed"` — `{"status": "removed"}` (soft-deleted; VIEWER only)
+  - `"unlisted"` — `{"status": "unlisted"}` (de-emphasized; VIEWER only)
   - `"not_found"` — `{"status": "not_found"}`
   - `"invalid_type"` — `{"status": "invalid_type"}`
 

@@ -5,7 +5,7 @@
 1. Clone the repository:
    ```bash
    git clone https://github.com/harringjohn/footprinter-cli.git
-   cd footprinter
+   cd footprinter-cli
    ```
 
 2. Create a virtual environment and install dependencies:

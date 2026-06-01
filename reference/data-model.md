@@ -78,8 +78,8 @@ Super entities are marked with `[S]`, content entities with `[C]`.
 │  │ projects [S] │◄────────│    files [C]     │──────►│ folders [S] │   │
 │  │              │         │                  │       │             │   │
 │  │  id          │         │  id              │       │             │   │
-│  │  project_name│         │  source          │       │  id         │   │
-│  │  root_path   │         │  name, path      │       │  path       │   │
+│  │  name        │         │  source          │       │  id         │   │
+│  │  slug        │         │  name, path      │       │  path       │   │
 │  │  client      │         │  project_id ─────┼──────►│  project_id │   │
 │  │  ...         │         │  folder_id ──────┼──────►│  parent_    │   │
 │  └──────────────┘         │                  │       │  folder_id  │   │
@@ -209,8 +209,10 @@ All 8 entity tables (files, folders, visits, projects, chats, messages, emails, 
 | `display_name` | TEXT | — | — | Uniform display label (auto-populated via trigger) |
 | `access` | TEXT | `'inherit'` | CHECK (access IN ('allow', 'deny', 'inherit')) | MCP read access |
 | `visibility` | TEXT | `'inherit'` | CHECK (visibility IN ('hidden', 'opaque', 'full', 'inherit')) | MCP visibility |
+| `access_source` | TEXT | — | — | Policy scope that set `access` (provenance) |
+| `visibility_source` | TEXT | — | — | Policy scope that set `visibility` (provenance) |
 
-All entity tables share this same status CHECK constraint — there are no per-table extensions.
+All entity tables share this same status CHECK constraint — there are no per-table extensions. The `access_source` / `visibility_source` columns record which policy scope produced the cached `access` / `visibility` value, and appear on every entity table.
 
 Data-source entities (files, folders, emails, chats, visits, messages) also carry:
 
@@ -223,9 +225,9 @@ Data-source entities (files, folders, emails, chats, visits, messages) also carr
 
 **Note:** `messages` inherits project/client from its parent `chats` record — it does not carry `project_id` or `client_id` directly.
 
-### App-scope columns in standard schema
+### App-scope columns
 
-Three columns are defined in standard `CREATE TABLE` statements but only populated by app-scope code. Tool-only installs leave them NULL:
+Some columns referenced by the data-access layer — notably `assignment_source` and `name_source` — are **added only by app-scope code** via `ALTER TABLE`. They are not part of the standard `CREATE TABLE` statements and are absent from tool-only installs. Writes that target them are guarded (skipped when the column is missing), so tool-scope databases are unaffected.
 
 ---
 
@@ -238,7 +240,7 @@ Every entity table has a `display_name` column auto-populated by an `AFTER INSER
 | files | `name` | `report.pdf` |
 | folders | `name` | `documents` |
 | visits | `title` | `GitHub - anthropics/claude-code` |
-| projects | `project_name` | `footprinter` |
+| projects | `name` | `footprinter` |
 | chats | `title` | `Database schema discussion` |
 | messages | `SUBSTR(content, 1, 100)` | `Can you help me understand...` |
 | emails | `subject` | `Re: Project update` |
@@ -356,6 +358,7 @@ The primary table for all indexed files. Stores both local files and remote file
 |--------|------|---------|
 | `vectorized_at` | DATETIME | When embeddings were generated |
 | `vectorized_chunks` | INTEGER | Number of embedding chunks (default: 0) |
+| `vectorize` | INTEGER | Whether this file is eligible for embedding (default: 1) |
 
 **Status tracking columns:**
 
@@ -371,11 +374,6 @@ The primary table for all indexed files. Stores both local files and remote file
 |--------|------|---------|
 | `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
 | `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
-
-**AI-generated summaries** (standard column, populated by future scope — always NULL in tool-only installs):
-
-| Column | Type | Purpose |
-|--------|------|---------|
 
 **Display:**
 
@@ -443,6 +441,8 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 | Column | Type | Purpose |
 |--------|------|---------|
 | `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
+| `status_reason` | TEXT | Why folder has this status |
+| `status_changed_at` | DATETIME | When status last changed |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -450,6 +450,8 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 |--------|------|---------|
 | `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 | `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
+| `visibility_source` | TEXT | Policy scope that set `visibility` (provenance) |
+| `access_source` | TEXT | Policy scope that set `access` (provenance) |
 
 **Display:**
 
@@ -480,15 +482,14 @@ Project metadata for detected code projects and work projects.
 | Column | Type | Purpose |
 |--------|------|---------|
 | `id` | INTEGER | Primary key |
-| `project_name` | TEXT | Display name (NOT NULL) |
+| `name` | TEXT | Display name (NOT NULL) |
+| `slug` | TEXT | URL-friendly identifier |
 | `description` | TEXT | Project description |
-| `root_path` | TEXT | Filesystem path to project root (UNIQUE) |
-| `project_type` | TEXT | `'code'`, `'data'`, `'docs'`, etc. |
 | `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 | `status_reason` | TEXT | Why project has this status (e.g., `'cli:delete'`) |
 | `created_at` | DATETIME | When project was created (default: CURRENT_TIMESTAMP) |
 | `updated_at` | DATETIME | Last update (default: CURRENT_TIMESTAMP) |
-| `metadata` | TEXT | JSON: additional metadata |
+| `status_changed_at` | DATETIME | When status last changed |
 
 **Client association columns:**
 
@@ -496,8 +497,6 @@ Project metadata for detected code projects and work projects.
 |--------|------|---------|
 | `client_id` | INTEGER | FK to `clients` |
 | `client` | TEXT | Client name (legacy, prefer `client_id` FK) |
-| `github_url` | TEXT | GitHub repository URL |
-| `root_folder_id` | INTEGER | FK to `folders` |
 
 **Access control columns** (cached resolved values — written by the `access_resolution` pipeline stage, not direct settings):
 
@@ -505,18 +504,20 @@ Project metadata for detected code projects and work projects.
 |--------|------|---------|
 | `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
 | `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
+| `access_source` | TEXT | Policy scope that set `access` (provenance) |
+| `visibility_source` | TEXT | Policy scope that set `visibility` (provenance) |
 
 **Display:**
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `display_name` | TEXT | Uniform display label (auto-populated from `project_name` via trigger) |
+| `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
 
 **Indexes:**
 
 | Index | Columns | Notes |
 |-------|---------|-------|
-| `idx_projects_root` | `(root_path)` | Unique index for project root |
+| `idx_projects_slug` | `(slug)` | Slug lookups |
 | `idx_projects_client` | `(client_id)` | Filter by client |
 | `idx_projects_visibility` | `(visibility)` | Filter by visibility |
 
@@ -532,13 +533,15 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `name` | TEXT | Client display name (NOT NULL, UNIQUE) |
 | `slug` | TEXT | URL-friendly identifier (NOT NULL, UNIQUE) |
 | `client_type` | TEXT | Client type classification (NOT NULL) |
-| `path_pattern` | TEXT | Folder path pattern for matching |
 | `status` | TEXT | CHECK: `'listed'`, `'unlisted'`, `'removed'` (default: `'listed'`) |
 | `status_reason` | TEXT | Why client has this status (e.g., `'cli:delete'`) |
 | `created_at` | DATETIME | When created (default: CURRENT_TIMESTAMP) |
-| `metadata` | TEXT | JSON: additional metadata |
+| `updated_at` | DATETIME | Last update (default: CURRENT_TIMESTAMP) |
+| `status_changed_at` | DATETIME | When status last changed |
 | `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
 | `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
+| `access_source` | TEXT | Policy scope that set `access` (provenance) |
+| `visibility_source` | TEXT | Policy scope that set `visibility` (provenance) |
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
 
 **Indexes:**
@@ -549,7 +552,7 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `idx_clients_type` | `(client_type)` | Filter by client type |
 | `idx_clients_visibility` | `(visibility)` | Filter by visibility |
 
-**Usage:** Clients are created manually — there is no auto-seeding or auto-detection. The `path_pattern` column (e.g., `/Work/clients/acme/`) is used to assign `client_id` on projects whose `root_path` falls under that pattern.
+**Usage:** Clients are created manually (via `fp add client` or CSV import) — there is no auto-seeding or auto-detection. Projects, files, and other entities associate with a client through the `client_id` FK, set via `fp update`.
 
 ---
 
@@ -655,11 +658,6 @@ Email messages populated by email connector plugins (e.g. `footprinter-google` f
 | `access` | TEXT | CHECK: `'allow'`, `'deny'`, `'inherit'` (default: `'inherit'`) |
 | `visibility` | TEXT | CHECK: `'hidden'`, `'opaque'`, `'full'`, `'inherit'` (default: `'inherit'`) |
 
-**AI-generated summaries** (standard column, populated by future scope — always NULL in tool-only installs):
-
-| Column | Type | Purpose |
-|--------|------|---------|
-
 **Client/project association:**
 
 | Column | Type | Purpose |
@@ -713,6 +711,7 @@ Claude and ChatGPT conversation exports.
 | Column | Type | Purpose |
 |--------|------|---------|
 | `metadata_vectorized_at` | DATETIME | When metadata embeddings were generated |
+| `vectorize` | INTEGER | Whether this chat is eligible for embedding (default: 1) |
 
 **Status tracking:**
 
@@ -776,6 +775,7 @@ Individual messages within conversations.
 | `metadata` | TEXT | JSON: model, tokens, etc. |
 | `vectorized_at` | DATETIME | When embeddings were generated |
 | `vectorized_chunks` | INTEGER | Number of embedding chunks (default: 0) |
+| `vectorize` | INTEGER | Whether this message is eligible for embedding (default: 1) |
 | `indexed_at` | DATETIME | When first indexed (audit, immutable; default: CURRENT_TIMESTAMP) |
 | `updated_at` | DATETIME | When last re-processed (audit; default: CURRENT_TIMESTAMP) |
 
@@ -979,9 +979,9 @@ Foreign keys in Footprinter follow one of two patterns:
 
 **Stamped FKs** are assigned at index time and preserved on re-index so that manual overrides survive:
 
-- `files.project_id` — assigned via path-prefix match or inherited from the file's folder. On re-index, only set if currently NULL (`CASE WHEN project_id IS NULL THEN ? ELSE project_id END`).
+- `files.project_id` — inherited from the file's folder record. On re-index, only set if currently NULL (`CASE WHEN project_id IS NULL THEN ? ELSE project_id END`).
 - `files.client_id` — set via CLI only (direct assignment or folder cascade). Not set during ingest, not overwritten on re-index.
-- `folders.project_id` — set by user via CLI (`fp folder edit --project`), then cascaded to descendants via `cascade_project_id()`.
+- `folders.project_id` — set by user via CLI (`fp update folder <id> --project-id`), then cascaded to descendants via `cascade_project_id()`.
 - `folders.client_id` — same pattern as `folders.project_id`, cascaded via `cascade_client_id()`.
 
 **Note:** Cascade operations (`cascade_project_id()`, `cascade_client_id()`) are unconditional — they overwrite existing values on all descendant files, including per-file manual overrides. The "preserved on re-index" guarantee applies only to the ingest pipeline, not to cascade.
@@ -1001,17 +1001,16 @@ What happens to each FK column when a file or folder is re-indexed (via `fp inge
 | `folders.client_id` | — | Not touched by ingest (set via CLI only) | Yes |
 | `messages.chat_id` | Structural | Immutable (set on insert) | N/A |
 
-Cascade operations (`fp folder edit --project`, `fp folder edit --client`) are **not** re-indexing — they unconditionally overwrite `project_id` or `client_id` on all descendant folders and their files, including any per-file manual overrides.
+Cascade operations (`fp update folder <id> --project-id`, `fp update folder <id> --client-id`) are **not** re-indexing — they unconditionally overwrite `project_id` or `client_id` on all descendant folders and their files, including any per-file manual overrides.
 
 ### Project Resolution Chain
 
-How `project_id` is determined for a new file during ingest:
+How `project_id` is determined for a file:
 
-1. **Direct path match** — the file's path is prefix-matched against `projects.root_path` (longest match wins).
-2. **Folder inheritance** — if no direct match, inherits `project_id` from the file's folder record.
-3. **Manual assignment** — a user assigns a project to a folder via CLI; `cascade_project_id()` propagates to all descendant folders and their files.
+1. **Folder inheritance** — during ingest, a file inherits `project_id` from its folder record (applied only when the file's `project_id` is currently NULL).
+2. **Manual assignment** — a user assigns a project to a file or folder via `fp update`; for folders, `cascade_project_id()` propagates the assignment to all descendant folders and their files.
 
-Step 3 is an explicit user action, not part of the ingest pipeline. Once a file's `project_id` is set (by any path), it is preserved on subsequent re-indexes. However, a later cascade operation on the parent folder will overwrite it unconditionally.
+There is no automatic path-based project detection — projects are not matched against file paths. Once a file's `project_id` is set, it is preserved on subsequent re-indexes. However, a later cascade operation on the parent folder will overwrite it unconditionally.
 
 ### Cross-table Relationship Map
 
@@ -1020,13 +1019,12 @@ Every FK relationship and how it is populated. Content entities [C] reference su
 | From | Tier | To | Tier | FK Column | How populated |
 |---|---|---|---|---|---|
 | `files` | C | `folders` | S | `folder_id` | Auto-linked by parent directory path during ingest |
-| `files` | C | `projects` | S | `project_id` | Path-prefix match or folder inheritance at ingest; preserved on re-index |
+| `files` | C | `projects` | S | `project_id` | Inherited from the file's folder at ingest; preserved on re-index |
 | `files` | C | `clients` | S | `client_id` | Follows project assignment or direct CLI assignment (`fp update`) |
 | `folders` | S | `folders` | S | `parent_folder_id` | Filesystem hierarchy (local) or Drive API parent (remote) |
 | `folders` | S | `projects` | S | `project_id` | User assignment via CLI (`fp update`), cascaded to descendants |
 | `folders` | S | `clients` | S | `client_id` | User assignment via CLI (`fp update`), cascaded to descendants |
 | `projects` | S | `clients` | S | `client_id` | User assignment via CLI (`fp update`) |
-| `projects` | S | `folders` | S | `root_folder_id` | Links project to its root folder entry |
 | `messages` | C | `chats` | C | `chat_id` | Set on insert from chat export data |
 | `chats` | C | `projects` | S | `project_id` | User assignment (`fp update`) |
 | `chats` | C | `clients` | S | `client_id` | Follows project or direct assignment |
@@ -1066,7 +1064,7 @@ The `assignment_source` column appears on `projects` and all entity tables (`fil
 
 | Value | Meaning | Set by |
 |-------|---------|--------|
-| `'user'` | Manually assigned via CLI (`fp folder edit`, `fp file edit`, `fp project link`) | Service layer `assign()` functions |
+| `'user'` | Manually assigned via CLI (`fp update`) | Service layer `assign()` functions |
 | `'auto'` | Detected by the ingest pipeline | `project_detection.py`, connector adapters |
 
 **Protection semantics:** During re-ingest, the pipeline uses a `CASE WHEN` guard in its UPSERT statements:
@@ -1110,7 +1108,7 @@ Files with unsupported extensions are silently skipped — no error, no placehol
 
 ## FTS5 Virtual Tables
 
-Created by `init_db()`. These are external-content FTS5 tables backed by their respective base tables, providing full-text search over key columns. Maintained automatically by SQLite triggers (insert/update/delete). Use `--rebuild-vectors` to rebuild from scratch.
+Created by `init_db()`. These are external-content FTS5 tables backed by their respective base tables, providing full-text search over key columns. Maintained automatically by SQLite triggers (insert/update/delete). Use `fp doctor search` to drop and rebuild them from scratch.
 
 | Virtual Table | Base Table | Indexed Columns |
 |---------------|------------|-----------------|
@@ -1179,7 +1177,7 @@ MCP tools, CLI commands, and `fp status` all use this filter. To query only list
 
 ### `status_reason` column
 
-Records why an entity has its current status. Present on `files`, `clients`, and `projects` tables.
+Records why an entity has its current status. Present on `files`, `folders`, `clients`, and `projects` tables.
 
 | Value | Meaning | Set by |
 |-------|---------|--------|

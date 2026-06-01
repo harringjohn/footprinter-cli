@@ -21,7 +21,7 @@ Or install with **pipx** directly:
 pipx install footprinter-cli
 ```
 
-Either method gives you the `fp` command with the indexing pipeline, CLI, MCP server, and HTTP API. Optional extras add more:
+Either method installs three commands: `fp` (the CLI and indexing pipeline), `fp-mcp` (the MCP server for AI agents), and `fp-api` (the HTTP API). Optional extras add more:
 
 | Extra | What it adds |
 |-------|-------------|
@@ -120,7 +120,7 @@ Run `fp <command> --help` for full usage.
 
 Single-process CLI with optional MCP server. SQLite database. No containers, no cloud, no accounts.
 
-Sources are scanned into SQLite with bidirectional links connecting local files to remote backups via content hash matching. Embeddings are generated at ingest time for semantic search. The MCP server exposes indexed data with two-layer access control (visibility + permissions) — you decide what agents can see.
+Sources are scanned into SQLite with bidirectional links connecting local files to remote backups via content hash matching. Embeddings are generated at ingest time for semantic search. The MCP server exposes indexed data with two-layer access control (visibility + access) — you decide what agents can see.
 
 ## Documentation
 
@@ -138,7 +138,7 @@ Bug fixes, documentation, and tests welcome. For new features or architectural c
 
 ```bash
 git clone https://github.com/harringjohn/footprinter-cli.git
-cd footprinter
+cd footprinter-cli
 python3 -m venv venv
 ./venv/bin/pip install -e ".[dev]"
 ```

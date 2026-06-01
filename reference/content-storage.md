@@ -2,7 +2,7 @@
 
 Footprinter has three distinct content storage tiers. This page explains what each tier stores, what it doesn't, and the single config flag (`content_snippets`) that marks the boundary where Footprinter starts storing copies of your file content.
 
-For the schema columns referenced here, see `data-model.md`. For how stored content is gated when an AI assistant reads it, see `mcp-access-control.md`. The architectural rationale and per-entity boundary map (files, emails, chats, browser) live in `docs/internal/decisions/metadata-content-boundary.md` *(internal)*.
+For the schema columns referenced here, see `data-model.md`. For how stored content is gated when an AI assistant reads it, see `mcp-access-control.md`.
 
 ---
 
@@ -18,7 +18,7 @@ You can point Footprinter at your entire home directory in Tier 0 and know that 
 
 | | Tier 0 — Metadata only | Tier 1 — Content snippets | Tier 2 — Full content features |
 |---|---|---|---|
-| **Switch** | Default — no action needed | `indexing.content_snippets: true` (set in `fp setup` or `config.yaml`) | `pip install "footprinter-cli[semantic]"` and/or `[parse]` (or `[full]` for both) |
+| **Switch** | Default — no action needed | `indexing.content_snippets: true` (set in `fp setup` or `config.yaml`) | `pipx install "footprinter-cli[semantic]"` and/or `[parse]` (or `[full]` for both) |
 | **Package** | Base | Base | Base + extras |
 | **What gets read from disk** | Names, paths, sizes, timestamps | Names, paths, sizes, timestamps **+ first ~1000 chars of text-readable files** | Tier 1 + full text from PDF / Word / Excel / PowerPoint via `[parse]`; chunked content embedded into vectors via `[semantic]` |
 | **What lands in Footprinter's database** | Catalog metadata only — no file content | Catalog metadata + `files.content_preview` (and `emails.body_preview` for connectors) | Tier 1 storage + ChromaDB vectors (separate local store) |
@@ -31,7 +31,7 @@ The MCP read path is the same in every tier: when an AI assistant calls `footpri
 
 ## Tier 0 — Metadata only (default)
 
-**You get this without doing anything.** A fresh `pip install footprinter-cli` followed by `fp setup` (with content snippets declined) sits at Tier 0.
+**You get this without doing anything.** A fresh `pipx install footprinter-cli` followed by `fp setup` (with content snippets declined) sits at Tier 0.
 
 - Ingest catalogs file names, paths, sizes, timestamps, hashes, and structure.
 - FTS5 keyword search matches the `name` column. A search for "invoice" finds files literally named `invoice-2024.pdf` but not files whose contents mention "invoice".
@@ -65,7 +65,7 @@ Tier 1 ships in the base package — no extras, no extra dependencies. The `cont
 - **`[parse]`** — installs document parsers (`pypdf`, `python-docx`, `openpyxl`, etc.). Ingest can extract text from PDFs, Word, Excel, and PowerPoint files instead of skipping them or storing only filename metadata. Without `[parse]`, those file types contribute filename-only matches even at Tier 1.
 - **`[full]`** — convenience alias that installs both `[semantic]` and `[parse]`.
 
-Vectorization is independently switchable per content type (`semantic.file_vectorization`, `semantic.chat_vectorization`) so installing the extra doesn't force vectorization until you flip the flags.
+Vectorization is independently switchable per content type (`semantic.file_vectorization`, `semantic.chat_vectorization`) so installing the extra doesn't force vectorization until you flip the flags. Per-row control is also available: each `files`, `chats`, and `messages` row carries a `vectorize` column (default on) that can exclude an individual item from embedding.
 
 ---
 
@@ -73,9 +73,9 @@ Vectorization is independently switchable per content type (`semantic.file_vecto
 
 | Tier | How |
 |---|---|
-| Tier 0 | Default. `pip install footprinter-cli`, then `fp setup`, decline content snippets. |
+| Tier 0 | Default. `pipx install footprinter-cli`, then `fp setup`, decline content snippets. |
 | Tier 1 | In `fp setup` answer **yes** to "Enable file content snippets?". Or set `indexing.content_snippets: true` in `config.yaml` and re-run `fp ingest`. |
-| Tier 2 | `pip install "footprinter-cli[semantic]"`, `pip install "footprinter-cli[parse]"`, or `pip install "footprinter-cli[full]"`. Re-run `fp ingest --full` to populate. |
+| Tier 2 | `pipx install "footprinter-cli[semantic]"`, `pipx install "footprinter-cli[parse]"`, or `pipx install "footprinter-cli[full]"`. Re-run `fp ingest --full` to populate. |
 
 Tiers stack: Tier 1 includes Tier 0; Tier 2 includes Tier 1. You can disable Tier 1 again by flipping the config flag and re-running ingest, but existing previews persist until rows are re-processed or removed.
 
@@ -85,4 +85,3 @@ Tiers stack: Tier 1 includes Tier 0; Tier 2 includes Tier 1. You can disable Tie
 
 - `data-model.md` — schema columns (`content_preview`, `body_preview`, hash columns) and the local-only architecture.
 - `mcp-access-control.md` — how visibility and read permissions gate stored content for AI assistants.
-- `docs/internal/decisions/metadata-content-boundary.md` *(internal)* — full decision record covering each entity type's boundary and the open questions deferred from v1.0.

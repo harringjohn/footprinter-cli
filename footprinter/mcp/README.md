@@ -1,6 +1,6 @@
 # Footprinter MCP Server
 
-Model Context Protocol server providing AI assistant access to Footprinter's indexed data. Supports metadata search, entity queries, and content reads — all gated by a two-layer access control model (visibility + permissions). Designed for Claude Desktop integration.
+Model Context Protocol server providing AI assistant access to Footprinter's indexed data. Supports metadata search, entity queries, and content reads — all gated by a two-layer access control model (visibility + access). Designed for Claude Desktop integration.
 
 ## Setup
 
@@ -89,10 +89,10 @@ Before checking permissions, MCP enforces a visibility layer that controls wheth
 | State | In Results? | Metadata Exposed | Content Readable? |
 |-------|-------------|------------------|-------------------|
 | `hidden` | No (excluded) | None | No |
-| `opaque` | Yes (minimal) | `id`, `content_type`, `source` only | No |
+| `opaque` | Yes (minimal) | files: `id`, `content_type`, `source`, `project_id` (other entity types expose their own minimal set — see `reference/mcp-access-control.md`) | No |
 | `full` | Yes (full) | All fields | Yes (if permitted) |
 
-**Resolution:** Policies in `visibility_policies` are the source of truth. The recalculation engine (`footprinter/access.py`) resolves policies per entity using most-restrictive-wins semantics (`hidden` > `opaque` > `full`) and writes cached values to `visibility` columns. MCP tools read these cached columns at query time — no live policy resolution during requests.
+**Resolution:** Policies in `visibility_policies` are the source of truth. The recalculation engine (`footprinter/access_stamper.py`) resolves policies per entity using most-restrictive-wins semantics (`hidden` > `opaque` > `full`) and writes cached values to `visibility` columns. MCP tools read these cached columns at query time — no live policy resolution during requests.
 
 **Scope hierarchy** (checked in order, most-restrictive-wins):
 - Files: `file:{id}` → folder prefix → folder FK → `project:{id}` → `client:{id}` → `source:files` → `global`
@@ -127,7 +127,7 @@ MCP tools return specific error codes for access control:
 |------|---------|---------------|
 | `NOT_FOUND` | Item is hidden | Item's visibility resolves to `hidden` |
 | `VISIBILITY_RESTRICTED` | Item is opaque | Item's visibility resolves to `opaque` (returns minimal metadata) |
-| `PERMISSION_DENIED` | Read access denied | Item is visible but `can_read` returns false |
+| `PERMISSION_DENIED` | Read access denied | Item is visible but its resolved `access` is `deny` |
 
 ## Module Structure
 
