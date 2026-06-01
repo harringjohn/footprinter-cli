@@ -658,7 +658,7 @@ class TestAddDataBulkCsvNoMutation:
         assert result["created"] == 1
         assert row is not None
 
-    # -- message mutation guard (FPR-1894) ----------------------------------
+    # -- message mutation guard -----------------------------------------------
 
     @staticmethod
     def _seed_message(conn, *, chat_id, message_id="msg-existing", role="user", content="hello world"):
