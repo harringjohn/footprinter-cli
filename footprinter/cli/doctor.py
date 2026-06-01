@@ -260,6 +260,71 @@ def _check_fts_health() -> Check:
         return Check("fts_health", "WARN", f"FTS health check failed: {e}", group="Data Integrity")
 
 
+def _table_columns(conn) -> dict[str, set[str]]:
+    """Return {table_name: {column_names}} for every table in a connection."""
+    tables = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    ]
+    return {
+        t: {row[1] for row in conn.execute(f"PRAGMA table_info({t})").fetchall()}
+        for t in tables
+    }
+
+
+def _check_schema_drift() -> Check:
+    """Warn when the fresh schema has columns an existing DB lacks (latent crash risk).
+
+    The dangerous direction is fresh-has / live-lacks: code selects a column the
+    on-disk DB doesn't have and crashes at statement-prepare time. The reverse
+    (live-has / fresh-lacks — e.g. columns from a co-installed richer Footprinter)
+    is harmless to column-specific queries and is ignored.
+
+    The live DB is opened read-only so this check is a pure detector. Note that
+    init_db's idempotent migrations self-heal covered columns on any Database()
+    open — and _check_fts_health opens the DB earlier in this run — so this check
+    mostly reports OK in practice. Its standing value is catching a *future*
+    fresh-schema column that ships without a migration path.
+    """
+    from footprinter.paths import get_db_path
+
+    db_path = get_db_path()
+    if not db_path.exists():
+        return Check("schema_drift", "OK", "No database — schema drift check skipped", group="Data Integrity")
+    try:
+        from footprinter.ingest.database import Database
+
+        fresh_db = Database(":memory:")
+        try:
+            fresh_cols = _table_columns(fresh_db.conn)
+        finally:
+            fresh_db.close()
+
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as live:
+            live_cols = _table_columns(live)
+
+        drift: list[str] = []
+        for table, cols in fresh_cols.items():
+            if table not in live_cols:
+                continue  # a wholly-absent table is a different concern
+            drift.extend(f"{table}.{c}" for c in sorted(cols - live_cols[table]))
+
+        if drift:
+            return Check(
+                "schema_drift",
+                "WARN",
+                "Database missing columns the code expects: "
+                + ", ".join(sorted(drift))
+                + " — run any 'fp' command to apply migrations",
+                group="Data Integrity",
+            )
+        return Check("schema_drift", "OK", "Schema matches code", group="Data Integrity")
+    except Exception as e:
+        return Check("schema_drift", "WARN", f"Schema drift check failed: {e}", group="Data Integrity")
+
+
 def run_checks() -> list[Check]:
     """Run all diagnostic checks and return the results."""
     return [
@@ -276,6 +341,7 @@ def run_checks() -> list[Check]:
         # Data Integrity
         _check_database(),
         _check_fts_health(),
+        _check_schema_drift(),
         # Integrations
         _check_fda(),
         _check_mcp_config(),

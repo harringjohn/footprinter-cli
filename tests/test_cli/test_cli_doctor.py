@@ -117,6 +117,72 @@ class TestDoctorDatabase:
         assert "ingest" in output.lower()
 
 
+class TestDoctorSchemaDrift:
+    """_check_schema_drift() warns when an existing DB lacks a fresh-schema column."""
+
+    @staticmethod
+    def _build_fresh_db(path):
+        from footprinter.ingest.database import Database
+
+        Database(str(path)).close()
+
+    def test_drift_warns_on_missing_column(self, tmp_path, monkeypatch):
+        """A DB missing clients.updated_at (the dangerous direction) → WARN."""
+        import sqlite3
+
+        from footprinter.cli.doctor import _check_schema_drift
+
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        # Downgrade with raw sqlite so the check, not a Database() open, is what runs.
+        conn = sqlite3.connect(str(db))
+        conn.execute("ALTER TABLE clients DROP COLUMN updated_at")
+        conn.commit()
+        conn.close()
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        check = _check_schema_drift()
+        assert check.status == "WARN"
+        assert "clients.updated_at" in check.message
+
+    def test_drift_ok_on_healthy_db(self, tmp_path, monkeypatch):
+        """A fresh DB matches the code → OK."""
+        from footprinter.cli.doctor import _check_schema_drift
+
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        check = _check_schema_drift()
+        assert check.status == "OK"
+
+    def test_drift_skipped_without_db(self, tmp_path, monkeypatch):
+        """No database → OK (skipped), mirroring _check_database."""
+        from footprinter.cli.doctor import _check_schema_drift
+
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(tmp_path / "nope.db"))
+
+        check = _check_schema_drift()
+        assert check.status == "OK"
+
+    def test_drift_ignores_live_only_extras(self, tmp_path, monkeypatch):
+        """A column the live DB has but the fresh schema lacks must not warn."""
+        import sqlite3
+
+        from footprinter.cli.doctor import _check_schema_drift
+
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        conn = sqlite3.connect(str(db))
+        conn.execute("ALTER TABLE clients ADD COLUMN remote_id TEXT")
+        conn.commit()
+        conn.close()
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        check = _check_schema_drift()
+        assert check.status == "OK"
+
+
 class TestDoctorFDA:
     @pytest.mark.skipif(platform.system() != "Darwin", reason="macOS only")
     def test_fda_not_readable_warns(self, tmp_path, monkeypatch):
