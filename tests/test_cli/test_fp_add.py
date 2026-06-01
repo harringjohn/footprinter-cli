@@ -22,6 +22,8 @@ import sqlite3
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from conftest import run_fp
 
 
@@ -821,6 +823,24 @@ class TestAddDataBulkCsvNoMutation:
         assert code == 0
         assert result["created"] == 2
         assert count == 2
+
+    def test_data_entity_exists_rejects_unknown_table(self, temp_db):
+        """An unknown table name must raise ValueError, not silently build SQL."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+
+        from footprinter.cli.add import DATA_EXISTENCE_KEYS, _data_entity_exists
+
+        # Temporarily inject a rogue entry to simulate a future mis-configuration
+        DATA_EXISTENCE_KEYS["rogue"] = ("evil_table", [("id", "id")], {})
+        try:
+            with pytest.raises(ValueError, match="unexpected table"):
+                _data_entity_exists(db.conn, "rogue", {"id": "1"})
+        finally:
+            del DATA_EXISTENCE_KEYS["rogue"]
+            db.conn.close()
 
 
 # ---------------------------------------------------------------------------

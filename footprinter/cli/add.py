@@ -145,6 +145,10 @@ DATA_EXISTENCE_KEYS: dict[str, tuple[str, list[tuple[str, str]], dict[str, str]]
     "messages": ("messages", [("chat_id", "chat_id"), ("message_id", "message_id")], {}),
 }
 
+_ALLOWED_TABLES: frozenset[str] = frozenset(
+    {"files", "emails", "visits", "folders", "messages"}
+)
+
 # ---------------------------------------------------------------------------
 # Service resolution
 # ---------------------------------------------------------------------------
@@ -322,6 +326,8 @@ def _data_entity_exists(conn: sqlite3.Connection, noun: str, data: dict) -> bool
     if spec is None:
         return False
     table, key_cols, defaults = spec
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"unexpected table: {table!r}")
     where_parts: list[str] = []
     params: list[str | None] = []
     for csv_col, db_col in key_cols:
