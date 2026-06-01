@@ -620,7 +620,7 @@ def enrich_chat_visibility(
 ) -> dict[int, dict]:
     """Fetch visibility fields for a set of chat IDs.
 
-    Returns {chat_id: {account, visibility, access, status}} lookup dict.
+    Returns {chat_id: {account, visibility, access, visibility_source, access_source, status}} lookup dict.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     if not chat_ids:
