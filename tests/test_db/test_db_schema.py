@@ -523,6 +523,119 @@ class TestProjectNameColumnMigration:
         db2.close()
 
 
+class TestUpdatedAtColumnMigration:
+    """Verify _ensure_updated_at_columns() adds clients.updated_at to old DBs.
+
+    The fresh schema's ``clients`` table carries ``updated_at``, but databases
+    created before it don't. ``update_client`` issues
+    ``UPDATE clients SET ..., updated_at = CURRENT_TIMESTAMP``, so an unmigrated
+    DB fails at statement-prepare time with ``no such column: updated_at``.
+    """
+
+    @staticmethod
+    def _downgrade_drop_updated_at(temp_db):
+        """Drop ``clients.updated_at`` from a fresh DB to reproduce a pre-migration DB.
+
+        Uses ``ALTER TABLE ... DROP COLUMN`` (the same idiom as
+        ``test_projects_slug_added_on_old_db``) so the primary key, constraints,
+        and the dependent ``emails`` foreign key are preserved — only the
+        ``updated_at`` column is removed.
+        """
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("ALTER TABLE clients DROP COLUMN updated_at")
+        conn.commit()
+        conn.close()
+
+    def test_clients_updated_at_added_on_old_db(self, temp_db):
+        """Re-opening a legacy DB adds the missing updated_at column."""
+        from footprinter.ingest.database import Database
+
+        self._downgrade_drop_updated_at(temp_db)
+
+        db2 = Database(temp_db)
+        cols = {row[1] for row in db2.conn.execute("PRAGMA table_info(clients)")}
+        assert "updated_at" in cols, "updated_at not added to clients"
+        db2.close()
+
+    def test_update_client_succeeds_after_migration(self, temp_db):
+        """The exact path that raised `no such column: updated_at` must succeed."""
+        from footprinter.db.clients import create_client, update_client
+        from footprinter.ingest.database import Database
+
+        self._downgrade_drop_updated_at(temp_db)
+
+        db2 = Database(temp_db)
+        created = create_client(db2.conn, name="Acme", client_type="external")
+        # Before the migration this raises sqlite3.OperationalError.
+        result = update_client(db2.conn, created["id"], name="Acme Renamed")
+        assert result is True
+        db2.close()
+
+    def test_updated_at_backfilled_from_created_at(self, temp_db):
+        """Existing rows get updated_at backfilled from created_at, not left NULL."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        self._downgrade_drop_updated_at(temp_db)
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute(
+            "INSERT INTO clients (name, slug, client_type, status, created_at) "
+            "VALUES ('Beta', 'beta', 'external', 'listed', '2020-01-01 00:00:00')"
+        )
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        row = db2.conn.execute(
+            "SELECT created_at, updated_at FROM clients WHERE name = 'Beta'"
+        ).fetchone()
+        assert row["updated_at"] == row["created_at"] == "2020-01-01 00:00:00"
+        db2.close()
+
+    def test_idempotent_on_fresh_db(self, temp_db):
+        """Init twice — the duplicate-column path is swallowed, column stays."""
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+        db2 = Database(temp_db)  # second init: ADD COLUMN raises duplicate, swallowed
+        cols = {row[1] for row in db2.conn.execute("PRAGMA table_info(clients)")}
+        assert "updated_at" in cols
+        db2.close()
+
+    def test_no_fresh_minus_migrated_drift_for_clients(self, temp_db):
+        """Drift-closure regression: the migration path restores every fresh column.
+
+        Build a fresh DB, snapshot its clients columns, downgrade to the
+        pre-migration shape, re-init, and assert the migrated table is not
+        missing any column the fresh schema declares. Guards the one known gap;
+        a future un-migrated clients column added to the fresh schema fails here.
+        """
+        from footprinter.ingest.database import Database
+
+        fresh = Database(temp_db)
+        cols_fresh = {row[1] for row in fresh.conn.execute("PRAGMA table_info(clients)")}
+        fresh.close()
+
+        self._downgrade_drop_updated_at(temp_db)
+
+        migrated = Database(temp_db)
+        cols_migrated = {
+            row[1] for row in migrated.conn.execute("PRAGMA table_info(clients)")
+        }
+        migrated.close()
+
+        missing = cols_fresh - cols_migrated
+        assert missing == set(), f"clients: fresh schema has {missing} with no migration path"
+
+
 class TestAccessColumnMigration:
     """Verify _migrate_access_columns() renames mcp_view/mcp_read → visibility/access."""
 

@@ -758,6 +758,7 @@ class SchemaMixin:
 
         self._ensure_source_columns()
         self._ensure_vectorize_column()
+        self._ensure_updated_at_columns()
         self.conn.commit()
 
         # Seed the sources registry from config
@@ -918,6 +919,28 @@ class SchemaMixin:
             self.conn.execute(
                 f"UPDATE {table} SET vectorize = 0 "
                 f"WHERE json_extract(metadata, '$.vectorize') = 0"
+            )
+
+    _UPDATED_AT_TABLES = ("clients",)
+
+    def _ensure_updated_at_columns(self):
+        """Add updated_at to tables that lack it on existing DBs; backfill from created_at.
+
+        SQLite forbids DEFAULT CURRENT_TIMESTAMP on ALTER TABLE ADD COLUMN
+        (non-constant default), so the column is added nullable and backfilled
+        from created_at. Idempotent: a fresh DB already has the column, so the
+        duplicate-column error is swallowed.
+        """
+        for table in self._UPDATED_AT_TABLES:
+            try:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN updated_at DATETIME")
+            except sqlite3.OperationalError as e:
+                msg = str(e).lower()
+                if "duplicate column" not in msg and "no such table" not in msg:
+                    raise
+                continue
+            self.conn.execute(
+                f"UPDATE {table} SET updated_at = created_at WHERE updated_at IS NULL"
             )
 
     # ========================================
