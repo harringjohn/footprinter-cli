@@ -1,4 +1,4 @@
-"""Tests for single-entity panel view access fields (FPR-1846).
+"""Tests for single-entity panel view access fields.
 
 Validates:
   1. Panel shows resolved visibility, access, and source
