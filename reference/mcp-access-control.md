@@ -313,7 +313,7 @@ The recalculation engine writes `'inherit'` when the only matching policies are 
 
 ## Recalculation Engine
 
-The recalculation engine (`footprinter/access.py`) resolves policies and writes cached values to entity columns. It does not run at query time — it pre-computes values so that query-time lookups are fast column reads.
+The recalculation engine (`footprinter/access_stamper.py`) resolves policies and writes cached values to entity columns. It does not run at query time — it pre-computes values so that query-time lookups are fast column reads.
 
 ### ENTITY_META
 
@@ -397,7 +397,7 @@ When an item is opaque, only a minimal set of fields is returned. The allowed fi
 | Chat | `id`, `account`, `project_id`, `client_id` |
 | Folder | `id`, `direct_files`, `direct_file_count`, `source`, `project_id` |
 | Browser | `id`, `browser`, `project_id` |
-| Project | `id`, `type`, `project_type`, `status`, `client_id` |
+| Project | `id`, `status`, `client_id` |
 | Client | `id`, `client_type`, `status` |
 
 ---

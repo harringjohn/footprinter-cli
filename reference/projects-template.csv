@@ -1,2 +1,2 @@
-project_name,project_type,client,description
-Acme Q1 Audit,docs,Acme Corp,Compliance review
+name,client,description
+Acme Q1 Audit,Acme Corp,Compliance review

@@ -1,6 +1,11 @@
-# Chat export — Claude and ChatGPT
+# Chat export — Claude, ChatGPT, and Claude Code
 
-Footprinter can index your past Claude.ai and ChatGPT conversations. Both providers ship the data as a `.zip` you download from your account settings.
+Footprinter indexes chat history from three sources:
+
+- **Claude Code sessions** are indexed **automatically** from `~/.claude/projects/` on every `fp ingest` — no export step (see [Claude Code sessions](#claude-code-sessions) below).
+- **Claude.ai** and **ChatGPT** conversations are imported from a `.zip` you download from your account settings, as described below.
+
+Both web providers ship the data as a `.zip` you download from your account settings.
 
 ## Claude.ai
 
@@ -32,4 +37,12 @@ You have two options:
 
 `fp add chats` accepts either a `.zip` file or an extracted directory. Format (Claude vs. ChatGPT) is auto-detected from the archive contents. Re-importing the same archive is safe — duplicate conversations are skipped by UUID.
 
-See [`reference/cli-reference.md`](cli-reference.md) § `fp add chats` for full command details.
+See [`reference/interfaces.md`](interfaces.md) for full `fp add` command details.
+
+## Claude Code sessions
+
+Claude Code writes a JSONL transcript for every session under `~/.claude/projects/`. Footprinter picks these up **automatically** — the `chat` stage of `fp ingest` scans that directory on each run and indexes any new sessions. There is no export or `.zip` step.
+
+- No configuration required: if `~/.claude/projects/` exists, its sessions are indexed on the next `fp ingest`.
+- Sessions are stored as chats with the account label `claude_code`, so you can filter them with `fp view chats` and the access-control scope `account:claude_code`.
+- Indexing is incremental and deduplicated by session UUID: an unchanged session is skipped, and a session that grew since last run is re-indexed. `fp ingest --full` re-processes every session.

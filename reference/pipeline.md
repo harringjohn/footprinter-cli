@@ -19,7 +19,7 @@ The orchestrator runs stages in a fixed order. Each stage is independent and can
 | `local_folders` | Scan ~/Work, ~/Personal folder structure | folders |
 | `local_files` | Index local files → files | files |
 | `browser` | Browser history (Safari, Chrome) | visits |
-| `chat` | Chat history status (import is manual) | chats, messages |
+| `chat` | Index Claude Code sessions from `~/.claude/projects` (manual Claude/ChatGPT zip imports use `fp add chats`) | chats, messages |
 
 ### Connector (requires `fp connect install google`)
 
@@ -34,7 +34,7 @@ The orchestrator runs stages in a fixed order. Each stage is independent and can
 | Stage | Description | Tables |
 |-------|-------------|--------|
 | `folder_stats` | Refresh `direct_file_count` and `total_size_bytes` on folders | folders |
-| `access_resolution` | Stamp visibility + permissions on ingested entities | files, emails, chats, folders, projects, clients (visibility, access) |
+| `access_resolution` | Stamp visibility + access on ingested entities | files, emails, chats, folders, projects, clients (visibility, access) |
 
 Runs last in every pipeline (`local`, `all`, and connector pipelines). Incremental mode only stamps entities added since the last run. Full mode (`--full`) recalculates everything. First run acts as a backfill for existing databases.
 
@@ -60,11 +60,10 @@ Connector pipeline names (e.g., `google`) only appear when the connector is inst
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `command` | (positional) | `status`, `import`, or `refresh` |
+| `refresh` | (positional) | Subcommand: re-scan a single data source (e.g. `fp ingest refresh google`) |
 | `--pipe` | `-s` | Comma-separated stage names (power-user escape hatch) |
 | `--full` | `-f` | Re-process everything (vs incremental) |
 | `--quiet` | `-q` | Suppress output (for scripts) |
-| `--preview` | — | Pre-scan summary (no ingest) |
 | `--verbose` | `-v` | Verbose logging to file |
 
 ### Examples
@@ -156,21 +155,11 @@ The pipeline runs an FTS health probe at startup. If corruption is detected, it 
 
 ### Vectorization
 
-Vectorization happens at ingest time — files are vectorized in `file_indexer.py` after `insert_file()`, and chat messages are vectorized in `chat_indexer.py` after import. Use `fp doctor semantic full` to rebuild the vector store from scratch.
+Vectorization runs as a post-ingest stage (`run_vectorization()` in `footprinter/ingest/processing.py`), scoped to the files touched in the current run (incremental) or all eligible files (`--full`). Only rows with `vectorize = 1` are embedded, and the `vectorization` config block (file types, size cap, chunking, exclude patterns) gates what qualifies. Chat messages from manual imports are vectorized by `chat_indexer.py` during `fp add chats`. Use `fp doctor semantic full` to rebuild the vector store from scratch.
 
 ### Chat Deduplication
 
-Chat deduplication runs during chat ingest to detect and merge near-duplicate conversations. Detection uses three passes, each progressively more expensive:
+Chat imports are deduplicated by external UUID. When a chat is re-encountered — a Claude Code session re-scanned by `fp ingest`, or the same Claude/ChatGPT export re-imported via `fp add chats` — the existing record is matched on its `external_id` and its messages are replaced rather than duplicated. In incremental mode an unchanged chat is skipped; `--full` re-processes it.
 
-1. **Exact title match** — normalized (lowercased, stripped) title comparison. Confidence: high.
-2. **Fuzzy title match** — `SequenceMatcher` ratio >= 0.85. Confidence: high.
-3. **Message content overlap** — SHA-256 hashes of message content; >= 50% hash intersection. Confidence: medium.
-
-When duplicates are found and merged:
-
-- Unique messages from the source chat are moved to the target chat. Messages already present (by content hash) are skipped.
-- The source chat is marked `status='merged'` with `merged_into_id` pointing to the target.
-- Vector embeddings for the source chat are deleted; the caller re-vectorizes moved messages.
-
-Source: `footprinter/ingest/chat_dedup.py`.
+The earlier title/content-overlap merge heuristic has been removed. The `chats.merged_into_id` column is retained only for historical records.
 

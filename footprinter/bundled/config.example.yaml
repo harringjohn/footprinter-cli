@@ -81,9 +81,6 @@ indexing:
   max_file_size_mb: 50      # MB; 0 = no size limit. 50 is generous for prose/docs.
   lookback_days: 14         # Browser history window (days back to index)
   content_snippets: false   # Extract file/email content previews for keyword search
-  # Pre-scan summary tuning for `fp ingest --preview`
-  preview_top_n: 10                # rows shown for top files / top directories
-  preview_size_threshold_mb: 50    # files at or above this size are flagged as outliers
 
 # Semantic search — stores content as embeddings in a local ChromaDB database
 # Enables finding files and chats by meaning, not just keywords
@@ -163,12 +160,3 @@ source_seeds:
     account: null
     label: "Chat"
     icon: message
-
-# Display labels for the group/project hierarchy
-# Customize these to match your organization's terminology
-domain:
-  labels:
-    group_singular: "Client"
-    group_plural: "Clients"
-    project_singular: "Project"
-    project_plural: "Projects"
