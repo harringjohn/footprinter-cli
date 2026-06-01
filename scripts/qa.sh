@@ -22,17 +22,23 @@ case "${1:-}" in
         echo "  ────  ────              ───────────"
         echo "  1     pytest            Unit + integration tests (~3,600 TDD tests)"
         echo "  2     smoke             Post-install canary (entry points, imports, fixture boundary)"
+        echo "  3     cli-verify        Full CLI surface verification (every command's behavior + error UX)"
         echo "  4     verify-upgrade    Upgrade-path verification (requires version args)"
         echo ""
         echo "Usage:"
         echo "  bash scripts/qa.sh smoke"
+        echo "  bash scripts/qa.sh cli-verify"
         echo "  bash scripts/qa.sh verify-upgrade <target-version> --from <base-version>"
         echo "  bash scripts/qa.sh all              (runs tiers that need no extra args)"
         echo ""
-        echo "Tiers requiring arguments (verify-upgrade) are excluded from 'all'."
+        echo "Excluded from 'all': verify-upgrade (needs version args) and cli-verify"
+        echo "(heavy — clones the source and builds a throwaway venv; run on demand)."
         ;;
     smoke)
         exec bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
+        ;;
+    cli-verify)
+        exec bash "$SCRIPT_DIR/cli_verify.sh"
         ;;
     verify-upgrade)
         shift
