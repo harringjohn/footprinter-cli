@@ -17,8 +17,7 @@ Or add to `~/Library/Application Support/Claude/claude_desktop_config.json` manu
 {
   "mcpServers": {
     "footprinter": {
-      "command": "fp",
-      "args": ["mcp"]
+      "command": "fp-mcp"
     }
   }
 }
