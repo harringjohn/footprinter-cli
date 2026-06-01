@@ -23,7 +23,6 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from conftest import run_fp
 
 
@@ -687,8 +686,8 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_data_entity_exists_true_for_messages_with_key(self, temp_db):
         """Messages with (chat_id, message_id) key → existence check returns True."""
-        from footprinter.ingest.database import Database
         from footprinter.cli.add import _data_entity_exists
+        from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         db.conn.row_factory = sqlite3.Row
@@ -701,8 +700,8 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_data_entity_exists_false_for_messages_without_message_id(self, temp_db):
         """Messages without message_id → existence check returns False (no stable key)."""
-        from footprinter.ingest.database import Database
         from footprinter.cli.add import _data_entity_exists
+        from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         db.conn.row_factory = sqlite3.Row
@@ -747,8 +746,8 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_add_messages_csv_new_row_still_inserts_real_db(self, temp_db, tmp_path):
         """New message inserts successfully via the real insert function."""
-        from footprinter.ingest.database import Database
         from footprinter.db.chats import insert_chat
+        from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         db.conn.row_factory = sqlite3.Row
@@ -786,8 +785,8 @@ class TestAddDataBulkCsvNoMutation:
 
     def test_add_messages_csv_null_message_id_always_inserts(self, temp_db, tmp_path):
         """Messages without message_id bypass the existence guard and always insert."""
-        from footprinter.ingest.database import Database
         from footprinter.db.chats import insert_chat
+        from footprinter.ingest.database import Database
 
         db = Database(temp_db)
         db.conn.row_factory = sqlite3.Row

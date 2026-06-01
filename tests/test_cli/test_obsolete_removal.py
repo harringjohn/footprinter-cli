@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from conftest import run_fp
 
-
 # ---------------------------------------------------------------------------
 # 1. Relocated symbols — importable from new homes
 # ---------------------------------------------------------------------------
@@ -131,7 +130,7 @@ class TestNoStaleReferences:
             text = py_file.read_text()
             for m in re.finditer(_STALE_PATTERN, text):
                 hits.append(f"{py_file.relative_to(_ROOT)}:{m.group()}")
-        assert hits == [], f"Stale command references in runtime code:\n" + "\n".join(hits)
+        assert hits == [], "Stale command references in runtime code:\n" + "\n".join(hits)
 
     def test_no_stale_doc_references(self):
         """No stale command references in README or reference/ docs."""
@@ -145,7 +144,7 @@ class TestNoStaleReferences:
             text = doc.read_text()
             for m in re.finditer(_STALE_PATTERN, text):
                 hits.append(f"{doc.relative_to(_ROOT)}:{m.group()}")
-        assert hits == [], f"Stale command references in docs:\n" + "\n".join(hits)
+        assert hits == [], "Stale command references in docs:\n" + "\n".join(hits)
 
     def test_setup_wizard_uses_current_commands(self):
         """The setup wizard module has no references to fp upsert or fp ingest import."""
