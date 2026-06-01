@@ -1203,7 +1203,7 @@ class TestCheckClientVerbose:
 
 
 # ---------------------------------------------------------------------------
-# Check subcommand: verbose on single-file target (FPR-1888)
+# Check subcommand: verbose on single-file target
 # ---------------------------------------------------------------------------
 
 
