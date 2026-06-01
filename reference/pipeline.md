@@ -33,10 +33,10 @@ The orchestrator runs stages in a fixed order. Each stage is independent and can
 
 | Stage | Description | Tables |
 |-------|-------------|--------|
+| `access_resolution` | Stamp visibility + access on ingested entities | files, folders, projects, clients, emails, chats, visits (visibility, access) |
 | `folder_stats` | Refresh `direct_file_count` and `total_size_bytes` on folders | folders |
-| `access_resolution` | Stamp visibility + access on ingested entities | files, emails, chats, folders, projects, clients (visibility, access) |
 
-Runs last in every pipeline (`local`, `all`, and connector pipelines). Incremental mode only stamps entities added since the last run. Full mode (`--full`) recalculates everything. First run acts as a backfill for existing databases.
+Both post-processing stages run after all data-source stages, in the order shown — `access_resolution` first, `folder_stats` last — in every pipeline (`local`, `all`, and connector pipelines). Incremental mode only stamps entities added since the last run. Full mode (`--full`) recalculates everything. First run acts as a backfill for existing databases.
 
 ---
 
@@ -48,9 +48,9 @@ Pipelines are resolved dynamically from the core source list and installed conne
 
 | Pipeline | Pipes | How resolved |
 |----------|-------|--------------|
-| `local` | local_folders, local_files, browser, chat, access_resolution | Core sources + post-processing |
-| `google` | drive_folders, drive_files, gmail, access_resolution | `ConnectorSpec("google").pipes` + post-processing (when installed) |
-| `all` | core + all installed connector sources + access_resolution | Core + `get_connector_sources().keys()` + post-processing |
+| `local` | local_folders, local_files, browser, chat, access_resolution, folder_stats | Core sources + post-processing |
+| `google` | drive_folders, drive_files, gmail, access_resolution, folder_stats | `ConnectorSpec("google").pipes` + post-processing (when installed) |
+| `all` | core + all installed connector sources + access_resolution, folder_stats | Core + `get_connector_sources().keys()` + post-processing |
 
 Connector pipeline names (e.g., `google`) only appear when the connector is installed. Pipeline resolution is internal — use `fp ingest refresh <source>` to target a specific data source.
 
@@ -109,6 +109,8 @@ fp doctor search
 | `drive` | drive_folders, drive_files | Requires Google connector |
 | `google` | drive_folders, drive_files, gmail | All Google connector stages |
 | `all` | *(all installed stages)* | Equivalent to `fp ingest` (all sources) |
+
+The `Stages` column lists only the data-source stages each alias maps to. The post-processing stages (`access_resolution`, then `folder_stats`) always run afterward, exactly as in a full pipeline.
 
 ---
 

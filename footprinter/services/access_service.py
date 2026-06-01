@@ -1,12 +1,13 @@
 """access_service — access gating, visibility filtering, and permission resolution.
 
-Combines the former ``read_service`` (3-stage gating) and ``visibility``
+Combines the former ``read_service`` (access gating) and ``visibility``
 (list filtering, inherit resolution, opaque field sets) into one module.
 
 Gating stages (for non-ADMIN roles):
   1. Existence — item must exist in DB
-  2. Visibility — ``visibility`` must not be hidden/opaque
-  3. Permission — ``access`` must not be deny
+  2. Status — ``status`` must not be removed/unlisted
+  3. Visibility — ``visibility`` must not be hidden/opaque
+  4. Permission — ``access`` must not be deny
 
 Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields,
 'full' -> full.  'inherit' -> resolves to the global policy at query

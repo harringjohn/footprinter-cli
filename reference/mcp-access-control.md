@@ -285,7 +285,7 @@ All 8 entity tables carry `visibility` and `access` columns. These store **cache
 |-------|-----------|-----------|--------------|-------|
 | `files` | ✓ | ✓ | Both | Full hierarchy resolution |
 | `folders` | ✓ | Column exists | Visibility only | Permission not resolved; stays at `inherit` |
-| `visits` | ✓ | ✓ | Neither | Source-level policy; resolved at query time |
+| `visits` | ✓ | ✓ | Both | Stamped from the browser-source or global policy |
 | `projects` | ✓ | ✓ | Both | Scoped by project/client |
 | `chats` | ✓ | ✓ | Both | Full hierarchy resolution |
 | `messages` | ✓ | ✓ | Neither | Inherits from parent chat at query time |
@@ -317,7 +317,7 @@ The recalculation engine (`footprinter/access_stamper.py`) resolves policies and
 
 ### ENTITY_META
 
-The engine maintains metadata for 6 entity types that participate in batch recalculation:
+The engine maintains metadata for 7 entity types that participate in batch recalculation:
 
 | Entity | Table | Visibility | Permissions | Path column |
 |--------|-------|-----------|-------------|-------------|
@@ -325,10 +325,11 @@ The engine maintains metadata for 6 entity types that participate in batch recal
 | `email` | `emails` | ✓ | ✓ | — |
 | `chat` | `chats` | ✓ | ✓ | — |
 | `folder` | `folders` | ✓ | — | `path` |
-| `project` | `projects` | ✓ | ✓ | `root_path` |
-| `client` | `clients` | ✓ | — | — |
+| `project` | `projects` | ✓ | ✓ | — |
+| `client` | `clients` | ✓ | ✓ | — |
+| `visit` | `visits` | ✓ | ✓ | — |
 
-`visits` and `messages` are not in ENTITY_META — they rely on `inherit` resolution at query time rather than pre-computed values.
+`messages` is the only entity not in ENTITY_META — message rows inherit visibility and access from their parent chat at query time rather than carrying pre-computed values.
 
 ### Triggers
 

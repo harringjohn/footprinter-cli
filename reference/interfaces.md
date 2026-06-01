@@ -17,7 +17,7 @@ Footprinter exposes four interfaces. All four converge on the same service layer
 
 ### CLI
 
-The `fp` command is installed by `pip install footprinter-cli`. All business logic is in the service layer — the CLI handles argument parsing and output formatting.
+The `fp` command is installed by `pipx install footprinter-cli`. All business logic is in the service layer — the CLI handles argument parsing and output formatting.
 
 | Command | Purpose |
 |---------|---------|
@@ -31,12 +31,12 @@ The `fp` command is installed by `pip install footprinter-cli`. All business log
 | `fp update` | Update existing records by ID — status, assignments, metadata |
 | `fp delete` | Hard-delete a super entity (irreversible) |
 | `fp permission` | Manage visibility and access policies |
-| `fp-mcp` | Start the MCP server (standalone binary) |
-| `fp-api` | Start the HTTP API server (standalone binary) |
 | `fp doctor` | Check installation health, rebuild search indexes and vector store |
 | `fp uninstall` | Remove Footprinter (MCP entry, user data, package) |
 
 Run `fp <command> --help` for full signatures and arguments.
+
+The same package also installs two standalone binaries — `fp-mcp` (MCP server) and `fp-api` (HTTP API server) — which are *not* `fp` subcommands. See the [MCP](#mcp) and [HTTP API](#http-api) sections below.
 
 #### Data scoping operations
 
@@ -304,12 +304,14 @@ client_service.delete(conn, client_id: int, *, role) -> dict | None
 ```python
 search_service.search(conn, *, role, query="", sources=None, project=None, client=None,
                       date_from=None, date_to=None, limit=50, account=None,
-                      sender=None, days_back=None, folder=None, mime_type=None) -> dict
+                      sender=None, days_back=None, folder=None, mime_type=None,
+                      include_unlisted=False, include_removed=False) -> dict
 ```
 
 Multi-source keyword search. Searches across files, emails, chats, and browser history.
 
 - `sources` — list of source names to search. Defaults to `["files", "emails", "chats", "browser"]`
+- `include_unlisted` / `include_removed` — by default results are limited to `listed` items; set these to surface `unlisted` or `removed` records respectively
 - Returns `{"files": [...], "emails": [...], "chats": [...], "browser": [...], "suppressed": int}`
 - VIEWER: hidden items excluded, content stripped for permission-denied items
 
@@ -434,7 +436,7 @@ for f in result.get("files", []):
 conn.close()
 ```
 
-### 3. Build a report: all files across active projects
+### 3. Build a report: all files across listed projects
 
 ```python
 from footprinter.cli._common import connect_db
@@ -444,7 +446,7 @@ from footprinter.services.roles import Role
 
 conn = connect_db(get_db_path())
 
-projects = project_service.list_(conn, role=Role.ADMIN, status="active")
+projects = project_service.list_(conn, role=Role.ADMIN, status="listed")
 for proj in projects["projects"]:
     files = file_service.list_(conn, role=Role.ADMIN, project_id=proj["id"])
     print(f"\n{proj['name']} — {files['total']} files")
