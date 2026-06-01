@@ -6,7 +6,7 @@ All heavy imports are deferred inside handler functions to keep ``fp --help`` fa
 
 import sys
 
-from footprinter.cli._common import FORMATTER, add_json_flag, console, output_json
+from footprinter.cli._common import FORMATTER, console
 
 # ---------------------------------------------------------------------------
 # argparse registration
