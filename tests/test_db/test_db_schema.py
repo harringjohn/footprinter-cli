@@ -435,6 +435,94 @@ class TestSuperEntityColumnMigration:
         db2.close()
 
 
+class TestProjectNameColumnMigration:
+    """Verify _migrate_project_name_column() renames projects.project_name → name."""
+
+    @staticmethod
+    def _downgrade_to_project_name(temp_db):
+        """Rebuild a fresh DB's projects table with the legacy ``project_name`` column.
+
+        Renaming ``name`` → ``project_name`` also rewrites the dependent
+        ``set_display_name_projects`` trigger to ``NEW.project_name``, faithfully
+        reproducing the pre-standardization on-disk shape.
+        """
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("ALTER TABLE projects RENAME COLUMN name TO project_name")
+        conn.commit()
+        conn.close()
+
+    def test_project_name_renamed_on_old_db(self, temp_db):
+        """Re-opening a legacy DB renames project_name → name."""
+        from footprinter.ingest.database import Database
+
+        self._downgrade_to_project_name(temp_db)
+
+        db2 = Database(temp_db)
+        cols = {row[1] for row in db2.conn.execute("PRAGMA table_info(projects)")}
+        assert "name" in cols, "project_name not renamed to name"
+        assert "project_name" not in cols, "legacy project_name column still present"
+        db2.close()
+
+    def test_data_preserved_and_trigger_rewritten(self, temp_db):
+        """Existing rows survive, and the display-name trigger now reads NEW.name."""
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        self._downgrade_to_project_name(temp_db)
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("INSERT INTO projects (project_name) VALUES ('Alpha')")
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        alpha = db2.conn.execute(
+            "SELECT name FROM projects WHERE name = 'Alpha'"
+        ).fetchone()
+        assert alpha is not None, "project row lost across migration"
+
+        # Trigger must now reference NEW.name; a fresh insert should populate display_name.
+        db2.conn.execute("INSERT INTO projects (name) VALUES ('Beta')")
+        db2.conn.commit()
+        beta = db2.conn.execute(
+            "SELECT display_name FROM projects WHERE name = 'Beta'"
+        ).fetchone()
+        assert beta[0] == "Beta", "set_display_name_projects not rewritten to NEW.name"
+        db2.close()
+
+    def test_search_join_resolves_after_migration(self, temp_db):
+        """The exact join that raised `no such column: project.name` must resolve."""
+        from footprinter.ingest.database import Database
+
+        self._downgrade_to_project_name(temp_db)
+
+        db2 = Database(temp_db)
+        # Mirrors the LEFT JOIN projects ... project.name in db/search.py.
+        db2.conn.execute(
+            "SELECT project.name AS project_name FROM files file "
+            "LEFT JOIN projects project ON file.project_id = project.id LIMIT 1"
+        )
+        db2.close()
+
+    def test_idempotent_on_fresh_db(self, temp_db):
+        """A fresh DB already uses `name`; the guard must no-op on every init."""
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+        db2 = Database(temp_db)  # second init: guard sees `name`, returns
+        cols = {row[1] for row in db2.conn.execute("PRAGMA table_info(projects)")}
+        assert "name" in cols
+        assert "project_name" not in cols
+        db2.close()
+
+
 class TestAccessColumnMigration:
     """Verify _migrate_access_columns() renames mcp_view/mcp_read → visibility/access."""
 

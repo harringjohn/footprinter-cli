@@ -104,6 +104,7 @@ class SchemaMixin:
         self.conn.execute("PRAGMA foreign_keys=ON")
 
         self._migrate_access_columns()
+        self._migrate_project_name_column()
         self._ensure_super_entity_columns()
 
         # ========================================
@@ -830,6 +831,47 @@ class SchemaMixin:
             self.conn.rollback()
             raise
         logger.info("Migrated mcp_view/mcp_read → visibility/access columns")
+
+    def _migrate_project_name_column(self):
+        """Rename the legacy ``projects.project_name`` column to ``name`` (idempotent).
+
+        The fresh-DB schema standardized this column to ``name``, but databases
+        created before the standardization still carry ``project_name``. Every
+        search and navigation query joins ``projects`` and selects ``project.name``,
+        so an unmigrated database fails at statement-prepare time with
+        ``no such column: project.name`` — even with zero project rows, since
+        SQLite resolves column names before reading data. SQLite (>= 3.25)
+        rewrites the dependent ``set_display_name_projects`` trigger automatically
+        on RENAME COLUMN, so no trigger handling is needed here.
+        """
+        cols = [
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info(projects)").fetchall()
+        ]
+
+        # Idempotent guard. Check the already-migrated case first: if `name` is
+        # present, return before attempting any rename (renaming would raise
+        # "duplicate column name: name" should `project_name` also linger). An
+        # empty `cols` (fresh DB, table not yet created) falls through this same
+        # `project_name not in cols` check, so both no-op cases are covered.
+        if "name" in cols:
+            return
+        if "project_name" not in cols:
+            return
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute("ALTER TABLE projects RENAME COLUMN project_name TO name")
+            result = self.conn.execute("PRAGMA integrity_check").fetchone()
+            if result[0] != "ok":
+                raise RuntimeError(
+                    f"Integrity check failed after project_name migration: {result[0]}"
+                )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        logger.info("Migrated projects.project_name → name column")
 
     def _ensure_source_columns(self):
         """Add visibility_source/access_source to entity tables (idempotent upgrade)."""
