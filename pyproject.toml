@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "footprinter-cli"
-version = "1.0.4"
+version = "1.0.5"
 description = "A local context layer for your files, browser history, chats, and email — searchable, user-owned, MCP-served."
 readme = "README.md"
 license = {text = "MIT"}
