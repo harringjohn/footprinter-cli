@@ -1,4 +1,4 @@
-"""Tests for FPR-1867: removal of obsolete CLI commands.
+"""Tests for removal of obsolete CLI commands.
 
 Validates:
   1. Shared symbols relocated to their new homes

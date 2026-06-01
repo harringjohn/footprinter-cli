@@ -60,7 +60,7 @@ def _print_recalc_stats(stats: dict[str, int], elapsed: float | None = None) -> 
 
 
 # ---------------------------------------------------------------------------
-# Handler: recalculate (existing — FPR-1855)
+# Handler: recalculate
 # ---------------------------------------------------------------------------
 
 
@@ -551,7 +551,7 @@ def register(subparsers) -> None:
     add_json_flag(check_parser)
     check_parser.set_defaults(func=_check)
 
-    # -- recalculate (existing — FPR-1855) --
+    # -- recalculate --
     recalc_parser = sub.add_parser(
         "recalculate",
         help="Re-resolve access stamps from the policy chain",

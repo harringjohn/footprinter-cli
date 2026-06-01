@@ -3,7 +3,7 @@
 Validates:
   1. fp ingest --help lists available subcommands and pipeline flags
   2. Pipeline routing: bare ingest, --pipe, --full, --rebuild-vectors
-  3. Status subcommand removed (was deprecated in FPR-1861)
+  3. Status subcommand removed (deprecated)
   4. Refresh: validates source, runs correct stages in full_mode
   5. Gated commands: classify/backfill/purge/report not registered
   6. fp run removed: backward-compat alias stripped

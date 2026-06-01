@@ -12,7 +12,7 @@ Validates:
   9. Bulk CSV edge cases (missing columns, empty CSV, file not found)
   10. Data entity CSV routes to DB insert functions
   11. Data entity CSV error handling
-  11b. Data entity CSV real-DB mutation guard (FPR-1885)
+  11b. Data entity CSV real-DB mutation guard
   12. Chat archive import routes to ChatIndexer.upload()
   13. Argument validation errors
 """
@@ -525,7 +525,7 @@ class TestAddDataBulkCsv:
 
 
 # ---------------------------------------------------------------------------
-# 11b. Data entity CSV — real-DB mutation guard (FPR-1885)
+# 11b. Data entity CSV — real-DB mutation guard
 # ---------------------------------------------------------------------------
 
 

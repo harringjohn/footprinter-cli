@@ -1,6 +1,6 @@
 """Tests for policy command help text correctness.
 
-Originally tested fp mcp reset --help. After FPR-1850, server launchers
+Originally tested fp mcp reset --help. After the console-scripts split, server launchers
 moved to fp-mcp/fp-api console_scripts and policy commands live under
 fp permission. These tests now verify fp permission reset --help.
 """
