@@ -286,12 +286,28 @@ def _handle_single(args) -> None:
         output_json(record)
         return
 
+    enrich_verbose_access([record], entity_type)
+
+    access_keys = {
+        "visibility_raw", "access_raw",
+        "visibility", "access", "access_source", "visibility_source",
+    }
+
     # Rich panel — show all key-value pairs
     lines = []
     for key, value in record.items():
         if key.startswith("mcp_") or isinstance(value, (list, dict)):
             continue
+        if key in access_keys:
+            continue
         display_val = str(value) if value is not None else "—"
+        lines.append(f"[bold]{key}:[/bold] {display_val}")
+
+    lines.append("")
+    lines.append("[bold underline]Access[/bold underline]")
+    for key in ("visibility", "access", "access_source", "visibility_source"):
+        val = record.get(key)
+        display_val = str(val) if val is not None else "—"
         lines.append(f"[bold]{key}:[/bold] {display_val}")
 
     console.print(
