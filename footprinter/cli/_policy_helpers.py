@@ -176,7 +176,7 @@ def check_file_path(conn: sqlite3.Connection, path: str, json_output: bool, verb
             console.print()
             print_policy_chain(chain)
         if verbose:
-            console.print("  [dim](--verbose has no effect — single-file output already includes the full policy chain)[/dim]")
+            console.print("  [dim](--verbose adds no additional detail — single-file output already includes the full policy chain)[/dim]")
 
     return 0
 
