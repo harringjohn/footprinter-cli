@@ -793,10 +793,6 @@ class SchemaMixin:
                 except sqlite3.OperationalError:
                     pass
 
-            for table in ACCESS_CONTROL_TABLES:
-                self.conn.execute(f"UPDATE {table} SET visibility = 'full' WHERE visibility = 'visible'")
-            self.conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE setting = 'visible'")
-
             self.conn.execute("PRAGMA writable_schema = ON")
             for table in list(ACCESS_CONTROL_TABLES) + ["visibility_policies"]:
                 row = self.conn.execute(
@@ -818,6 +814,12 @@ class SchemaMixin:
             self.conn.execute("PRAGMA writable_schema = OFF")
             v = self.conn.execute("PRAGMA schema_version").fetchone()[0]
             self.conn.execute(f"PRAGMA schema_version = {v + 1}")
+
+            # Constraints now permit 'full'; migrate the values afterward so the
+            # write isn't rejected by the pre-rename CHECK on existing databases.
+            for table in ACCESS_CONTROL_TABLES:
+                self.conn.execute(f"UPDATE {table} SET visibility = 'full' WHERE visibility = 'visible'")
+            self.conn.execute("UPDATE visibility_policies SET setting = 'full' WHERE setting = 'visible'")
 
             result = self.conn.execute("PRAGMA integrity_check").fetchone()
             if result[0] != "ok":

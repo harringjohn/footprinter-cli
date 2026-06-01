@@ -553,6 +553,71 @@ class TestAccessColumnMigration:
         assert pol[0] == "full", f"Policy migration should convert 'full' → 'full', got {pol[0]!r}"
         db2.close()
 
+    def test_migration_from_genuine_old_visible_constraint(self, temp_db):
+        """Reproduce a real pre-rename DB: old CHECK constraints that allow
+        'visible' (not 'full') plus 'visible' data.
+
+        The migration must rebuild the constraints before writing 'full'. If it
+        writes the value first, the old CHECK rejects 'full', the transaction
+        rolls back, and the database is permanently stuck on the old schema.
+        This is the case the reverse-rename-only setup above cannot exercise,
+        because that setup leaves the constraints permitting 'full'.
+        """
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+        from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
+
+        db = Database(temp_db)
+        db.close()
+
+        conn = _sqlite3.connect(temp_db)
+        for table in ACCESS_CONTROL_TABLES:
+            conn.execute(f"ALTER TABLE {table} RENAME COLUMN visibility TO mcp_view")
+            conn.execute(f"ALTER TABLE {table} RENAME COLUMN access TO mcp_read")
+            conn.execute(f"ALTER TABLE {table} RENAME COLUMN visibility_source TO mcp_view_source")
+            conn.execute(f"ALTER TABLE {table} RENAME COLUMN access_source TO mcp_read_source")
+
+        # Downgrade the stored CHECK constraints to the genuine old enum value.
+        conn.execute("PRAGMA writable_schema = ON")
+        for table in list(ACCESS_CONTROL_TABLES) + ["visibility_policies"]:
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()
+            if not row:
+                continue
+            conn.execute(
+                "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name=?",
+                (row[0].replace("'full'", "'visible'"), table),
+            )
+        conn.execute("PRAGMA writable_schema = OFF")
+        v = conn.execute("PRAGMA schema_version").fetchone()[0]
+        conn.execute(f"PRAGMA schema_version = {v + 1}")
+
+        # Seed 'visible' data the old constraints accept but the new ones forbid.
+        conn.execute(
+            "INSERT INTO files (source, name, mcp_view, mcp_read) "
+            "VALUES ('local', 'old.txt', 'visible', 'allow')"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO visibility_policies (scope, setting) "
+            "VALUES ('global', 'visible')"
+        )
+        conn.commit()
+        conn.close()
+
+        # Reopen: the migration must complete without raising and convert values.
+        db2 = Database(temp_db)
+        pol = db2.conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = 'global'"
+        ).fetchone()
+        assert pol[0] == "full", f"policy setting should migrate to 'full', got {pol[0]!r}"
+        vis = db2.conn.execute(
+            "SELECT visibility FROM files WHERE name = 'old.txt'"
+        ).fetchone()
+        assert vis[0] == "full", f"file visibility should migrate to 'full', got {vis[0]!r}"
+        db2.close()
+
 
 class TestCompleteColumnSets:
     """Assert exact column sets — the core schema drift detector.
