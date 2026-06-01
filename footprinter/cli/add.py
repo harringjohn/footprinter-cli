@@ -142,7 +142,7 @@ DATA_EXISTENCE_KEYS: dict[str, tuple[str, list[tuple[str, str]], dict[str, str]]
     "emails": ("emails", [("message_id", "message_id"), ("account", "account")], {}),
     "visits": ("visits", [("url", "url"), ("visit_time", "visit_time"), ("browser", "browser")], {}),
     "folders": ("folders", [("source", "source"), ("external_id", "external_id")], {}),
-    # messages: no stable natural key — backstop result-classification handles them
+    "messages": ("messages", [("chat_id", "chat_id"), ("message_id", "message_id")], {}),
 }
 
 # ---------------------------------------------------------------------------

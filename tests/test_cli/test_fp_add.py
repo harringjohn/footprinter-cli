@@ -656,17 +656,171 @@ class TestAddDataBulkCsvNoMutation:
         assert result["created"] == 1
         assert row is not None
 
-    def test_data_entity_exists_returns_false_for_messages(self, temp_db):
-        """Messages have no natural key — existence check always returns False."""
+    # -- message mutation guard (FPR-1894) ----------------------------------
+
+    @staticmethod
+    def _seed_message(conn, *, chat_id, message_id="msg-existing", role="user", content="hello world"):
+        """Insert a chat + message and return (message_row_dict, internal_chat_id)."""
+        from footprinter.db.chats import insert_chat, insert_message
+
+        internal_chat_id = insert_chat(conn, {
+            "external_id": f"chat-ext-{chat_id}",
+            "account": "test",
+            "title": "Test Chat",
+            "message_count": 0,
+        })
+        insert_message(conn, {
+            "chat_id": internal_chat_id,
+            "message_id": message_id,
+            "role": role,
+            "content": content,
+        })
+        conn.commit()
+        row = conn.execute(
+            "SELECT chat_id, message_id, role, content, indexed_at "
+            "FROM messages WHERE chat_id = ? AND message_id = ?",
+            (internal_chat_id, message_id),
+        ).fetchone()
+        return dict(row), internal_chat_id
+
+    def test_data_entity_exists_true_for_messages_with_key(self, temp_db):
+        """Messages with (chat_id, message_id) key → existence check returns True."""
         from footprinter.ingest.database import Database
+        from footprinter.cli.add import _data_entity_exists
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+        _row, chat_id = self._seed_message(db.conn, chat_id="exist-test", message_id="msg-123")
+
+        assert _data_entity_exists(
+            db.conn, "messages", {"chat_id": str(chat_id), "message_id": "msg-123"},
+        ) is True
+        db.conn.close()
+
+    def test_data_entity_exists_false_for_messages_without_message_id(self, temp_db):
+        """Messages without message_id → existence check returns False (no stable key)."""
+        from footprinter.ingest.database import Database
+        from footprinter.cli.add import _data_entity_exists
 
         db = Database(temp_db)
         db.conn.row_factory = sqlite3.Row
 
-        from footprinter.cli.add import _data_entity_exists
-
-        assert _data_entity_exists(db.conn, "messages", {"chat_id": "c1", "role": "user"}) is False
+        assert _data_entity_exists(db.conn, "messages", {"chat_id": "1", "role": "user"}) is False
         db.conn.close()
+
+    def test_add_messages_csv_existing_reports_error_without_duplication(self, temp_db, tmp_path):
+        """Existing message → errors == 1, created == 0, no duplicate row inserted."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+        _row, chat_id = self._seed_message(
+            db.conn, chat_id="err", message_id="msg-dup", content="original",
+        )
+
+        csv_path = _write_csv(tmp_path, [
+            "chat_id,role,message_id,content",
+            f"{chat_id},assistant,msg-dup,duplicate attempt",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "messages", csv_path, "--json")
+
+        result = json.loads(stdout)
+        count = db.conn.execute(
+            "SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ? AND message_id = ?",
+            (chat_id, "msg-dup"),
+        ).fetchone()["cnt"]
+        db.conn.close()
+
+        assert code == 0
+        assert result["created"] == 0
+        assert result["errors"] == 1
+        assert "already exists" in result["error_details"][0]["error"].lower()
+        assert count == 1
+
+    def test_add_messages_csv_new_row_still_inserts_real_db(self, temp_db, tmp_path):
+        """New message inserts successfully via the real insert function."""
+        from footprinter.ingest.database import Database
+        from footprinter.db.chats import insert_chat
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+
+        chat_id = insert_chat(db.conn, {
+            "external_id": "chat-new",
+            "account": "test",
+            "title": "Test Chat",
+            "message_count": 0,
+        })
+        db.conn.commit()
+
+        csv_path = _write_csv(tmp_path, [
+            "chat_id,role,message_id,content",
+            f"{chat_id},user,msg-brand-new,hello world",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "messages", csv_path, "--json")
+
+        result = json.loads(stdout)
+        row = db.conn.execute(
+            "SELECT id FROM messages WHERE chat_id = ? AND message_id = ?",
+            (chat_id, "msg-brand-new"),
+        ).fetchone()
+        db.conn.close()
+
+        assert code == 0
+        assert result["created"] == 1
+        assert row is not None
+
+    def test_add_messages_csv_null_message_id_always_inserts(self, temp_db, tmp_path):
+        """Messages without message_id bypass the existence guard and always insert."""
+        from footprinter.ingest.database import Database
+        from footprinter.db.chats import insert_chat
+
+        db = Database(temp_db)
+        db.conn.row_factory = sqlite3.Row
+
+        chat_id = insert_chat(db.conn, {
+            "external_id": "chat-null-mid",
+            "account": "test",
+            "title": "Test Chat",
+            "message_count": 0,
+        })
+        db.conn.commit()
+
+        csv_path = _write_csv(tmp_path, [
+            "chat_id,role,content",
+            f"{chat_id},user,first message",
+            f"{chat_id},user,second message",
+        ])
+
+        with (
+            patch("footprinter.cli.add.open_db", self._open_db_ctx(db.conn)),
+            patch("footprinter.cli.add.IngestService") as MockIngest,
+        ):
+            MockIngest.return_value.begin.return_value = 1
+            stdout, _, code = run_fp("add", "messages", csv_path, "--json")
+
+        result = json.loads(stdout)
+        count = db.conn.execute(
+            "SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()["cnt"]
+        db.conn.close()
+
+        assert code == 0
+        assert result["created"] == 2
+        assert count == 2
 
 
 # ---------------------------------------------------------------------------
