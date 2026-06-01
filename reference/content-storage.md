@@ -20,7 +20,7 @@ You can point Footprinter at your entire home directory in Tier 0 and know that 
 |---|---|---|---|
 | **Switch** | Default — no action needed | `indexing.content_snippets: true` (set in `fp setup` or `config.yaml`) | `pipx install "footprinter-cli[semantic]"` and/or `[parse]` (or `[full]` for both) |
 | **Package** | Base | Base | Base + extras |
-| **What gets read from disk** | Names, paths, sizes, timestamps | Names, paths, sizes, timestamps **+ first ~1000 chars of text-readable files** | Tier 1 + full text from PDF / Word / Excel / PowerPoint via `[parse]`; chunked content embedded into vectors via `[semantic]` |
+| **What gets read from disk** | Names, paths, sizes, timestamps | Names, paths, sizes, timestamps **+ first ~1000 chars of text-readable files** | Tier 1 + full text from PDF and Word documents via `[parse]`; chunked content embedded into vectors via `[semantic]` |
 | **What lands in Footprinter's database** | Catalog metadata only — no file content | Catalog metadata + `files.content_preview` (and `emails.body_preview` for connectors) | Tier 1 storage + ChromaDB vectors (separate local store) |
 | **Keyword search (FTS5) matches** | `name` only | `name`, `content_preview` | Same as Tier 1, plus semantic (vector) search by meaning |
 | **Read-on-demand via MCP** | `footprinter_read` reads file bytes live from disk through the access-gated tool — never stored | Same as Tier 0 | Same as Tier 0 |
@@ -62,7 +62,7 @@ Tier 1 ships in the base package — no extras, no extra dependencies. The `cont
 **Opt-in via `pip` extras.** These features extend Tier 1 with more storage and richer search, in exchange for additional dependencies and disk space.
 
 - **`[semantic]`** — installs `chromadb` and a sentence-transformer model. Ingest chunks file and chat content into vector embeddings stored in a local ChromaDB collection. Semantic search becomes available via `fp search` and the MCP `footprinter_semantic` tool. Embeddings live alongside the SQLite database; vectors are derived from the same text that Tier 1 stores as previews (or from extracted parse output, if `[parse]` is also installed).
-- **`[parse]`** — installs document parsers (`pypdf`, `python-docx`, `openpyxl`, etc.). Ingest can extract text from PDFs, Word, Excel, and PowerPoint files instead of skipping them or storing only filename metadata. Without `[parse]`, those file types contribute filename-only matches even at Tier 1.
+- **`[parse]`** — installs document parsers (`pypdf`, `python-docx`, `openpyxl`, `python-pptx`, etc.). During ingest, this lets Footprinter extract text from **PDF and Word** documents into previews and vectors instead of storing only filename metadata; without `[parse]`, those types contribute filename-only matches even at Tier 1. Excel and PowerPoint are parsed only on the read-on-demand path (the MCP `footprinter_read` tool) — they are **not** extracted into `content_preview` or vectors during ingest.
 - **`[full]`** — convenience alias that installs both `[semantic]` and `[parse]`.
 
 Vectorization is independently switchable per content type (`semantic.file_vectorization`, `semantic.chat_vectorization`) so installing the extra doesn't force vectorization until you flip the flags. Per-row control is also available: each `files`, `chats`, and `messages` row carries a `vectorize` column (default on) that can exclude an individual item from embedding.
