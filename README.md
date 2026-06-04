@@ -5,6 +5,12 @@
 
 **A local context layer for your files, browser history, chats, and email — searchable, user-owned, and served to AI agents through [MCP](https://modelcontextprotocol.io/).**
 
+> ⚠️ **Install with `pipx`, not `pip`.** `pipx` puts the `fp` command on your PATH automatically; bare `pip` often doesn't — which leaves you with `fp: command not found` even though the install succeeded.
+
+```bash
+pipx install footprinter-cli
+```
+
 Your work lives across filesystems, browsers, inboxes, chat histories, and other tools. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings you define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
 
 ## Install
