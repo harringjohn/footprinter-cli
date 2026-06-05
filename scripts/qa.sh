@@ -55,13 +55,37 @@ case "${1:-}" in
         exec bash "$SCRIPT_DIR/release/verify_install.sh" "$@"
         ;;
     all)
+        overall=0
+
         echo "=== Tier 1: pytest ==="
-        "$SCRIPT_DIR/../venv/bin/python3" -m pytest
+        if "$SCRIPT_DIR/../venv/bin/python3" -m pytest; then
+            result_pytest=PASS
+        else
+            result_pytest=FAIL
+            overall=1
+        fi
         echo ""
+
         echo "=== Tier 2: smoke ==="
-        bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
+        if bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"; then
+            result_smoke=PASS
+        else
+            result_smoke=FAIL
+            overall=1
+        fi
         echo ""
-        echo "--- all argument-free tiers passed ---"
+
+        echo "--- QA Summary ---"
+        printf "  %-10s %s\n" "pytest:" "$result_pytest"
+        printf "  %-10s %s\n" "smoke:" "$result_smoke"
+        echo ""
+
+        if [[ $overall -eq 0 ]]; then
+            echo "--- all argument-free tiers passed ---"
+        else
+            echo "--- FAILED ---"
+            exit 1
+        fi
         ;;
     *)
         echo "Usage: bash scripts/qa.sh <tier> [args...]" >&2
