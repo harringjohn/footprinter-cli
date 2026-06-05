@@ -1855,3 +1855,77 @@ class TestSetCsvTransactionAtomicity:
             assert by_scope["email:2"] == "opaque"
         finally:
             os.unlink(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: export round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestSetCsvExportRoundTrip:
+    """Verify that IDs from a real DB can round-trip through _set_csv."""
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_email_ids_roundtrip(self, mock_db, mock_recalc, policy_db):
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+
+        rows = conn.execute("SELECT id FROM emails ORDER BY id").fetchall()
+        csv_lines = ["id,visibility"]
+        for row in rows:
+            csv_lines.append(f"{row['id']},hidden")
+
+        csv_path = _write_csv("\n".join(csv_lines) + "\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            policies = verify.execute(
+                "SELECT scope, setting FROM visibility_policies ORDER BY scope"
+            ).fetchall()
+            verify.close()
+
+            by_scope = {r["scope"]: r["setting"] for r in policies}
+            for row in rows:
+                assert by_scope[f"email:{row['id']}"] == "hidden"
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_roundtrip_mixed_settings(self, mock_db, mock_recalc, policy_db):
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+
+        settings = {1: "hidden", 2: "opaque", 3: "full"}
+        csv_lines = ["id,visibility,access"]
+        for eid, vis in settings.items():
+            csv_lines.append(f"{eid},{vis},deny")
+
+        csv_path = _write_csv("\n".join(csv_lines) + "\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            vis_rows = verify.execute(
+                "SELECT scope, setting FROM visibility_policies ORDER BY scope"
+            ).fetchall()
+            perm_rows = verify.execute(
+                "SELECT scope, setting FROM permission_policies ORDER BY scope"
+            ).fetchall()
+            verify.close()
+
+            vis_by_scope = {r["scope"]: r["setting"] for r in vis_rows}
+            perm_by_scope = {r["scope"]: r["setting"] for r in perm_rows}
+            for eid, vis in settings.items():
+                assert vis_by_scope[f"email:{eid}"] == vis
+                assert perm_by_scope[f"email:{eid}"] == "deny"
+        finally:
+            os.unlink(csv_path)
