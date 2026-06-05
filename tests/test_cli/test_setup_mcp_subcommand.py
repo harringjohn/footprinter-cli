@@ -11,6 +11,7 @@ Verifies:
   4. offer_setup_claude() is wired into the wizard flow
   5. User-facing strings reference 'fp setup mcp' not 'fp-setup-claude'
   6. MCP subcommand gated on mcp dependency availability
+  7. Client paths table filters to installed clients only
 """
 
 import io
@@ -477,3 +478,118 @@ class TestSharedMcpParser:
             assert mcp_args == [], (
                 f"{func_name}() should not define MCP flags inline — found: {mcp_args}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Client path filtering (FPR-1628)
+# ---------------------------------------------------------------------------
+class TestClientPathFiltering:
+    """print_client_paths() should only show installed/detected clients."""
+
+    def test_detect_installed_clients_filters_by_path(self, tmp_path):
+        """detect_installed_clients() returns only clients whose app directory exists or command is on PATH."""
+        import footprinter.cli.mcp_setup as mod
+
+        claude_dir = tmp_path / "Claude"
+        claude_dir.mkdir()
+        config_file = claude_dir / "claude_desktop_config.json"
+
+        test_configs = [
+            {"name": "Claude Desktop", "path": str(config_file)},
+            {"name": "Claude Code", "command": "claude mcp add footprinter -- fp-mcp"},
+            {"name": "Cursor", "path": str(tmp_path / "nonexistent" / "mcp.json")},
+            {"name": "VS Code", "path": ".vscode/mcp.json (per-project)", "always_show": True},
+            {"name": "Gemini CLI", "path": str(tmp_path / "also-missing" / "settings.json")},
+        ]
+
+        with (
+            patch.object(mod, "MCP_CLIENT_CONFIGS", test_configs),
+            patch.object(mod.shutil, "which", return_value=None),
+        ):
+            clients = mod.detect_installed_clients()
+
+        names = [c["name"] for c in clients]
+        assert "Claude Desktop" in names
+        assert "VS Code" in names, "VS Code is always included (per-project config)"
+        assert "Cursor" not in names
+        assert "Gemini CLI" not in names
+        assert "Claude Code" not in names, "claude not on PATH"
+
+    def test_detect_installed_clients_includes_command_on_path(self, tmp_path):
+        """detect_installed_clients() includes command-based clients when command is found."""
+        import footprinter.cli.mcp_setup as mod
+
+        test_configs = [
+            {"name": "Claude Code", "command": "claude mcp add footprinter -- fp-mcp"},
+            {"name": "Cursor", "path": str(tmp_path / "nonexistent" / "mcp.json")},
+        ]
+
+        with (
+            patch.object(mod, "MCP_CLIENT_CONFIGS", test_configs),
+            patch.object(mod.shutil, "which", return_value="/usr/local/bin/claude"),
+        ):
+            clients = mod.detect_installed_clients()
+
+        names = [c["name"] for c in clients]
+        assert "Claude Code" in names
+        assert "Cursor" not in names
+
+    def test_print_client_paths_omits_missing_clients(self):
+        """print_client_paths() table excludes clients not installed on this machine."""
+        from footprinter.cli.mcp_setup import print_client_paths
+
+        buf = io.StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+        filtered = [
+            {"name": "Claude Desktop", "path": "~/Library/Application Support/Claude/claude_desktop_config.json"},
+            {"name": "VS Code", "path": ".vscode/mcp.json (per-project)", "always_show": True},
+        ]
+
+        with (
+            patch("footprinter.cli.mcp_setup.console", test_console),
+            patch("footprinter.cli.mcp_setup.detect_installed_clients", return_value=filtered),
+        ):
+            print_client_paths()
+
+        output = buf.getvalue()
+        assert "Claude Desktop" in output
+        assert "VS Code" in output
+        assert "Cursor" not in output
+        assert "Gemini CLI" not in output
+
+    def test_print_client_paths_shows_all_when_installed(self):
+        """When all clients are installed, all appear in the table."""
+        from footprinter.cli.mcp_setup import MCP_CLIENT_CONFIGS, print_client_paths
+
+        buf = io.StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+
+        with (
+            patch("footprinter.cli.mcp_setup.console", test_console),
+            patch("footprinter.cli.mcp_setup.detect_installed_clients", return_value=MCP_CLIENT_CONFIGS),
+        ):
+            print_client_paths()
+
+        output = buf.getvalue()
+        for name in ("Claude Desktop", "Claude Code", "Cursor", "VS Code", "Gemini CLI"):
+            assert name in output, f"{name} should appear when all clients installed"
+
+    def test_dispatch_mcp_error_says_protocol_library(self):
+        """_dispatch_mcp error message says 'MCP protocol library' not 'MCP package'."""
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        test_console = Console(file=buf, force_terminal=False)
+
+        with (
+            patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
+            patch("footprinter.cli.setup.console", test_console),
+        ):
+            mock_mcp.is_mcp_available.return_value = False
+            from footprinter.cli.setup import _dispatch_mcp
+
+            with pytest.raises(SystemExit):
+                _dispatch_mcp(SimpleNamespace(claude=False))
+
+        output = buf.getvalue()
+        assert "protocol library" in output.lower()

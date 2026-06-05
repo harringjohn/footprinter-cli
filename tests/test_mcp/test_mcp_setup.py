@@ -420,10 +420,15 @@ class TestMultiClientPaths:
 
     def _capture_snippet(self) -> str:
         """Capture print_snippet() output via StringIO-backed Rich console."""
+        from footprinter.cli.mcp_setup import MCP_CLIENT_CONFIGS
+
         buf = io.StringIO()
         fake_console = RichConsole(file=buf, force_terminal=False)
         snippet = generate_snippet()
-        with patch("footprinter.cli.mcp_setup.console", fake_console):
+        with (
+            patch("footprinter.cli.mcp_setup.console", fake_console),
+            patch("footprinter.cli.mcp_setup.detect_installed_clients", return_value=MCP_CLIENT_CONFIGS),
+        ):
             print_snippet(snippet)
         return buf.getvalue()
 

@@ -233,12 +233,13 @@ def _handle_setup(args) -> None:
 
 def _add_mcp_parser(subparsers, *, formatter_class=None):
     """Add the MCP subparser with --claude flag."""
-    kwargs = {"help": "Configure MCP integration"}
+    kwargs = {"help": "Show or install the MCP server snippet"}
     if formatter_class:
         kwargs.update(
             description=(
-                "Configure the MCP server snippet for AI clients.\n\n"
-                "Bare command prints the snippet. Use --claude to write it."
+                "Show the MCP server snippet for AI clients, or write it automatically.\n\n"
+                "Bare command prints the JSON snippet for manual copy/paste into any MCP client.\n"
+                "Use --claude to write it directly to Claude Desktop config (creates a backup)."
             ),
             epilog=(
                 "examples:\n"
@@ -259,7 +260,7 @@ def _add_mcp_parser(subparsers, *, formatter_class=None):
 def _dispatch_mcp(args) -> None:
     """Shared MCP subcommand dispatch — used by both router and main()."""
     if not mcp_setup.is_mcp_available():
-        console.print("[red]MCP package not installed.[/red] Install with: pip install mcp")
+        console.print("[red]MCP protocol library not installed.[/red] Run: pip install mcp")
         sys.exit(1)
 
     snippet = mcp_setup.generate_snippet()
