@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from footprinter.ingest.database import Database
 
 
