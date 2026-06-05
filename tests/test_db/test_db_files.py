@@ -576,6 +576,237 @@ class TestMarkRemovedFiles:
         db.close()
 
 
+class TestConditionalVectorizedAtClearing:
+    """Test that insert_file() only clears vectorized_at when content genuinely changed."""
+
+    def test_update_preserves_vectorized_at_when_hash_unchanged(self, temp_db):
+        """Same sha256 but different size bypasses fast-path; UPDATE must preserve vectorized_at."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, file_id = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/p.txt",
+                "file_name": "p.txt",
+                "file_type": "txt",
+                "file_size": 100,
+                "sha256_hash": "abc123",
+            },
+        )
+        db.conn.execute(
+            "UPDATE files SET vectorized_at = '2025-01-01', vectorized_chunks = 5 WHERE id = ?",
+            (file_id,),
+        )
+        db.conn.commit()
+
+        result = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/p.txt",
+                "file_name": "p.txt",
+                "file_type": "txt",
+                "file_size": 200,
+                "sha256_hash": "abc123",
+            },
+        )
+        assert result == ("updated", file_id)
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        assert row["vectorized_at"] == "2025-01-01"
+        assert row["vectorized_chunks"] == 5
+        db.close()
+
+    def test_update_preserves_vectorized_at_when_incoming_sha_null(self, temp_db):
+        """Missing incoming sha256 must not wipe vectorized_at."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, file_id = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/n.txt",
+                "file_name": "n.txt",
+                "file_type": "txt",
+                "file_size": 100,
+                "sha256_hash": "abc123",
+            },
+        )
+        db.conn.execute(
+            "UPDATE files SET vectorized_at = '2025-01-01', vectorized_chunks = 5 WHERE id = ?",
+            (file_id,),
+        )
+        db.conn.commit()
+
+        result = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/n.txt",
+                "file_name": "n.txt",
+                "file_type": "txt",
+                "file_size": 100,
+            },
+        )
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        assert row["vectorized_at"] == "2025-01-01"
+        assert row["vectorized_chunks"] == 5
+        db.close()
+
+    def test_update_clears_vectorized_at_when_hash_changes(self, temp_db):
+        """Different sha256 means content changed — vectorized_at must be cleared."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, file_id = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/c.txt",
+                "file_name": "c.txt",
+                "file_type": "txt",
+                "file_size": 100,
+                "sha256_hash": "abc123",
+            },
+        )
+        db.conn.execute(
+            "UPDATE files SET vectorized_at = '2025-01-01', vectorized_chunks = 5 WHERE id = ?",
+            (file_id,),
+        )
+        db.conn.commit()
+
+        result = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/c.txt",
+                "file_name": "c.txt",
+                "file_type": "txt",
+                "file_size": 200,
+                "sha256_hash": "def456",
+            },
+        )
+        assert result == ("updated", file_id)
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        assert row["vectorized_at"] is None
+        assert row["vectorized_chunks"] == 0
+        db.close()
+
+    def test_update_clears_vectorized_at_on_reactivation(self, temp_db):
+        """Reactivated (removed -> listed) file must clear vectorized_at."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, file_id = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/r.txt",
+                "file_name": "r.txt",
+                "file_type": "txt",
+                "file_size": 100,
+                "sha256_hash": "abc123",
+            },
+        )
+        db.conn.execute(
+            "UPDATE files SET vectorized_at = '2025-01-01', vectorized_chunks = 5,"
+            " status = 'removed' WHERE id = ?",
+            (file_id,),
+        )
+        db.conn.commit()
+
+        files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/r.txt",
+                "file_name": "r.txt",
+                "file_type": "txt",
+                "file_size": 100,
+                "sha256_hash": "abc123",
+            },
+        )
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        assert row["vectorized_at"] is None
+        assert row["vectorized_chunks"] == 0
+        db.close()
+
+    def test_repair_vectorized_at(self, temp_db):
+        """repair_vectorized_at restores timestamps for files with chunks in vector store."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, id_a = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/a.txt",
+                "file_name": "a.txt",
+                "file_type": "txt",
+                "file_size": 10,
+            },
+        )
+        _, id_b = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/b.txt",
+                "file_name": "b.txt",
+                "file_type": "txt",
+                "file_size": 20,
+            },
+        )
+        db.conn.commit()
+
+        repaired = files_db.repair_vectorized_at(db.conn, {id_a: 3})
+        db.conn.commit()
+
+        row_a = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (id_a,)
+        ).fetchone()
+        row_b = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (id_b,)
+        ).fetchone()
+
+        assert repaired == 1
+        assert row_a["vectorized_at"] is not None
+        assert row_a["vectorized_chunks"] == 3
+        assert row_b["vectorized_at"] is None
+        db.close()
+
+    def test_repair_vectorized_at_includes_unlisted(self, temp_db):
+        """Unlisted files with vector store chunks should also be repaired."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, fid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/.hidden.txt",
+                "file_name": ".hidden.txt",
+                "file_type": "txt",
+                "file_size": 10,
+            },
+        )
+        db.conn.execute("UPDATE files SET status = 'unlisted' WHERE id = ?", (fid,))
+        db.conn.commit()
+
+        repaired = files_db.repair_vectorized_at(db.conn, {fid: 2})
+        db.conn.commit()
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (fid,)
+        ).fetchone()
+        assert repaired == 1
+        assert row["vectorized_at"] is not None
+        assert row["vectorized_chunks"] == 2
+        db.close()
+
+
 class TestDriveFiles:
     """Test files_db.insert_drive_file()."""
 

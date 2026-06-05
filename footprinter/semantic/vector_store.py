@@ -288,6 +288,17 @@ class VectorStore:
             "model": self._embedding_dim,
         }
 
+    def get_vectorized_file_counts(self) -> Dict[int, int]:
+        """Return {file_id: chunk_count} for all files in the vector store."""
+        results = self._files.get(include=["metadatas"])
+        counts: Dict[int, int] = {}
+        if results and results.get("metadatas"):
+            for meta in results["metadatas"]:
+                fid = meta.get("file_id")
+                if fid is not None:
+                    counts[fid] = counts.get(fid, 0) + 1
+        return counts
+
     # ------------------------------------------------------------------
     # Chat operations
     # ------------------------------------------------------------------

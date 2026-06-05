@@ -322,11 +322,10 @@ class TestInsertFileResultType:
         assert second[1] == first[1]  # same file_id
 
     def test_insert_file_clears_vectorized_at_on_update(self, db):
-        """UPDATE must clear vectorized_at so run_vectorization re-embeds.
+        """UPDATE clears vectorized_at when existing sha256 is NULL (hash newly available).
 
-        Without this, the phased-ingest follow-up stage (which queries
-        ``vectorized_at IS NULL``) silently skips files whose content
-        changed, leaving stale embeddings in the vector store.
+        The CASE expression in insert_file's UPDATE path clears vectorized_at
+        when the existing row has no sha256_hash (cannot prove content unchanged).
         """
         data = self._make_file_data()
         first = files_db.insert_file(db.conn, data)
