@@ -27,6 +27,7 @@ from footprinter.cli._policy_helpers import (
 )
 from footprinter.db.policies import (
     PERMISSION_SETTINGS,
+    SCOPE_PREFIXES,
     clear_permission_policies,
     clear_visibility_policies,
     delete_permission_policy,
@@ -43,12 +44,9 @@ _VISIBILITY_INPUT = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 _VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 
 _CSV_SCOPE_PREFIX: dict[str, str] = {
-    "files": "file",
-    "emails": "email",
-    "chats": "chat",
-    "folders": "folder",
-    "projects": "project",
-    "clients": "client",
+    meta["table"]: etype
+    for etype, meta in ENTITY_META.items()
+    if etype in SCOPE_PREFIXES
 }
 
 
