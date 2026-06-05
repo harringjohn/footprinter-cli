@@ -855,7 +855,6 @@ class TestDoctorMcpConfig:
         path.write_text(json.dumps({"mcpServers": servers}))
 
     def test_stale_fp_mcp_subcommand_warns(self, tmp_path, monkeypatch):
-        from footprinter.cli import doctor
         from footprinter.cli.doctor import _check_mcp_config
 
         config_path = tmp_path / "claude_desktop_config.json"
