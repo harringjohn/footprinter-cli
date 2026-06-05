@@ -475,6 +475,160 @@ class TestFileStatus:
         assert row["status_reason"] == "in_dot_folder"
         db.close()
 
+    def test_file_in_claude_dir_listed(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.claude/CLAUDE.md",
+                "file_name": "CLAUDE.md",
+                "file_type": "md",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "listed"
+        assert row["status_reason"] is None
+        db.close()
+
+    def test_file_in_context_dir_listed(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.context/plans/plan.md",
+                "file_name": "plan.md",
+                "file_type": "md",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "listed"
+        assert row["status_reason"] is None
+        db.close()
+
+    def test_file_in_claude_nested_subdir_listed(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.claude/commands/review.md",
+                "file_name": "review.md",
+                "file_type": "md",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "listed"
+        assert row["status_reason"] is None
+        db.close()
+
+    def test_local_file_in_claude_dir_unlisted(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.claude/settings.local.json",
+                "file_name": "settings.local.json",
+                "file_type": "json",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "local_config"
+        db.close()
+
+    def test_local_file_in_context_dir_unlisted(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.context/CLAUDE.local.md",
+                "file_name": "CLAUDE.local.md",
+                "file_type": "md",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "local_config"
+        db.close()
+
+    def test_dotfile_in_claude_dir_still_unlisted(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.claude/.hidden-note",
+                "file_name": ".hidden-note",
+                "file_type": "",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "dot_file"
+        db.close()
+
+    def test_other_dot_folder_unaffected(self, temp_db):
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, aid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/project/.git/config",
+                "file_name": "config",
+                "file_type": "",
+                "file_size": 10,
+            },
+        )
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "in_dot_folder"
+        db.close()
+
+    def test_agent_context_dirs_is_frozenset(self):
+        from footprinter.db.files import AGENT_CONTEXT_DIRS
+
+        assert isinstance(AGENT_CONTEXT_DIRS, frozenset)
+        assert ".claude" in AGENT_CONTEXT_DIRS
+        assert ".context" in AGENT_CONTEXT_DIRS
+
 
 class TestMarkRemovedFiles:
     """Test files_db.mark_removed_files()."""
