@@ -192,47 +192,69 @@ def _check_optional_features() -> list[Check]:
     return checks
 
 
-def _check_mcp_config() -> Check:
-    if platform.system() == "Darwin":
-        config_path = (
-            Path.home()
-            / "Library"
-            / "Application Support"
-            / "Claude"
-            / "claude_desktop_config.json"
-        )
-    else:
-        config_dir = Path.home() / ".config" / "Claude"
-        config_path = config_dir / "claude_desktop_config.json"
+def _mcp_command_matches(
+    configured_cmd: str,
+    configured_args: list[str],
+    canonical_cmd: str,
+    canonical_args: list[str],
+) -> bool:
+    """Check whether the configured MCP command matches the canonical one."""
+    return Path(configured_cmd).name == Path(canonical_cmd).name and configured_args == canonical_args
 
-    if not config_path.exists():
+
+def _check_mcp_config() -> Check:
+    from footprinter.cli.mcp_setup import (
+        detect_config_path,
+        get_mcp_command,
+        has_footprinter_entry,
+        read_mcp_config,
+    )
+
+    config_path = detect_config_path()
+    if config_path is None or not config_path.exists():
         return Check("mcp_config", "OK", "No Claude Desktop config found (optional)", group="Integrations")
 
     try:
-        with open(config_path) as f:
-            data = json.load(f)
-        servers = data.get("mcpServers", {})
-        if "footprinter" not in servers:
+        data = read_mcp_config(config_path)
+    except Exception as e:
+        return Check("mcp_config", "WARN", f"Could not read Claude Desktop config: {e}", group="Integrations")
+
+    if data is None or not has_footprinter_entry(data):
+        return Check(
+            "mcp_config", "OK",
+            "Claude Desktop config exists but no footprinter entry (optional)",
+            group="Integrations",
+        )
+
+    entry = (data.get("mcpServers") or {})["footprinter"]
+    command = entry.get("command", "")
+
+    if command:
+        resolved = Path(command).exists() if Path(command).is_absolute() else shutil.which(command)
+        if not resolved:
             return Check(
-                "mcp_config", "OK",
-                "Claude Desktop config exists but no footprinter entry (optional)",
+                "mcp_config",
+                "WARN",
+                f"MCP command not found: {command} — run 'fp setup mcp --claude' to fix",
                 group="Integrations",
             )
 
-        entry = servers["footprinter"]
-        command = entry.get("command", "")
-        if command:
-            resolved = Path(command).exists() if Path(command).is_absolute() else shutil.which(command)
-            if not resolved:
-                return Check(
-                    "mcp_config",
-                    "WARN",
-                    f"MCP command not found: {command}",
-                    group="Integrations",
-                )
+    configured_args = entry.get("args", [])
+    try:
+        canonical_cmd, canonical_args = get_mcp_command()
+    except Exception:
         return Check("mcp_config", "OK", "footprinter MCP server configured in Claude Desktop", group="Integrations")
-    except Exception as e:
-        return Check("mcp_config", "WARN", f"Could not read Claude Desktop config: {e}", group="Integrations")
+
+    if not _mcp_command_matches(command, configured_args, canonical_cmd, canonical_args):
+        return Check(
+            "mcp_config",
+            "WARN",
+            f"MCP config uses '{command}' but expected '{Path(canonical_cmd).name}'"
+            " — run 'fp setup mcp --claude' to update",
+            group="Integrations",
+        )
+
+    return Check("mcp_config", "OK", "footprinter MCP server configured in Claude Desktop", group="Integrations")
 
 
 def _check_fts_health() -> Check:
