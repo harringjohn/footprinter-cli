@@ -145,7 +145,7 @@ limits:
     max_decompressed_size_mb: 2048    # 2 GB; raise for very large exports
     max_entries: 10000                # Maximum files in a zip archive
     max_compression_ratio: 100        # Ratio ceiling (100:1) for zip bomb detection
-  # HTTP API pagination cap (GET endpoints)
+  # HTTP API pagination cap — requires server restart to take effect
   api_max_limit: 200
   # MCP search result cap per source (protocol payload limit)
   mcp_search_limit_cap: 200

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # so CLI/API callers can request larger result sets directly.
 
 
-def _load_mcp_search_limit_cap() -> int:
+def _get_mcp_search_limit_cap() -> int:
     try:
         from footprinter.source_registry import get_config
 
@@ -24,8 +24,6 @@ def _load_mcp_search_limit_cap() -> int:
         logger.debug("Config unavailable for mcp_search_limit_cap, using default 200")
         return 200
 
-
-MCP_SEARCH_LIMIT_CAP = _load_mcp_search_limit_cap()
 
 # Display names for source keys in summary text
 _SOURCE_LABELS = {
@@ -95,7 +93,7 @@ def _build_search_summary(
 
     if was_capped and any_truncated:
         summary += (
-            f" Limit capped at {MCP_SEARCH_LIMIT_CAP} per source."
+            f" Limit capped at {_get_mcp_search_limit_cap()} per source."
             " Narrow with folder, date_from, or query keywords."
         )
 
@@ -181,8 +179,9 @@ def footprinter_search(
     if not sources:
         sources = ["files", "emails", "chats", "browser"]
 
-    effective_limit = min(limit, MCP_SEARCH_LIMIT_CAP)
-    was_capped = limit > MCP_SEARCH_LIMIT_CAP
+    cap = _get_mcp_search_limit_cap()
+    effective_limit = min(limit, cap)
+    was_capped = limit > cap
 
     with get_db() as conn:
         results = search_service.search(
