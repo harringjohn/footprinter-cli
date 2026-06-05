@@ -5,6 +5,8 @@ Tests that:
 2. handle_db_errors decorator converts DatabaseNotInitializedError to structured MCP errors
 3. All MCP tools return structured errors (not raw exceptions) on empty DB
 4. DB_NOT_INITIALIZED error code is properly registered
+5. Transient schema error classifiers correctly categorize OperationalError messages
+6. handle_db_errors retries transient schema errors on fresh connections
 """
 
 import re
@@ -25,6 +27,7 @@ from footprinter.mcp.tools.search import footprinter_search
 from footprinter.mcp.tools.semantic import footprinter_semantic
 from footprinter.mcp.tools.status import footprinter_status
 from footprinter.utils.exceptions import DatabaseNotInitializedError
+from footprinter.utils.sqlite_errors import is_schema_busy_error, is_transient_schema_error
 
 
 @pytest.fixture
@@ -162,3 +165,47 @@ class TestErrorCodeRegistration:
         """DB_NOT_INITIALIZED is in both ERROR_MESSAGES and ERROR_HINTS."""
         assert "DB_NOT_INITIALIZED" in ERROR_MESSAGES
         assert "DB_NOT_INITIALIZED" in ERROR_HINTS
+
+
+class TestTransientErrorClassifier:
+    """Tests for is_transient_schema_error — broad classifier used in MCP decorator."""
+
+    def test_schema_changed_is_transient(self):
+        exc = sqlite3.OperationalError("database schema has changed")
+        assert is_transient_schema_error(exc) is True
+
+    def test_locked_is_transient(self):
+        exc = sqlite3.OperationalError("database is locked")
+        assert is_transient_schema_error(exc) is True
+
+    def test_no_such_column_is_transient(self):
+        exc = sqlite3.OperationalError("no such column: visibility")
+        assert is_transient_schema_error(exc) is True
+
+    def test_no_such_table_is_transient(self):
+        exc = sqlite3.OperationalError("no such table: files")
+        assert is_transient_schema_error(exc) is True
+
+    def test_syntax_error_is_not_transient(self):
+        exc = sqlite3.OperationalError('near "SELECT": syntax error')
+        assert is_transient_schema_error(exc) is False
+
+
+class TestSchemaBusyClassifier:
+    """Tests for is_schema_busy_error — narrow classifier used in status helpers."""
+
+    def test_schema_changed_is_busy(self):
+        exc = sqlite3.OperationalError("database schema has changed")
+        assert is_schema_busy_error(exc) is True
+
+    def test_locked_is_busy(self):
+        exc = sqlite3.OperationalError("database is locked")
+        assert is_schema_busy_error(exc) is True
+
+    def test_no_such_column_is_not_busy(self):
+        exc = sqlite3.OperationalError("no such column: visibility")
+        assert is_schema_busy_error(exc) is False
+
+    def test_no_such_table_is_not_busy(self):
+        exc = sqlite3.OperationalError("no such table: files")
+        assert is_schema_busy_error(exc) is False
