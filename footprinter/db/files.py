@@ -509,11 +509,18 @@ def insert_file(
                 md5_hash = ?,
                 project_id = CASE WHEN project_id IS NULL THEN ? ELSE project_id END,
                 folder_id = ?,
-                -- Any UPDATE invalidates the prior embedding. The fast-path
-                -- `unchanged` branch returns earlier without issuing this UPDATE, so
-                -- only genuinely changed rows reach here.
-                vectorized_at = NULL,
-                vectorized_chunks = 0,
+                vectorized_at = CASE
+                    WHEN status = 'removed' THEN NULL
+                    WHEN sha256_hash IS NULL THEN NULL
+                    WHEN sha256_hash != ? THEN NULL
+                    ELSE vectorized_at
+                END,
+                vectorized_chunks = CASE
+                    WHEN status = 'removed' THEN 0
+                    WHEN sha256_hash IS NULL THEN 0
+                    WHEN sha256_hash != ? THEN 0
+                    ELSE vectorized_chunks
+                END,
                 status = CASE
                     WHEN status = 'removed' THEN ?
                     WHEN status IS NULL THEN ?
@@ -541,6 +548,8 @@ def insert_file(
                 file_data.get("md5_hash"),
                 project_id,
                 folder_id,
+                file_data.get("sha256_hash"),
+                file_data.get("sha256_hash"),
                 status,
                 status,
                 status_reason,
@@ -650,6 +659,21 @@ def insert_drive_file(
             ),
         )
         return cursor.lastrowid
+
+
+def repair_vectorized_at(conn: sqlite3.Connection, vectorized_file_counts: Dict[int, int]) -> int:
+    """Restore vectorized_at for files that have chunks in the vector store but lost their timestamp."""
+    if not vectorized_file_counts:
+        return 0
+    repaired = 0
+    for file_id, chunk_count in vectorized_file_counts.items():
+        cursor = conn.execute(
+            "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? "
+            "WHERE id = ? AND vectorized_at IS NULL AND status = 'listed'",
+            (chunk_count, file_id),
+        )
+        repaired += cursor.rowcount
+    return repaired
 
 
 def mark_removed_files(conn: sqlite3.Connection, indexed_paths: set) -> List[int]:
