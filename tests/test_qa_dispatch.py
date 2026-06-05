@@ -14,7 +14,7 @@ QA_SCRIPT = REPO_ROOT / "scripts" / "qa.sh"
 PYTHON3_STUB = """\
 #!/usr/bin/env bash
 # Stub that simulates pytest pass/fail via env var.
-if [[ "$*" == *pytest* ]]; then
+if [[ " $* " == *" -m pytest "* ]]; then
     if [[ -n "${TIER1_FAIL:-}" ]]; then echo "STUBBED pytest FAIL"; exit 1; fi
     echo "STUBBED pytest PASS"; exit 0
 fi
@@ -49,7 +49,9 @@ def qa_harness(tmp_path):
     return tmp_path
 
 
-def _run_qa_all(harness_dir, env_overrides=None):
+def _run_qa_all(
+    harness_dir: Path, env_overrides: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if env_overrides:
         env.update(env_overrides)
@@ -72,15 +74,28 @@ class TestQaAll:
     def test_all_prints_summary(self, qa_harness):
         """A per-tier PASS/FAIL summary is printed."""
         result = _run_qa_all(qa_harness, {"TIER1_FAIL": "1"})
-        assert "QA Summary" in result.stdout
-        assert "pytest" in result.stdout.split("QA Summary")[1]
+        summary = result.stdout.split("QA Summary")[1]
+        assert "pytest:" in summary
+        assert "FAIL" in summary
+        assert "smoke:" in summary
+        assert "PASS" in summary
 
-    def test_all_exits_nonzero_on_failure(self, qa_harness):
-        """Exit code is non-zero when any tier fails."""
+    def test_all_exits_nonzero_when_tier1_fails(self, qa_harness):
+        """Exit code is non-zero when pytest (Tier 1) fails."""
         result = _run_qa_all(qa_harness, {"TIER1_FAIL": "1"})
         assert result.returncode != 0
 
+    def test_all_exits_nonzero_when_tier2_fails(self, qa_harness):
+        """Exit code is non-zero when smoke (Tier 2) fails."""
+        result = _run_qa_all(qa_harness, {"TIER2_FAIL": "1"})
+        assert result.returncode != 0
+        assert "=== Tier 1: pytest ===" in result.stdout
+        assert "=== Tier 2: smoke ===" in result.stdout
+
     def test_all_exits_zero_on_success(self, qa_harness):
-        """Exit code is 0 and summary shows success when all tiers pass."""
+        """Exit code is 0 and summary shows all tiers passed."""
         result = _run_qa_all(qa_harness)
         assert result.returncode == 0
+        summary = result.stdout.split("QA Summary")[1]
+        assert "pytest:" in summary and "PASS" in summary
+        assert "smoke:" in summary
