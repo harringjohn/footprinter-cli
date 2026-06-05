@@ -137,6 +137,21 @@ vectorization:
     - "**/.github/**"                       # GitHub workflow files (FTS-only)
     - "**/.ai-dev/**"                       # AI dev tool scratch dirs
 
+# Operational limits — tune for your data volume
+# All values have sensible defaults; omit the section entirely to use them.
+limits:
+  # Zip upload safety checks (chat imports via fp upload)
+  zip:
+    max_decompressed_size_mb: 2048    # 2 GB; raise for very large exports
+    max_entries: 10000                # Maximum files in a zip archive
+    max_compression_ratio: 100        # Ratio ceiling (100:1) for zip bomb detection
+  # HTTP API pagination cap (GET endpoints)
+  api_max_limit: 200
+  # MCP search result cap per source (protocol payload limit)
+  mcp_search_limit_cap: 200
+  # Embedding batch size for vector rebuild
+  vector_batch_size: 100
+
 # Source registry seeds — loaded into the sources table on init
 # Connector sources added by: fp connect install <name>
 source_seeds:

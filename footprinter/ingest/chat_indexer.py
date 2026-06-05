@@ -31,10 +31,29 @@ from .database import Database
 
 logger = logging.getLogger(__name__)
 
-# Security limits for zip processing
-MAX_DECOMPRESSED_SIZE = 1_073_741_824  # 1 GB
-MAX_ZIP_ENTRIES = 10_000
-MAX_COMPRESSION_RATIO = 100  # 100:1
+# Default security limits for zip processing (used when config is absent)
+_DEFAULT_MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
+_DEFAULT_MAX_ZIP_ENTRIES = 10_000
+_DEFAULT_MAX_COMPRESSION_RATIO = 100  # 100:1
+
+# Public module-level exports (backward compatibility)
+MAX_DECOMPRESSED_SIZE = _DEFAULT_MAX_DECOMPRESSED_SIZE
+MAX_ZIP_ENTRIES = _DEFAULT_MAX_ZIP_ENTRIES
+MAX_COMPRESSION_RATIO = _DEFAULT_MAX_COMPRESSION_RATIO
+
+
+def _get_zip_limits() -> tuple:
+    """Load zip security limits from config, falling back to defaults."""
+    try:
+        from footprinter.source_registry import get_config
+
+        zip_cfg = get_config().get("limits", {}).get("zip", {})
+    except Exception:
+        zip_cfg = {}
+    max_size = zip_cfg.get("max_decompressed_size_mb", 2048) * 1024 * 1024
+    max_entries = zip_cfg.get("max_entries", _DEFAULT_MAX_ZIP_ENTRIES)
+    max_ratio = zip_cfg.get("max_compression_ratio", _DEFAULT_MAX_COMPRESSION_RATIO)
+    return max_size, max_entries, max_ratio
 
 
 class ChatIndexer:
@@ -118,10 +137,11 @@ class ChatIndexer:
 
     def _validate_zip(self, zf: zipfile.ZipFile, extract_dir: Path) -> None:
         """Validate zip contents for path traversal, size, and compression ratio."""
+        max_size, max_entries, max_ratio = _get_zip_limits()
         entries = zf.infolist()
 
-        if len(entries) > MAX_ZIP_ENTRIES:
-            raise ValueError(f"Zip contains {len(entries)} entries, exceeds limit of {MAX_ZIP_ENTRIES}")
+        if len(entries) > max_entries:
+            raise ValueError(f"Zip contains {len(entries)} entries, exceeds limit of {max_entries}")
 
         extract_root = extract_dir.resolve()
         total_decompressed = 0
@@ -140,15 +160,15 @@ class ChatIndexer:
             total_decompressed += info.file_size
             total_compressed += info.compress_size
 
-        if total_decompressed > MAX_DECOMPRESSED_SIZE:
+        if total_decompressed > max_size:
             raise ValueError(
-                f"Zip decompressed size {total_decompressed} bytes exceeds limit of {MAX_DECOMPRESSED_SIZE} bytes"
+                f"Zip decompressed size {total_decompressed} bytes exceeds limit of {max_size} bytes"
             )
 
         if total_compressed > 0:
             ratio = total_decompressed / total_compressed
-            if ratio > MAX_COMPRESSION_RATIO:
-                raise ValueError(f"Zip compression ratio {ratio:.1f}:1 exceeds limit of {MAX_COMPRESSION_RATIO}:1")
+            if ratio > max_ratio:
+                raise ValueError(f"Zip compression ratio {ratio:.1f}:1 exceeds limit of {max_ratio}:1")
 
     def upload(self, file_path: Path, console: Optional[Console] = None) -> Dict:
         """
