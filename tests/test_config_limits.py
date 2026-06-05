@@ -12,7 +12,6 @@ from unittest.mock import patch
 
 from footprinter.source_registry import ConfigError
 
-
 # ---------------------------------------------------------------------------
 # api_max_limit  (default 200)
 # ---------------------------------------------------------------------------
