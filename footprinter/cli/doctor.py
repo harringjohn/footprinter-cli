@@ -6,7 +6,6 @@ Naming a specific system — ``fp doctor search`` or ``fp doctor semantic``
 """
 
 import importlib.util
-import json
 import platform
 import shutil
 import sqlite3

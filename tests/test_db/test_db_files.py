@@ -640,7 +640,7 @@ class TestConditionalVectorizedAtClearing:
         )
         db.conn.commit()
 
-        result = files_db.insert_file(
+        files_db.insert_file(
             db.conn,
             {
                 "file_path": "/tmp/test/n.txt",
