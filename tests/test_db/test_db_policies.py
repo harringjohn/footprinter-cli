@@ -93,6 +93,7 @@ class TestSetVisibilityPolicy:
         set_visibility_policy(conn, "global", "full")
         conn.rollback()
         row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        assert row is not None
         assert row["setting"] == "full"
 
 
@@ -210,6 +211,7 @@ class TestSetPermissionPolicy:
         set_permission_policy(conn, "global", "deny")
         conn.rollback()
         row = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        assert row is not None
         assert row["setting"] == "deny"
 
 

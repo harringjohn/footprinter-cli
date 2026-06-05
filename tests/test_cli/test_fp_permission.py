@@ -1758,7 +1758,7 @@ class TestSetCsvApply:
 def policy_db(tmp_path):
     """Real SQLite DB with schema + test entities for transaction and round-trip tests.
 
-    Yields (conn, db_path).  _set_csv closes conn in its finally block,
+    Yields (conn, db_path).  _set closes conn in its finally block,
     so tests that need to verify post-call state should re-open from db_path.
     """
     from footprinter.ingest.database import Database

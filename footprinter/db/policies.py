@@ -49,7 +49,7 @@ def list_visibility_policies(conn: sqlite3.Connection) -> list[dict]:
 
 
 def set_visibility_policy(conn: sqlite3.Connection, scope: str, setting: str, *, commit: bool = True) -> bool:
-    """Insert or update a visibility policy. Returns True."""
+    """Insert or update a visibility policy. Pass commit=False for batched writes."""
     validate_scope(scope)
     if setting not in VISIBILITY_SETTINGS:
         raise ValueError(f"Invalid visibility setting: {setting}. Valid: {', '.join(sorted(VISIBILITY_SETTINGS))}")
@@ -101,7 +101,7 @@ def list_permission_policies(conn: sqlite3.Connection) -> list[dict]:
 
 
 def set_permission_policy(conn: sqlite3.Connection, scope: str, setting: str, *, commit: bool = True) -> bool:
-    """Insert or update a permission policy. Returns True."""
+    """Insert or update a permission policy. Pass commit=False for batched writes."""
     validate_scope(scope)
     if setting not in PERMISSION_SETTINGS:
         raise ValueError(f"Invalid permission setting: {setting}. Valid: {', '.join(sorted(PERMISSION_SETTINGS))}")
