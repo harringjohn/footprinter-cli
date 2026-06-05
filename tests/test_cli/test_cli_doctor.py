@@ -577,6 +577,69 @@ class TestDoctorFtsHealth:
         assert result.status == "WARN"
         mock_db.__exit__.assert_called_once()
 
+    def test_database_open_failure_not_labeled_as_fts(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from footprinter.cli.doctor import _check_fts_health
+
+        db_path = tmp_path / "footprinter.db"
+        _create_minimal_db(db_path)
+        monkeypatch.setattr("footprinter.paths.get_db_path", lambda: db_path)
+
+        mock_cls = MagicMock(side_effect=RuntimeError("migration failed"))
+        monkeypatch.setattr("footprinter.ingest.database.Database", mock_cls)
+
+        result = _check_fts_health()
+
+        assert "FTS health check failed" not in result.message
+        assert "fp doctor search" not in result.message
+        assert "migration failed" in result.message
+
+    def test_fts_query_failure_still_labeled_as_fts(self, tmp_path, monkeypatch):
+        import sqlite3
+        from unittest.mock import MagicMock
+
+        from footprinter.cli.doctor import _check_fts_health
+
+        db_path = tmp_path / "footprinter.db"
+        _create_minimal_db(db_path)
+        monkeypatch.setattr("footprinter.paths.get_db_path", lambda: db_path)
+
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value = mock_db
+        mock_db.__exit__.return_value = False
+        mock_db.check_fts_health.side_effect = sqlite3.OperationalError(
+            "no such table: files_fts"
+        )
+        mock_cls = MagicMock(return_value=mock_db)
+        monkeypatch.setattr("footprinter.ingest.database.Database", mock_cls)
+
+        result = _check_fts_health()
+
+        assert "FTS" in result.message
+        assert result.status == "WARN"
+
+    def test_database_open_failure_is_warn_status(self, tmp_path, monkeypatch):
+        import sqlite3
+        from unittest.mock import MagicMock
+
+        from footprinter.cli.doctor import _check_fts_health
+
+        db_path = tmp_path / "footprinter.db"
+        _create_minimal_db(db_path)
+        monkeypatch.setattr("footprinter.paths.get_db_path", lambda: db_path)
+
+        mock_cls = MagicMock(
+            side_effect=sqlite3.OperationalError("database is locked")
+        )
+        monkeypatch.setattr("footprinter.ingest.database.Database", mock_cls)
+
+        result = _check_fts_health()
+
+        assert result.status == "WARN"
+        assert "database is locked" in result.message
+        assert "fp doctor search" not in result.message
+
 
 # ---------------------------------------------------------------------------
 # 11. Flags removed from ingest
