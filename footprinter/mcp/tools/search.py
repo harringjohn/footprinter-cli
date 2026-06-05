@@ -3,12 +3,12 @@
 import logging
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from footprinter.mcp.db import get_db, handle_db_errors
 from footprinter.services import search_service
 from footprinter.services.roles import Role
 from footprinter.utils.paths import abbreviate_home as _shorten_path
+
+logger = logging.getLogger(__name__)
 
 # Per-source result cap enforced at the MCP layer to stay under the
 # 1MB tool-result protocol limit. The service layer remains uncapped
