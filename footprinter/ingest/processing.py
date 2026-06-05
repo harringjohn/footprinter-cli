@@ -10,6 +10,7 @@ and dispatch.
 from __future__ import annotations
 
 import logging
+import signal
 import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
@@ -97,6 +98,15 @@ def run_access_resolution(db: "Database", full_mode: bool = False) -> PipeResult
 # Vectorization runner
 # ---------------------------------------------------------------------------
 
+_COMMIT_INTERVAL = 100
+_shutdown = False
+
+
+def _handle_shutdown(signum, frame):
+    global _shutdown
+    _shutdown = True
+    logger.warning("Received %s — finishing current file...", signal.Signals(signum).name)
+
 
 def run_vectorization(
     db: "Database",
@@ -178,66 +188,93 @@ def run_vectorization(
     extractor = FullContentExtractor.from_config(get_config())
     vectorize_cap = getattr(extractor, "max_vectorize_size_bytes", 0)
 
+    global _shutdown
+    _shutdown = False
+    old_sigint = signal.getsignal(signal.SIGINT)
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGINT, _handle_shutdown)
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+
     processed = 0
     failures: List[str] = []
-    for row in rows:
-        file_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
-        file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
-        processed += 1
-        try:
-            path = Path(file_path) if file_path else None
-            if path is None or not path.exists():
-                counts["vectorized_skipped_missing"] += 1
-                continue
-            # Size-cap check before extraction so we can record the skip with size.
-            if vectorize_cap > 0:
-                try:
-                    file_size = path.stat().st_size
-                except OSError as stat_err:
-                    logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
-                    file_size = None
-                if file_size is not None and file_size > vectorize_cap:
-                    logger.info(
-                        f"Skipping vectorization of {path.name}: {file_size} bytes "
-                        f"exceeds cap of {vectorize_cap} bytes"
-                    )
-                    counts["vectorized_skipped_large"] += 1
-                    skipped_large_files.append({"path": str(path), "size_bytes": file_size})
-                    # Drop any prior vectors for this file_id so stale embeddings
-                    # don't linger when a previously-small file grows past the cap.
-                    try:
-                        store.delete_file(file_id)
-                    except Exception as e:  # Intentional broad catch: cleanup is best-effort
-                        logger.debug(f"delete_file failed for {file_id}: {e}")
-                    # Stamp vectorized_at with chunks=0 so the row is not re-evaluated
-                    # every incremental run. Upstream ingest clears vectorized_at on
-                    # file modification, so a shrunk file will be re-considered.
-                    db.conn.execute(
-                        "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = 0 WHERE id = ?",
-                        (file_id,),
-                    )
+    interrupted = False
+    try:
+        for row in rows:
+            if _shutdown:
+                db.conn.commit()
+                interrupted = True
+                break
+
+            file_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+            file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
+            processed += 1
+            try:
+                path = Path(file_path) if file_path else None
+                if path is None or not path.exists():
+                    counts["vectorized_skipped_missing"] += 1
                     continue
-            chunks = extractor.extract_with_chunking(path)
-            if not chunks:
-                counts["vectorized_skipped_missing"] += 1
-                continue
-            metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
-            store.upsert_file(file_id, str(path), chunks, metadata)
-            db.conn.execute(
-                "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
-                (len(chunks), file_id),
-            )
-            counts["vectorized_new"] += 1
-        except Exception as e:  # Intentional broad catch: per-row failure must not abort the stage
-            counts["vectorized_failed"] += 1
-            failures.append(f"id={file_id}: {e}")
-            logger.debug("Vectorization failed for file_id=%s path=%s: %s", file_id, file_path, e)
-        finally:
-            if on_progress is not None:
-                on_progress(processed)
+                # Size-cap check before extraction so we can record the skip with size.
+                if vectorize_cap > 0:
+                    try:
+                        file_size = path.stat().st_size
+                    except OSError as stat_err:
+                        logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
+                        file_size = None
+                    if file_size is not None and file_size > vectorize_cap:
+                        logger.info(
+                            f"Skipping vectorization of {path.name}: {file_size} bytes "
+                            f"exceeds cap of {vectorize_cap} bytes"
+                        )
+                        counts["vectorized_skipped_large"] += 1
+                        skipped_large_files.append({"path": str(path), "size_bytes": file_size})
+                        # Drop any prior vectors for this file_id so stale embeddings
+                        # don't linger when a previously-small file grows past the cap.
+                        try:
+                            store.delete_file(file_id)
+                        except Exception as e:  # Intentional broad catch: cleanup is best-effort
+                            logger.debug(f"delete_file failed for {file_id}: {e}")
+                        # Stamp vectorized_at with chunks=0 so the row is not re-evaluated
+                        # every incremental run. Upstream ingest clears vectorized_at on
+                        # file modification, so a shrunk file will be re-considered.
+                        db.conn.execute(
+                            "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = 0 WHERE id = ?",
+                            (file_id,),
+                        )
+                        continue
+                chunks = extractor.extract_with_chunking(path)
+                if not chunks:
+                    counts["vectorized_skipped_missing"] += 1
+                    continue
+                metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
+                store.upsert_file(file_id, str(path), chunks, metadata)
+                db.conn.execute(
+                    "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
+                    (len(chunks), file_id),
+                )
+                counts["vectorized_new"] += 1
+            except Exception as e:  # Intentional broad catch: per-row failure must not abort the stage
+                counts["vectorized_failed"] += 1
+                failures.append(f"id={file_id}: {e}")
+                logger.debug("Vectorization failed for file_id=%s path=%s: %s", file_id, file_path, e)
+            finally:
+                if on_progress is not None:
+                    on_progress(processed)
+                if processed % _COMMIT_INTERVAL == 0:
+                    db.conn.commit()
 
-    db.conn.commit()
+        if not interrupted:
+            db.conn.commit()
+    finally:
+        signal.signal(signal.SIGINT, old_sigint)
+        signal.signal(signal.SIGTERM, old_sigterm)
 
+    if interrupted:
+        return PipeResult.completed(
+            "vectorization",
+            skipped_large_files=skipped_large_files,
+            interrupted=True,
+            **counts,
+        )
     if failures:
         return PipeResult.completed_with_errors(
             "vectorization",
