@@ -298,12 +298,12 @@ if [ -z "$PRE_SNAPSHOT" ]; then
 fi
 
 echo "  Pre-upgrade counts:"
-"$VENV_PY" -c "
+echo "$PRE_SNAPSHOT" | "$VENV_PY" -c "
 import json, sys
-snap = json.loads(sys.argv[1])
+snap = json.loads(sys.stdin.read())
 for entity, data in snap.items():
     print(f'    {entity}: {data[\"total\"]} ({data[\"by_status\"]})')
-" "$PRE_SNAPSHOT"
+"
 
 # ── Phase 4: Upgrade to local wheel ──────────────────────────────────
 
@@ -355,10 +355,12 @@ print(json.dumps(snapshot))
 if [ -z "$POST_SNAPSHOT" ]; then
     fail "could not capture post-upgrade entity counts (Python error)"
 else
-    COUNTS_OK=$("$VENV_PY" -c "
+    COUNTS_OK=$(printf '{"pre": %s, "post": %s}' "$PRE_SNAPSHOT" "$POST_SNAPSHOT" \
+        | "$VENV_PY" -c "
 import json, sys
-pre = json.loads(sys.argv[1])
-post = json.loads(sys.argv[2])
+payload = json.loads(sys.stdin.read())
+pre = payload['pre']
+post = payload['post']
 ok = True
 for entity in pre:
     pre_total = pre[entity]['total']
@@ -367,7 +369,7 @@ for entity in pre:
         print(f'  {entity}: {pre_total} -> {post_total} (LOST ROWS)', file=sys.stderr)
         ok = False
 print('yes' if ok else 'no')
-" "$PRE_SNAPSHOT" "$POST_SNAPSHOT" 2>&1) || true
+" 2>&1) || true
 
     if [ "$COUNTS_OK" = "yes" ]; then
         pass "entity counts survived upgrade"
