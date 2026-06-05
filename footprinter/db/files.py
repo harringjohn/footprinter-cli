@@ -254,7 +254,7 @@ def _determine_file_status(name: str, path: str) -> tuple:
         if part.startswith(".") and part not in ("", "."):
             if part in AGENT_CONTEXT_DIRS:
                 if ".local." in name:
-                    return "unlisted", "in_dot_folder"
+                    return "unlisted", "local_config"
                 continue
             return "unlisted", "in_dot_folder"
 

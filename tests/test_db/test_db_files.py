@@ -556,7 +556,7 @@ class TestFileStatus:
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
         assert row["status"] == "unlisted"
-        assert row["status_reason"] == "in_dot_folder"
+        assert row["status_reason"] == "local_config"
         db.close()
 
     def test_local_file_in_context_dir_unlisted(self, temp_db):
@@ -577,7 +577,7 @@ class TestFileStatus:
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (aid,))
         row = cursor.fetchone()
         assert row["status"] == "unlisted"
-        assert row["status_reason"] == "in_dot_folder"
+        assert row["status_reason"] == "local_config"
         db.close()
 
     def test_dotfile_in_claude_dir_still_unlisted(self, temp_db):

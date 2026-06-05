@@ -23,16 +23,15 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from footprinter.access_stamper import stamp_entities  # noqa: E402
 from footprinter.db.files import AGENT_CONTEXT_DIRS  # noqa: E402
-
-DB_PATH = PROJECT_ROOT / "data" / "footprinter.db"
+from footprinter.paths import get_db_path  # noqa: E402
 
 BATCH_SIZE = 100
 
 
-def _build_path_clauses() -> tuple[str, list]:
+def _build_path_clauses() -> str:
     """Build SQL path LIKE clauses from AGENT_CONTEXT_DIRS."""
-    clauses = [f"path LIKE '%/.{d.lstrip('.')}/%'" for d in AGENT_CONTEXT_DIRS]
-    return " OR ".join(clauses), []
+    clauses = [f"path LIKE '%/{d}/%'" for d in AGENT_CONTEXT_DIRS]
+    return " OR ".join(clauses)
 
 
 def relist_agent_context_files(
@@ -50,7 +49,7 @@ def relist_agent_context_files(
     Returns:
         Dict with 'found' and 'updated' counts.
     """
-    path_sql, path_params = _build_path_clauses()
+    path_sql = _build_path_clauses()
 
     query = f"""
         SELECT id, path, name
@@ -60,7 +59,7 @@ def relist_agent_context_files(
           AND ({path_sql})
           AND name NOT LIKE '%.local.%'
     """
-    params = list(path_params)
+    params = []
 
     if limit is not None:
         query += " LIMIT ?"
@@ -95,7 +94,6 @@ def relist_agent_context_files(
             """,
             batch,
         )
-        conn.commit()
 
     if changed_ids:
         stamp_entities(conn, {"file": changed_ids})
@@ -115,15 +113,16 @@ def main():
 
     args = parser.parse_args()
 
-    conn = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         result = relist_agent_context_files(conn, dry_run=args.dry_run, limit=args.limit)
         print(f"\nFound: {result['found']}")
         print(f"Updated: {result['updated']}")
         print(
-            "\nVerify with:\n"
-            "  sqlite3 ~/.footprinter/footprinter.db"
+            f"\nVerify with:\n"
+            f"  sqlite3 {db_path}"
             " \"SELECT status, COUNT(*) FROM files"
             " WHERE (path LIKE '%/.claude/%' OR path LIKE '%/.context/%')"
             " GROUP BY status\""
