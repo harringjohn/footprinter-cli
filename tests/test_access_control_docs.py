@@ -1,6 +1,6 @@
 """Tests for access control documentation content.
 
-Verifies that reference/mcp-access-control.md contains required sections
+Verifies that reference/permission-policies-and-access-control.md contains required sections
 explaining the security posture, fail-open baseline, and how to
 switch to deny-by-default.
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REFERENCE_DIR = Path(__file__).parent.parent / "reference"
-ACCESS_CONTROL_DOC = REFERENCE_DIR / "mcp-access-control.md"
+ACCESS_CONTROL_DOC = REFERENCE_DIR / "permission-policies-and-access-control.md"
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def security_posture_section():
 
 
 class TestSecurityPostureSection:
-    """reference/mcp-access-control.md should document the security posture."""
+    """reference/permission-policies-and-access-control.md should document the security posture."""
 
     def test_has_security_posture_section(self):
         """A Security Posture heading should exist."""
@@ -42,7 +42,7 @@ class TestSecurityPostureSection:
         headings = [line.strip() for line in content.split("\n") if line.strip().startswith("#")]
         posture_headings = [h for h in headings if "security posture" in h.lower()]
         assert posture_headings, (
-            "Expected a '## Security Posture' or '### Security Posture' heading in reference/mcp-access-control.md"
+            "Expected a '## Security Posture' or '### Security Posture' heading in reference/permission-policies-and-access-control.md"
         )
 
     def test_explains_fail_open_design(self, security_posture_section):

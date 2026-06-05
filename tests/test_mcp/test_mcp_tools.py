@@ -3470,7 +3470,7 @@ class TestFootprinterSemantic:
     def test_chat_opaque_excluded_from_semantic(self, mcp_db):
         """Opaque chats are excluded entirely from semantic results (D2 rule).
 
-        Spec: reference/mcp-access-control.md lines 307, 310, 348-353.
+        Spec: reference/permission-policies-and-access-control.md lines 307, 310, 348-353.
         Semantic search is stricter than metadata search — opaque items are
         dropped, not field-trimmed, because match relevance is content-derived.
         """
@@ -3513,7 +3513,7 @@ class TestFootprinterSemantic:
     def test_file_opaque_excluded_from_semantic(self, mcp_db):
         """Opaque files are excluded entirely from semantic results (D2 rule).
 
-        Spec: reference/mcp-access-control.md lines 307, 310, 348-353.
+        Spec: reference/permission-policies-and-access-control.md lines 307, 310, 348-353.
         """
         mock_results = [
             {
@@ -3587,7 +3587,7 @@ class TestFootprinterSemantic:
     def test_chat_opaque_counted_in_suppressed(self, mcp_db):
         """Opaque chats excluded from semantic results are counted in `suppressed`.
 
-        D2 rule (reference/mcp-access-control.md lines 307, 310, 348-353) says
+        D2 rule (reference/permission-policies-and-access-control.md lines 307, 310, 348-353) says
         opaque items are excluded from semantic search — stricter than metadata
         search where opaque items return with minimal fields. The `suppressed`
         count therefore includes opaque items alongside hidden ones in the

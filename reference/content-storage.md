@@ -2,7 +2,7 @@
 
 Footprinter has three distinct content storage tiers. This page explains what each tier stores, what it doesn't, and the single config flag (`content_snippets`) that marks the boundary where Footprinter starts storing copies of your file content.
 
-For the schema columns referenced here, see `data-model.md`. For how stored content is gated when an AI assistant reads it, see `mcp-access-control.md`.
+For the schema columns referenced here, see `data-model.md`. For how stored content is gated when an AI assistant reads it, see `permission-policies-and-access-control.md`.
 
 ---
 
@@ -51,7 +51,7 @@ This is the safe-by-default tier. Everything that exists at Tier 0 is informatio
 - FTS5 keyword search now matches `name` and `content_preview`. A search for "invoice" finds files whose contents mention "invoice", not just files named that way.
 - Search snippets in results show the matched preview, not just the filename.
 
-**Why this is the boundary:** in Tier 0 there is no copy of file content anywhere in Footprinter's database. In Tier 1 there is a small but real copy — the preview. That preview lives in SQLite, follows the same access controls as the rest of the catalog (see `mcp-access-control.md`), and stays on your machine. But it is a copy, and it persists across reboots until ingest re-runs or the row is removed.
+**Why this is the boundary:** in Tier 0 there is no copy of file content anywhere in Footprinter's database. In Tier 1 there is a small but real copy — the preview. That preview lives in SQLite, follows the same access controls as the rest of the catalog (see `permission-policies-and-access-control.md`), and stays on your machine. But it is a copy, and it persists across reboots until ingest re-runs or the row is removed.
 
 Tier 1 ships in the base package — no extras, no extra dependencies. The `content_preview` column exists in the schema regardless; the flag just controls whether ingest populates it.
 
@@ -84,4 +84,4 @@ Tiers stack: Tier 1 includes Tier 0; Tier 2 includes Tier 1. You can disable Tie
 ## See also
 
 - `data-model.md` — schema columns (`content_preview`, `body_preview`, hash columns) and the local-only architecture.
-- `mcp-access-control.md` — how visibility and read permissions gate stored content for AI assistants.
+- `permission-policies-and-access-control.md` — how visibility and read permissions gate stored content for AI assistants.

@@ -61,7 +61,7 @@ When Footprinter exposes data to AI assistants via MCP (Model Context Protocol),
 
 Layers 1–2 use **most-restrictive-wins** / **deny-wins** semantics. Policies are set via `fp permission set` at any granularity: global, per-source, per-account, per-folder path, per-project, per-client, or per-item.
 
-See `reference/mcp-access-control.md` for the full reference: the three-layer model, policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
+See `reference/permission-policies-and-access-control.md` for the full reference: the three-layer model, policy tables, scope patterns, resolution semantics, CLI management, and common patterns.
 
 ---
 
@@ -1136,7 +1136,7 @@ Entity table status values are uniform by design — the trichotomy enables cons
 
 ## Status & Exclusion Model
 
-Footprinter uses three mechanisms to control which files appear in queries and results. They operate at different stages of the pipeline. For how status filtering integrates with MCP access control (Layer 0), see `reference/mcp-access-control.md` — [Data Scoping (Layer 0)](mcp-access-control.md#data-scoping-layer-0).
+Footprinter uses three mechanisms to control which files appear in queries and results. They operate at different stages of the pipeline. For how status filtering integrates with MCP access control (Layer 0), see `reference/permission-policies-and-access-control.md` — [Data Scoping (Layer 0)](permission-policies-and-access-control.md#data-scoping-layer-0).
 
 ### 1. Config exclusions — never scanned
 
