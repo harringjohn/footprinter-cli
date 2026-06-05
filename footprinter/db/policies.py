@@ -48,8 +48,8 @@ def list_visibility_policies(conn: sqlite3.Connection) -> list[dict]:
     return [{"scope": r["scope"], "setting": r["setting"], "updated_at": r["updated_at"]} for r in rows]
 
 
-def set_visibility_policy(conn: sqlite3.Connection, scope: str, setting: str) -> bool:
-    """Insert or update a visibility policy. Returns True."""
+def set_visibility_policy(conn: sqlite3.Connection, scope: str, setting: str, *, commit: bool = True) -> bool:
+    """Insert or update a visibility policy. Pass commit=False for batched writes."""
     validate_scope(scope)
     if setting not in VISIBILITY_SETTINGS:
         raise ValueError(f"Invalid visibility setting: {setting}. Valid: {', '.join(sorted(VISIBILITY_SETTINGS))}")
@@ -57,7 +57,8 @@ def set_visibility_policy(conn: sqlite3.Connection, scope: str, setting: str) ->
         "INSERT OR REPLACE INTO visibility_policies (scope, setting, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
         (scope, setting),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return True
 
 
@@ -99,8 +100,8 @@ def list_permission_policies(conn: sqlite3.Connection) -> list[dict]:
     return [{"scope": r["scope"], "setting": r["setting"], "updated_at": r["updated_at"]} for r in rows]
 
 
-def set_permission_policy(conn: sqlite3.Connection, scope: str, setting: str) -> bool:
-    """Insert or update a permission policy. Returns True."""
+def set_permission_policy(conn: sqlite3.Connection, scope: str, setting: str, *, commit: bool = True) -> bool:
+    """Insert or update a permission policy. Pass commit=False for batched writes."""
     validate_scope(scope)
     if setting not in PERMISSION_SETTINGS:
         raise ValueError(f"Invalid permission setting: {setting}. Valid: {', '.join(sorted(PERMISSION_SETTINGS))}")
@@ -108,7 +109,8 @@ def set_permission_policy(conn: sqlite3.Connection, scope: str, setting: str) ->
         "INSERT OR REPLACE INTO permission_policies (scope, setting, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
         (scope, setting),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return True
 
 

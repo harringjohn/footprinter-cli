@@ -28,6 +28,7 @@ from footprinter.cli._policy_helpers import (
 from footprinter.db.policies import (
     PERMISSION_SETTINGS,
     SCOPE_PREFIXES,
+    VISIBILITY_SETTINGS,
     clear_permission_policies,
     clear_visibility_policies,
     delete_permission_policy,
@@ -39,9 +40,6 @@ from footprinter.db.policies import (
     set_permission_policy,
     set_visibility_policy,
 )
-
-_VISIBILITY_INPUT = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
-_VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 
 _CSV_SCOPE_PREFIX: dict[str, str] = {
     meta["table"]: etype
@@ -125,9 +123,7 @@ def _list(args) -> None:
             merged.setdefault(
                 scope, {"visibility": None, "access": None, "updated_at": None}
             )
-            merged[scope]["visibility"] = _VISIBILITY_DISPLAY.get(
-                row["setting"], row["setting"]
-            )
+            merged[scope]["visibility"] = row["setting"]
             merged[scope]["updated_at"] = row.get("updated_at")
         for row in perm_rows:
             scope = row["scope"]
@@ -184,10 +180,10 @@ def _set(args) -> None:
         )
         raise SystemExit(1)
 
-    if visibility and visibility not in _VISIBILITY_INPUT:
+    if visibility and visibility not in VISIBILITY_SETTINGS:
         console.print(
             f"[red]Invalid visibility setting:[/red] {visibility}\n"
-            f"  Valid: {', '.join(sorted(_VISIBILITY_INPUT))}"
+            f"  Valid: {', '.join(sorted(VISIBILITY_SETTINGS))}"
         )
         raise SystemExit(1)
 
@@ -224,7 +220,7 @@ def _set(args) -> None:
         console.print(f"  Setting: {', '.join(settings_desc)}")
 
         if visibility:
-            set_visibility_policy(conn, args.scope, _VISIBILITY_INPUT[visibility])
+            set_visibility_policy(conn, args.scope, visibility)
         if access:
             set_permission_policy(conn, args.scope, access)
 
@@ -326,10 +322,10 @@ def _set_csv(args) -> None:
                 )
                 raise SystemExit(1)
 
-            if vis and vis not in _VISIBILITY_INPUT:
+            if vis and vis not in VISIBILITY_SETTINGS:
                 console.print(
                     f"[red]Row {i}: Invalid visibility '{vis}'.[/red]\n"
-                    f"  Valid: {', '.join(sorted(_VISIBILITY_INPUT))}"
+                    f"  Valid: {', '.join(sorted(VISIBILITY_SETTINGS))}"
                 )
                 raise SystemExit(1)
 
@@ -351,12 +347,17 @@ def _set_csv(args) -> None:
 
             validated.append((record_id, vis or None, acc or None))
 
-        for record_id, vis, acc in validated:
-            record_scope = f"{scope_prefix}:{record_id}"
-            if vis:
-                set_visibility_policy(conn, record_scope, vis)
-            if acc:
-                set_permission_policy(conn, record_scope, acc)
+        try:
+            for record_id, vis, acc in validated:
+                record_scope = f"{scope_prefix}:{record_id}"
+                if vis:
+                    set_visibility_policy(conn, record_scope, vis, commit=False)
+                if acc:
+                    set_permission_policy(conn, record_scope, acc, commit=False)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
         stats = recalculate_with_progress(conn, scope)
 

@@ -79,6 +79,23 @@ class TestSetVisibilityPolicy:
         with pytest.raises(ValueError, match="Invalid scope"):
             set_visibility_policy(conn, scope, "full")
 
+    def test_commit_false_does_not_autocommit(self, conn):
+        from footprinter.db.policies import set_visibility_policy
+
+        set_visibility_policy(conn, "global", "full", commit=False)
+        conn.rollback()
+        row = conn.execute("SELECT * FROM visibility_policies WHERE scope = 'global'").fetchone()
+        assert row is None
+
+    def test_commit_true_is_default(self, conn):
+        from footprinter.db.policies import set_visibility_policy
+
+        set_visibility_policy(conn, "global", "full")
+        conn.rollback()
+        row = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
+        assert row is not None
+        assert row["setting"] == "full"
+
 
 class TestDeleteVisibilityPolicy:
     def test_delete_existing(self, conn):
@@ -179,6 +196,23 @@ class TestSetPermissionPolicy:
         from footprinter.db.policies import set_permission_policy
 
         set_permission_policy(conn, scope, "deny")
+
+    def test_commit_false_does_not_autocommit(self, conn):
+        from footprinter.db.policies import set_permission_policy
+
+        set_permission_policy(conn, "global", "deny", commit=False)
+        conn.rollback()
+        row = conn.execute("SELECT * FROM permission_policies WHERE scope = 'global'").fetchone()
+        assert row is None
+
+    def test_commit_true_is_default(self, conn):
+        from footprinter.db.policies import set_permission_policy
+
+        set_permission_policy(conn, "global", "deny")
+        conn.rollback()
+        row = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
+        assert row is not None
+        assert row["setting"] == "deny"
 
 
 class TestDeletePermissionPolicy:
