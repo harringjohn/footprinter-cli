@@ -756,7 +756,6 @@ class TestDoctorArchitecture:
     def test_rosetta_warn_includes_pipx_remediation(self, monkeypatch):
         from footprinter.cli import diagnostics, doctor
 
-        warning = diagnostics.check_architecture
         monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
             "Python is running as x86_64 on arm64 hardware (Rosetta). "
             "Native dependencies may have compatibility issues. "
