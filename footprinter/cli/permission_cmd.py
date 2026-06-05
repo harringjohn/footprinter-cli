@@ -41,7 +41,6 @@ from footprinter.db.policies import (
     set_visibility_policy,
 )
 
-
 _CSV_SCOPE_PREFIX: dict[str, str] = {
     meta["table"]: etype
     for etype, meta in ENTITY_META.items()
