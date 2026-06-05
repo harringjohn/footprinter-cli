@@ -168,7 +168,7 @@ def check_file_path(conn: sqlite3.Connection, path: str, json_output: bool, verb
         console.print(f"\nAccess Check: [bold]{display_path}[/bold]")
         if not found:
             console.print("  [dim]Not found in files or folders — resolving from policy chain[/dim]")
-            console.print("  [dim]Tip: Use --folder for directory aggregate, --project for project ID[/dim]")
+            console.print("  [dim]Tip: Use folder:<path> for a directory aggregate, project:<id> for a project[/dim]")
         console.print()
         console.print(f"  Permission: [bold]{perm_str}[/bold]   (from {perm_src})")
         console.print(f"  Visibility: [bold]{vis_val}[/bold]   (from {vis_src})")

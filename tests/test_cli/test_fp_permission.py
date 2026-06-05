@@ -1314,6 +1314,25 @@ class TestCheckFilePathVerbose:
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
         assert "verbose" not in printed.lower()
 
+    @patch("footprinter.cli._policy_helpers.build_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.simulate_path_visibility", return_value=("full", "baseline"))
+    @patch("footprinter.cli._policy_helpers.simulate_path_permission", return_value=("allow", "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_file_path_not_found_tip_uses_scope_strings(
+        self, mock_console, mock_sim_perm, mock_sim_vis, mock_chain
+    ):
+        from footprinter.cli._policy_helpers import check_file_path
+
+        conn = self._make_conn(None)
+
+        check_file_path(conn, "/tmp/unknown.py", json_output=False, verbose=False)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "--folder" not in printed
+        assert "--project" not in printed
+        assert "folder:" in printed
+        assert "project:" in printed
+
 
 # ---------------------------------------------------------------------------
 # Set CSV: argument parsing
