@@ -112,6 +112,11 @@ def get_by_path(
         if visibility == "hidden":
             return None
         if visibility == "opaque":
+            status_arg = status_arg_for_role(
+                role, include_unlisted=include_unlisted, include_removed=include_removed,
+            )
+            nav = db.get_folder_navigation(conn, row["id"], path, status=status_arg)
+            row = {**row, **nav}
             return filter_result("folder", row)
 
     status_arg = status_arg_for_role(

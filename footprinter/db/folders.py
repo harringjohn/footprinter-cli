@@ -257,10 +257,32 @@ def get_folder_navigation(
         [path + "/%", path, *status_params],
     ).fetchone()
 
+    unlisted_direct = conn.execute(
+        """SELECT COUNT(*) as total
+           FROM files
+           WHERE folder_id = ?
+             AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        [folder_id],
+    ).fetchone()
+
+    unlisted_recursive = conn.execute(
+        """SELECT COUNT(*) as total
+           FROM files
+           WHERE folder_id IN (
+               SELECT id FROM folders WHERE path LIKE ? OR path = ?
+           )
+             AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        [path + "/%", path],
+    ).fetchone()
+
     return {
         "files": file_results,
         "subfolders": subfolder_results,
         "recursive_file_count": recursive["total"],
+        "unlisted_file_count": unlisted_direct["total"],
+        "unlisted_recursive_file_count": unlisted_recursive["total"],
     }
 
 

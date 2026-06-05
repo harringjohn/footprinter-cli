@@ -2722,6 +2722,132 @@ class TestContexterFolder:
 
         assert result["recursive_file_count"] == 2
 
+    # -- unlisted count tests --
+
+    def test_folder_unlisted_file_count_viewer(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source,"
+            " direct_file_count, total_size_bytes, visibility) "
+            "VALUES (1, 'dotfolder', '/test/.claude', 'test/.claude',"
+            " 'local', 0, 0, 'full')"
+        )
+        cursor.executemany(
+            "INSERT INTO files (id, name, source, status, folder_id, visibility)"
+            " VALUES (?, ?, 'local', ?, 1, 'full')",
+            [
+                (1, "listed1.py", "listed"),
+                (2, "listed2.py", "listed"),
+                (3, "unlisted1.py", "unlisted"),
+                (4, "unlisted2.py", "unlisted"),
+                (5, "unlisted3.py", "unlisted"),
+            ],
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            result = footprinter_folder("/test/.claude")
+
+        assert result["unlisted_file_count"] == 3
+        assert result["unlisted_recursive_file_count"] == 3
+        assert len(result["files"]) == 2
+        file_names = {f["name"] for f in result["files"]}
+        assert "unlisted1.py" not in file_names
+
+    def test_folder_unlisted_recursive_count_with_subfolders(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source, visibility)"
+            " VALUES (1, 'root', '/test/root', 'test/root', 'local', 'full')"
+        )
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source,"
+            " parent_folder_id, visibility)"
+            " VALUES (2, 'sub', '/test/root/sub', 'test/root/sub', 'local', 1, 'full')"
+        )
+        cursor.executemany(
+            "INSERT INTO files (id, name, source, status, folder_id, visibility)"
+            " VALUES (?, ?, 'local', ?, ?, 'full')",
+            [
+                (1, "a.py", "listed", 1),
+                (2, "b.py", "unlisted", 1),
+                (3, "c.py", "listed", 2),
+                (4, "d.py", "listed", 2),
+                (5, "e.py", "unlisted", 2),
+                (6, "f.py", "unlisted", 2),
+            ],
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            result = footprinter_folder("/test/root")
+
+        assert result["recursive_file_count"] == 3
+        assert result["unlisted_file_count"] == 1
+        assert result["unlisted_recursive_file_count"] == 3
+
+    def test_folder_unlisted_count_no_metadata_leak(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source, visibility)"
+            " VALUES (1, 'dot', '/test/.dot', 'test/.dot', 'local', 'full')"
+        )
+        cursor.execute(
+            "INSERT INTO files (id, name, source, status, status_reason,"
+            " folder_id, visibility)"
+            " VALUES (1, 'secret.py', 'local', 'unlisted', 'user_hidden', 1, 'full')"
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            result = footprinter_folder("/test/.dot")
+
+        assert result["unlisted_file_count"] == 1
+        assert len(result["files"]) == 0
+        for f in result.get("files", []):
+            assert f["name"] != "secret.py"
+
+    def test_opaque_folder_surfaces_unlisted_counts(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source, visibility)"
+            " VALUES (1, 'opaque', '/test/opaque', 'test/opaque', 'local', 'opaque')"
+        )
+        cursor.executemany(
+            "INSERT INTO files (id, name, source, status, folder_id, visibility)"
+            " VALUES (?, ?, 'local', 'unlisted', 1, 'full')",
+            [(1, "a.py"), (2, "b.py"), (3, "c.py")],
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            result = footprinter_folder("/test/opaque")
+
+        assert result["unlisted_file_count"] == 3
+        assert result["unlisted_recursive_file_count"] == 3
+        assert "files" not in result
+        assert "subfolders" not in result
+
 
 # ---------------------------------------------------------------------------
 # TestNavigationModuleRename
