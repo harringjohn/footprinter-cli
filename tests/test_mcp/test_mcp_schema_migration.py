@@ -1,10 +1,13 @@
 """Integration tests: MCP tools survive transient schema migration errors.
 
-Simulates concurrent migration by patching open_checked_connection to raise
-transient OperationalError on the first call, then succeed on retries.
+Two strategies:
 
-TestConcurrentMigrationReads exercises the retry path with a real
-_migrate_access_columns running in a background thread.
+TestSchemaMigrationResilience — simulates transient errors by patching
+open_checked_connection to raise OperationalError, then succeed on retry.
+
+TestConcurrentMigrationReads — exercises the retry path with a real
+_migrate_access_columns running in a background thread against a
+pre-migration database.
 """
 
 import sqlite3
@@ -74,7 +77,7 @@ class TestSchemaMigrationResilience:
 class TestConcurrentMigrationReads:
     """Real concurrency: _migrate_access_columns in a background thread + MCP reads."""
 
-    _ROW_COUNT = 400
+    _ROW_COUNT = 800
 
     @staticmethod
     def _prepare_pre_migration_db(db_path: str) -> None:
@@ -119,8 +122,8 @@ class TestConcurrentMigrationReads:
         conn.execute("PRAGMA ignore_check_constraints = ON")
         for i in range(TestConcurrentMigrationReads._ROW_COUNT):
             conn.execute(
-                "INSERT INTO files (source, name, mcp_view, mcp_read) "
-                "VALUES ('local', ?, 'visible', 'allow')",
+                "INSERT INTO files (source, name, mcp_view, mcp_read, mcp_view_source, mcp_read_source) "
+                "VALUES ('local', ?, 'visible', 'allow', 'policy:global', 'policy:global')",
                 (f"file_{i}.txt",),
             )
         conn.execute(
@@ -208,8 +211,12 @@ class TestConcurrentMigrationReads:
 
         conn = sqlite3.connect(db_path)
         row = conn.execute("SELECT visibility FROM files WHERE name = 'file_0.txt'").fetchone()
-        conn.close()
         assert row[0] == "full", f"Migration should convert 'visible' → 'full', got {row[0]!r}"
+        src = conn.execute("SELECT visibility_source FROM files WHERE name = 'file_0.txt'").fetchone()
+        assert src[0] == "policy:global", f"Expected source preserved, got {src[0]!r}"
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        conn.close()
+        assert integrity == "ok", f"Post-migration integrity check failed: {integrity}"
 
     def test_multiple_readers_during_migration(self, tmp_path):
         db_path = str(tmp_path / "concurrent.db")
