@@ -481,7 +481,7 @@ class TestSharedMcpParser:
 
 
 # ---------------------------------------------------------------------------
-# Client path filtering (FPR-1628)
+# Client path filtering
 # ---------------------------------------------------------------------------
 class TestClientPathFiltering:
     """print_client_paths() should only show installed/detected clients."""
