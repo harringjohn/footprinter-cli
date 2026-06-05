@@ -12,10 +12,11 @@ Utility scripts for Footprinter operations. All scripts should be run from the p
 | `bash scripts/qa.sh smoke` | Run post-install smoke checks |
 | `bash scripts/qa.sh cli-verify` | Run the full CLI surface verification |
 | `bash scripts/qa.sh verify-upgrade 1.0.4 --from 1.0.3` | Verify upgrade path from previous release |
+| `bash scripts/qa.sh verify-install 1.0.5 --with-pytest` | Verify installed wheel (entry points + optional pytest against installed package) |
 | `bash scripts/qa.sh all` | Run all tiers that need no extra args |
 
-Excluded from `all`: `verify-upgrade` (needs version arguments) and `cli-verify`
-(heavy — clones the source and builds a throwaway venv; run on demand).
+Excluded from `all`: `verify-upgrade`, `verify-install` (need version arguments)
+and `cli-verify` (heavy — clones the source and builds a throwaway venv; run on demand).
 
 ### What each QA layer tests
 
@@ -28,6 +29,7 @@ fixture boundary). Otherwise each answers a different question:
 | **smoke** (`snapshot-qa/smoke.sh`) | Did the *package install* without breaking the basics? Entry points load, `footprinter.mcp` imports, `footprinter.fixture` absent | Against an already-installed wheel; seconds |
 | **cli-verify** (`cli_verify.sh`) | Does *every command behave*? Every command's `--help`, removed commands absent, real CRUD/ingest/search/permission/view, error UX (no raw tracebacks), output shape | Clones source → throwaway venv (base editable) → isolated `FOOTPRINTER_HOME` + own sample data |
 | **verify-upgrade** (`release/verify_upgrade.sh`) | Does *data survive an upgrade*? Install previous release, populate, upgrade to local wheel, assert counts + migrated status values | Installs previous version from PyPI + local wheel; pre-publish gate |
+| **verify-install** (`release/verify_install.sh`) | Does the *wheel install cleanly* and do tests pass against the installed package? Entry points resolve, fixture boundary intact, pytest collection/runtime errors absent | Installs local wheel into clean venv → copies test tree → runs pytest with PYTHONPATH set; pre-publish gate |
 
 `cli-verify` is the layer that catches **command-surface drift** — renamed, removed,
 or restructured commands — which is what motivated rebuilding it for the v1.0.5 CLI
@@ -65,9 +67,11 @@ PY=./venv/bin/python3 bash scripts/snapshot-qa/smoke.sh
 | `install-full.sh` | Full install with semantic search extras |
 | `_install_common.sh` | Shared helpers sourced by install scripts |
 | `verify_upgrade.sh` | Tier 4: upgrade-path verification (install previous, seed data, upgrade, assert survival) |
+| `verify_install.sh` | Tier 5: installed-package verification (clean venv, entry points, optional pytest) |
 
 ```bash
 bash scripts/release/verify_upgrade.sh 1.0.4 --from 1.0.3
+bash scripts/release/verify_install.sh 1.0.5 --with-pytest
 ```
 
 ---

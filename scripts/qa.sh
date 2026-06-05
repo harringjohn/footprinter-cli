@@ -24,15 +24,17 @@ case "${1:-}" in
         echo "  2     smoke             Post-install canary (entry points, imports, fixture boundary)"
         echo "  3     cli-verify        Full CLI surface verification (every command's behavior + error UX)"
         echo "  4     verify-upgrade    Upgrade-path verification (requires version args)"
+        echo "  5     verify-install    Installed-package verification (requires version arg)"
         echo ""
         echo "Usage:"
         echo "  bash scripts/qa.sh smoke"
         echo "  bash scripts/qa.sh cli-verify"
         echo "  bash scripts/qa.sh verify-upgrade <target-version> --from <base-version>"
+        echo "  bash scripts/qa.sh verify-install <version> [--with-pytest]"
         echo "  bash scripts/qa.sh all              (runs tiers that need no extra args)"
         echo ""
-        echo "Excluded from 'all': verify-upgrade (needs version args) and cli-verify"
-        echo "(heavy — clones the source and builds a throwaway venv; run on demand)."
+        echo "Excluded from 'all': verify-upgrade, verify-install (need version args)"
+        echo "and cli-verify (heavy — clones the source and builds a throwaway venv; run on demand)."
         ;;
     smoke)
         exec bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
@@ -43,6 +45,10 @@ case "${1:-}" in
     verify-upgrade)
         shift
         exec bash "$SCRIPT_DIR/release/verify_upgrade.sh" "$@"
+        ;;
+    verify-install)
+        shift
+        exec bash "$SCRIPT_DIR/release/verify_install.sh" "$@"
         ;;
     all)
         echo "=== Tier 2: smoke ==="
