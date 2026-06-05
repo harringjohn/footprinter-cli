@@ -747,7 +747,7 @@ class TestExtractTouchedFileIds:
 
 
 # ---------------------------------------------------------------------------
-# Bare ingest scopes file_ids to touched files (FPR-1909)
+# Bare ingest scopes file_ids to touched files
 # ---------------------------------------------------------------------------
 
 
@@ -805,7 +805,7 @@ class TestBareIngestScopesFileIds:
 
 
 # ---------------------------------------------------------------------------
-# KeyboardInterrupt handling in _vectorize_stage (FPR-1909)
+# KeyboardInterrupt handling in _vectorize_stage
 # ---------------------------------------------------------------------------
 
 
