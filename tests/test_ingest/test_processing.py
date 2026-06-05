@@ -494,3 +494,120 @@ class TestScopedVectorization:
 
         assert mock_store.upsert_file.call_count == 2
         assert result.data.get("vectorized_new") == 2
+
+
+class TestVectorizationInterruptSafety:
+    """Periodic commits and graceful shutdown in run_vectorization (FPR-1909)."""
+
+    def _setup_files(self, tmp_path, db, count):
+        """Insert N file rows with corresponding disk files."""
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+        for i in range(count):
+            p = tmp_path / f"file_{i:04d}.txt"
+            p.write_text(f"content {i}")
+            _insert_file(db, file_path=str(p))
+        return mock_store, mock_extractor
+
+    def test_periodic_commit_every_100_files(self, tmp_path):
+        """commit() fires at least twice when processing >100 files."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store, mock_extractor = self._setup_files(tmp_path, db, 150)
+
+        commit_count = {"n": 0}
+        real_conn = db.conn
+
+        class CommitCounter:
+            """Proxy that counts commit() calls on the real connection."""
+
+            def __getattr__(self, name):
+                return getattr(real_conn, name)
+
+            def commit(self):
+                commit_count["n"] += 1
+                real_conn.commit()
+
+        db.conn = CommitCounter()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+        ):
+            run_vectorization(db)
+
+        db.conn = real_conn
+        assert commit_count["n"] >= 2, f"Expected >=2 commits, got {commit_count['n']}"
+
+    def test_shutdown_flag_commits_and_returns_early(self, tmp_path):
+        """Setting _shutdown stops the loop and preserves committed progress."""
+        import footprinter.ingest.processing as processing
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store, mock_extractor = self._setup_files(tmp_path, db, 200)
+
+        def trigger_shutdown(count):
+            if count >= 50:
+                processing._shutdown = True
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+        ):
+            result = run_vectorization(db, on_progress=trigger_shutdown)
+
+        processing._shutdown = False
+
+        assert result.data.get("interrupted") is True
+        done = db.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE vectorized_at IS NOT NULL"
+        ).fetchone()[0]
+        remaining = db.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE vectorized_at IS NULL"
+        ).fetchone()[0]
+        assert done <= 50
+        assert remaining >= 150
+
+    def test_interrupt_preserves_periodic_commit_progress(self, tmp_path):
+        """Shutdown at 120 preserves the periodic commit at 100 plus the tail."""
+        import footprinter.ingest.processing as processing
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store, mock_extractor = self._setup_files(tmp_path, db, 250)
+
+        def trigger_shutdown(count):
+            if count >= 120:
+                processing._shutdown = True
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+        ):
+            result = run_vectorization(db, on_progress=trigger_shutdown)
+
+        processing._shutdown = False
+
+        assert result.data.get("interrupted") is True
+        done = db.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE vectorized_at IS NOT NULL"
+        ).fetchone()[0]
+        assert done >= 100, f"Expected >=100 committed files, got {done}"

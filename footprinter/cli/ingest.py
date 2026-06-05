@@ -421,7 +421,7 @@ def _ingest_pipeline(args) -> None:
     if pipes is None or "local_files" in pipes:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
-        file_ids = _extract_touched_file_ids(results) if pipes is not None else None
+        file_ids = _extract_touched_file_ids(results)
         run_vectorization_stage(quiet=quiet, file_ids=file_ids)
 
 
