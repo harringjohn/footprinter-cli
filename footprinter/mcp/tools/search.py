@@ -1,6 +1,9 @@
 """Search tool: query across data sources."""
 
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from footprinter.mcp.db import get_db, handle_db_errors
 from footprinter.services import search_service
@@ -18,6 +21,7 @@ def _load_mcp_search_limit_cap() -> int:
 
         return get_config().get("limits", {}).get("mcp_search_limit_cap", 200)
     except Exception:
+        logger.debug("Config unavailable for mcp_search_limit_cap, using default 200")
         return 200
 
 
@@ -135,8 +139,9 @@ def footprinter_search(
         date_from: ISO date string lower bound (e.g. "2026-02-01").
         date_to: ISO date string upper bound (e.g. "2026-02-14").
         limit: Max results per source (default 50). MCP callers are capped
-            at 200 per source to stay within the 1MB tool-result protocol
-            limit; the response summary notes when this cap has been applied.
+            at the configured mcp_search_limit_cap (default 200) per source to
+            stay within the 1MB tool-result protocol limit; the response
+            summary notes when this cap has been applied.
         account: Filter by account (e.g. "personal", "work"). Applies to emails and files.
         sender: Partial match on sender name or address (e.g. "alice"). Emails only.
         days_back: Only include emails from the last N days. Emails only.

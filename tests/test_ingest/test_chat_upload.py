@@ -259,19 +259,21 @@ class TestZipLimitsConfig:
         """A ~1.04 GB zip (ChatGPT export size) should pass with 2 GB default."""
         zip_path = tmp_path / "chatgpt.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
-            info = zipfile.ZipInfo("conversations.json")
-            info.file_size = 1_092_000_000  # ~1.04 GB
-            info.compress_size = 200_000_000
-            zf.writestr(info, "x" * 100)
+            zf.writestr("conversations.json", "x" * 100)
 
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
-        config = {}  # No limits section — uses defaults
+        config = {}  # No limits section — uses defaults (2 GB)
         manager = ChatIndexer(MagicMock())
         with zipfile.ZipFile(zip_path, "r") as zf:
-            with patch("footprinter.source_registry.get_config", return_value=config):
-                manager._validate_zip(zf, extract_dir)  # Should not raise
+            # Patch infolist to report ~1.04 GB decompressed size
+            original_infolist = zf.infolist()
+            original_infolist[0].file_size = 1_092_000_000  # ~1.04 GB
+            original_infolist[0].compress_size = 200_000_000
+            with patch.object(zf, "infolist", return_value=original_infolist):
+                with patch("footprinter.source_registry.get_config", return_value=config):
+                    manager._validate_zip(zf, extract_dir)  # Should not raise
 
 
 class TestDatabaseDefaultPath:

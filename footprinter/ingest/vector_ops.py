@@ -11,12 +11,14 @@ from footprinter.paths import get_db_path
 
 logger = logging.getLogger(__name__)
 
+
 def _load_batch_size() -> int:
     try:
         from footprinter.source_registry import get_config
 
         return get_config().get("limits", {}).get("vector_batch_size", 100)
     except Exception:
+        logger.debug("Config unavailable for vector_batch_size, using default 100")
         return 100
 
 

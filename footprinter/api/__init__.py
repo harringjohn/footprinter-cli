@@ -1,5 +1,9 @@
 """Footprinter HTTP API — FastAPI routers calling the service layer."""
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
 
 def _load_api_max_limit() -> int:
     try:
@@ -7,6 +11,7 @@ def _load_api_max_limit() -> int:
 
         return get_config().get("limits", {}).get("api_max_limit", 200)
     except Exception:
+        _logger.debug("Config unavailable for api_max_limit, using default 200")
         return 200
 
 

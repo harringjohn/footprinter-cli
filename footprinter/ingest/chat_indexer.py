@@ -42,15 +42,17 @@ MAX_ZIP_ENTRIES = _DEFAULT_MAX_ZIP_ENTRIES
 MAX_COMPRESSION_RATIO = _DEFAULT_MAX_COMPRESSION_RATIO
 
 
-def _get_zip_limits() -> tuple:
+def _get_zip_limits() -> tuple[int, int, int]:
     """Load zip security limits from config, falling back to defaults."""
     try:
         from footprinter.source_registry import get_config
 
         zip_cfg = get_config().get("limits", {}).get("zip", {})
     except Exception:
+        logger.debug("Config unavailable for zip limits, using defaults")
         zip_cfg = {}
-    max_size = zip_cfg.get("max_decompressed_size_mb", 2048) * 1024 * 1024
+    default_mb = _DEFAULT_MAX_DECOMPRESSED_SIZE // (1024 * 1024)
+    max_size = zip_cfg.get("max_decompressed_size_mb", default_mb) * 1024 * 1024
     max_entries = zip_cfg.get("max_entries", _DEFAULT_MAX_ZIP_ENTRIES)
     max_ratio = zip_cfg.get("max_compression_ratio", _DEFAULT_MAX_COMPRESSION_RATIO)
     return max_size, max_entries, max_ratio
