@@ -262,10 +262,19 @@ def _check_fts_health() -> Check:
     db_path = get_db_path()
     if not db_path.exists():
         return Check("fts_health", "OK", "No database — FTS check skipped", group="Data Integrity")
-    try:
-        from footprinter.ingest.database import Database
+    from footprinter.ingest.database import Database
 
-        with Database(str(db_path)) as db:
+    try:
+        db = Database(str(db_path))
+    except Exception as e:
+        return Check(
+            "fts_health", "WARN",
+            f"Could not open database: {e}",
+            group="Data Integrity",
+        )
+
+    try:
+        with db:
             health = db.check_fts_health()
         errors = [t for t, info in health.items() if info["status"] == "error"]
         if errors:
@@ -278,7 +287,11 @@ def _check_fts_health() -> Check:
             )
         return Check("fts_health", "OK", "FTS indexes healthy", group="Data Integrity")
     except Exception as e:
-        return Check("fts_health", "WARN", f"FTS health check failed: {e}", group="Data Integrity")
+        return Check(
+            "fts_health", "WARN",
+            f"FTS health check failed: {e} — run 'fp doctor search'",
+            group="Data Integrity",
+        )
 
 
 def _table_columns(conn) -> dict[str, set[str]]:
