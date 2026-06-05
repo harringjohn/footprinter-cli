@@ -3,7 +3,7 @@
 Covers:
   - Parser tree: help exits 0 for all subcommands
   - List: show all policies with target terminology
-  - Set: unified policy setter (--visibility / --access / --dry-run)
+  - Set: unified policy setter (--visibility / --access)
   - Set CSV: bulk record policies via CSV file
   - Reset: policy delete / reseed with confirmation changes
   - Check: resolve target with required argument
@@ -66,6 +66,12 @@ class TestPermissionParserTree:
     def test_help_exits_zero(self, args):
         stdout, stderr, code = run_fp(*args)
         assert code == 0
+
+    def test_set_rejects_dry_run_flag(self):
+        stdout, stderr, code = run_fp(
+            "permission", "set", "global", "--dry-run", "--visibility", "full"
+        )
+        assert "unrecognized arguments: --dry-run" in stderr
 
     def test_bare_permission_shows_help(self):
         stdout, stderr, code = run_fp("permission")
@@ -273,7 +279,7 @@ class TestSetValidation:
         mock_db.return_value = conn
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="global", visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="global", visibility=None, access=None))
 
         assert exc_info.value.code == 1
 
@@ -285,7 +291,7 @@ class TestSetValidation:
         mock_db.return_value = conn
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="global", visibility=None, access="hidden", dry_run=False))
+            _set(Namespace(scope="global", visibility=None, access="hidden"))
 
         assert exc_info.value.code == 1
 
@@ -297,7 +303,7 @@ class TestSetValidation:
         mock_db.return_value = conn
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="global", visibility="allow", access=None, dry_run=False))
+            _set(Namespace(scope="global", visibility="allow", access=None))
 
         assert exc_info.value.code == 1
 
@@ -318,7 +324,7 @@ class TestSetTranslation:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="full", access=None, dry_run=False))
+        _set(Namespace(scope="global", visibility="full", access=None))
 
         mock_set_vis.assert_called_once_with(conn, "global", "full")
 
@@ -332,7 +338,7 @@ class TestSetTranslation:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="opaque", access=None, dry_run=False))
+        _set(Namespace(scope="global", visibility="opaque", access=None))
 
         mock_set_vis.assert_called_once_with(conn, "global", "opaque")
 
@@ -346,7 +352,7 @@ class TestSetTranslation:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="hidden", access=None, dry_run=False))
+        _set(Namespace(scope="global", visibility="hidden", access=None))
 
         mock_set_vis.assert_called_once_with(conn, "global", "hidden")
 
@@ -360,7 +366,7 @@ class TestSetTranslation:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="folder:~/Work", visibility=None, access="deny", dry_run=False))
+        _set(Namespace(scope="folder:~/Work", visibility=None, access="deny"))
 
         mock_set_perm.assert_called_once_with(conn, "folder:~/Work", "deny")
 
@@ -382,7 +388,7 @@ class TestSetBehavior:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="full", access="allow", dry_run=False))
+        _set(Namespace(scope="global", visibility="full", access="allow"))
 
         mock_set_vis.assert_called_once_with(conn, "global", "full")
         mock_set_perm.assert_called_once_with(conn, "global", "allow")
@@ -398,7 +404,7 @@ class TestSetBehavior:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="full", access="allow", dry_run=False))
+        _set(Namespace(scope="global", visibility="full", access="allow"))
 
         mock_recalc.assert_called_once_with(conn, "global")
 
@@ -407,7 +413,7 @@ class TestSetBehavior:
         from footprinter.cli.permission_cmd import _set
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="global", visibility="full", access=None, dry_run=False))
+            _set(Namespace(scope="global", visibility="full", access=None))
 
         assert exc_info.value.code == 1
 
@@ -421,7 +427,7 @@ class TestSetBehavior:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="full", access=None, dry_run=False))
+        _set(Namespace(scope="global", visibility="full", access=None))
 
         conn.close.assert_called_once()
 
@@ -436,59 +442,9 @@ class TestSetBehavior:
         mock_db.return_value = conn
 
         with pytest.raises(RuntimeError):
-            _set(Namespace(scope="global", visibility="full", access=None, dry_run=False))
+            _set(Namespace(scope="global", visibility="full", access=None))
 
         conn.close.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# Set subcommand: dry-run
-# ---------------------------------------------------------------------------
-
-
-class TestSetDryRun:
-    @patch("footprinter.cli.permission_cmd.count_affected_entities", return_value={"file": 10})
-    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
-    @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_dry_run_skips_policy_write(self, mock_db, mock_set_vis, mock_recalc, mock_count):
-        from footprinter.cli.permission_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-
-        _set(Namespace(scope="folder:~/Work", visibility="hidden", access=None, dry_run=True))
-
-        mock_set_vis.assert_not_called()
-
-    @patch("footprinter.cli.permission_cmd.count_affected_entities", return_value={"file": 10})
-    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
-    @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_dry_run_skips_recalculate(self, mock_db, mock_set_vis, mock_recalc, mock_count):
-        from footprinter.cli.permission_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-
-        _set(Namespace(scope="folder:~/Work", visibility="hidden", access=None, dry_run=True))
-
-        mock_recalc.assert_not_called()
-
-    @patch("footprinter.cli.permission_cmd.count_affected_entities", return_value={"file": 10})
-    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
-    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
-    @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_dry_run_prints_message(self, mock_db, mock_set_vis, mock_recalc, mock_count, capsys):
-        from footprinter.cli.permission_cmd import _set
-
-        conn = _mock_conn()
-        mock_db.return_value = conn
-
-        _set(Namespace(scope="folder:~/Work", visibility="hidden", access=None, dry_run=True))
-
-        output = capsys.readouterr().out
-        assert "Dry run" in output
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +463,7 @@ class TestSetEntityPreview:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="hidden", access=None, dry_run=True))
+        _set(Namespace(scope="global", visibility="hidden", access=None))
 
         output = capsys.readouterr().out
         assert "5 files" in output
@@ -523,7 +479,7 @@ class TestSetEntityPreview:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="hidden", access=None, dry_run=True))
+        _set(Namespace(scope="global", visibility="hidden", access=None))
 
         output = capsys.readouterr().out
         assert "1 file" in output
@@ -547,7 +503,7 @@ class TestSetNoConfirmation:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="hidden", access=None, dry_run=False))
+        _set(Namespace(scope="global", visibility="hidden", access=None))
 
         mock_confirm.assert_not_called()
         mock_recalc.assert_called_once()
@@ -1379,7 +1335,7 @@ class TestSetCsvArgParsing:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _set(Namespace(scope="global", visibility="full", access=None, dry_run=False, csv_file=None))
+        _set(Namespace(scope="global", visibility="full", access=None, csv_file=None))
 
         mock_set_vis.assert_called_once_with(conn, "global", "full")
 
@@ -1397,7 +1353,7 @@ class TestSetCsvValidation:
         mock_db.return_value = _mock_conn()
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility="full", access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility="full", access=None))
 
         assert exc_info.value.code == 1
 
@@ -1408,7 +1364,7 @@ class TestSetCsvValidation:
         mock_db.return_value = _mock_conn()
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility=None, access="deny", dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility=None, access="deny"))
 
         assert exc_info.value.code == 1
 
@@ -1419,7 +1375,7 @@ class TestSetCsvValidation:
         mock_db.return_value = _mock_conn()
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="global", csv_file="x.csv", visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="global", csv_file="x.csv", visibility=None, access=None))
 
         assert exc_info.value.code == 1
 
@@ -1430,7 +1386,7 @@ class TestSetCsvValidation:
         mock_db.return_value = _mock_conn()
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="source:browser", csv_file="x.csv", visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:browser", csv_file="x.csv", visibility=None, access=None))
 
         assert exc_info.value.code == 1
 
@@ -1443,7 +1399,7 @@ class TestSetCsvValidation:
         with pytest.raises(SystemExit) as exc_info:
             _set(Namespace(
                 scope="source:emails", csv_file="/nonexistent/path.csv",
-                visibility=None, access=None, dry_run=False,
+                visibility=None, access=None,
             ))
 
         assert exc_info.value.code == 1
@@ -1459,7 +1415,7 @@ class TestSetCsvValidation:
             f.flush()
             try:
                 with pytest.raises(SystemExit) as exc_info:
-                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None))
                 assert exc_info.value.code == 1
             finally:
                 os.unlink(f.name)
@@ -1475,7 +1431,7 @@ class TestSetCsvValidation:
             f.flush()
             try:
                 with pytest.raises(SystemExit) as exc_info:
-                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None))
                 assert exc_info.value.code == 1
             finally:
                 os.unlink(f.name)
@@ -1493,7 +1449,7 @@ class TestSetCsvValidation:
             f.write("id,visibility,access\n")
             f.flush()
             try:
-                _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None))
                 mock_set_vis.assert_not_called()
                 mock_set_perm.assert_not_called()
                 mock_recalc.assert_not_called()
@@ -1544,7 +1500,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility\nabc,hidden\n")
         try:
             with pytest.raises(SystemExit) as exc_info:
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert exc_info.value.code == 1
             mock_set_vis.assert_not_called()
         finally:
@@ -1559,7 +1515,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility\n10,secret\n")
         try:
             with pytest.raises(SystemExit) as exc_info:
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert exc_info.value.code == 1
             mock_set_vis.assert_not_called()
         finally:
@@ -1574,7 +1530,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,access\n10,maybe\n")
         try:
             with pytest.raises(SystemExit) as exc_info:
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert exc_info.value.code == 1
             mock_set_perm.assert_not_called()
         finally:
@@ -1590,7 +1546,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility,access\n10,,\n")
         try:
             with pytest.raises(SystemExit) as exc_info:
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert exc_info.value.code == 1
             mock_set_vis.assert_not_called()
             mock_set_perm.assert_not_called()
@@ -1607,7 +1563,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility\n99,hidden\n")
         try:
             with pytest.raises(SystemExit) as exc_info:
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert exc_info.value.code == 1
             mock_set_vis.assert_not_called()
         finally:
@@ -1623,7 +1579,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility\n10,hidden\n20,secret\n")
         try:
             with pytest.raises(SystemExit):
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             mock_set_vis.assert_not_called()
             mock_set_perm.assert_not_called()
         finally:
@@ -1638,7 +1594,7 @@ class TestSetCsvAtomicAbort:
         csv_path = _write_csv("id,visibility\n10,hidden\n20,full\n30,secret\n")
         try:
             with pytest.raises(SystemExit):
-                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             output = capsys.readouterr().out
             assert "Row 4" in output
         finally:
@@ -1662,7 +1618,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert mock_set_vis.call_count == 2
             mock_set_vis.assert_any_call(conn, "email:10", "hidden")
             mock_set_vis.assert_any_call(conn, "email:42", "opaque")
@@ -1680,7 +1636,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,access\n10,deny\n42,allow\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert mock_set_perm.call_count == 2
             mock_set_perm.assert_any_call(conn, "email:10", "deny")
             mock_set_perm.assert_any_call(conn, "email:42", "allow")
@@ -1699,7 +1655,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility,access\n10,hidden,deny\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
             mock_set_perm.assert_called_once_with(conn, "email:10", "deny")
         finally:
@@ -1717,7 +1673,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility,access\n10,hidden,\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
             mock_set_perm.assert_not_called()
         finally:
@@ -1734,7 +1690,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             mock_recalc.assert_called_once_with(conn, "source:emails")
         finally:
             os.unlink(csv_path)
@@ -1750,7 +1706,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility\n10,hidden\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             conn.close.assert_called_once()
         finally:
             os.unlink(csv_path)
@@ -1766,7 +1722,7 @@ class TestSetCsvApply:
 
         csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
         try:
-            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             output = capsys.readouterr().out
             assert "2" in output
         finally:
