@@ -82,3 +82,55 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+
+  purge-badge-cache:
+    if: github.event_name == 'release'
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Wait for shields.io to reflect new version
+        id: poll-shields
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          MAX_ATTEMPTS=12
+          DELAY=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            SHIELDS_VERSION=$(curl -sf "https://img.shields.io/pypi/v/footprinter-cli.json" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])" 2>/dev/null || echo "")
+            if [ "$SHIELDS_VERSION" = "$VERSION" ]; then
+              echo "shields.io shows $VERSION after attempt $i"
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Attempt $i/$MAX_ATTEMPTS: shields.io shows '$SHIELDS_VERSION', waiting for '$VERSION'"
+            [ "$i" -lt "$MAX_ATTEMPTS" ] && sleep $DELAY
+            DELAY=$((DELAY < 120 ? DELAY * 2 : 120))
+          done
+          echo "::warning::shields.io did not reflect $VERSION within timeout — skipping Camo purge; badge will self-heal within ~3h"
+
+      - name: Purge GitHub Camo cache
+        if: steps.poll-shields.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Anonymous Camo PURGE returns 200 but only clears the Fastly POP
+          # that handled the request, so we repeat across multiple requests.
+          CAMO_URL=$(gh api "repos/$REPO/readme" \
+            -H "Accept: application/vnd.github.html" \
+            | grep -o 'https://camo.githubusercontent.com[^"]*shields[^"]*' | head -1)
+          if [ -z "$CAMO_URL" ]; then
+            echo "::warning::Could not resolve Camo URL for shields.io badge from README"
+            exit 0
+          fi
+          echo "Camo URL: $CAMO_URL"
+          for i in $(seq 1 5); do
+            STATUS=$(curl -s -X PURGE "$CAMO_URL" -o /dev/null -w "%{http_code}")
+            echo "PURGE attempt $i: HTTP $STATUS"
+            sleep 2
+          done
+          echo "Camo purge complete — badge should update shortly"
