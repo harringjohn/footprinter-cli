@@ -71,20 +71,16 @@ class TestRelistAgentContextFiles:
         )
         db.conn.commit()
 
-        from scripts.migrate.relist_agent_context_files import (
-            relist_agent_context_files,
-            restamp_local_config_reason,
-        )
+        from scripts.migrate.relist_agent_context_files import relist_agent_context_files
 
         with patch("scripts.migrate.relist_agent_context_files.stamp_entities"):
             relist_agent_context_files(db.conn, dry_run=False, limit=None)
-        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
 
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (fid,))
         row = cursor.fetchone()
         assert row["status"] == "unlisted"
-        assert row["status_reason"] == "local_config"
+        assert row["status_reason"] == "in_dot_folder"
         db.close()
 
     def test_skips_other_dot_folders(self, temp_db):

@@ -108,7 +108,7 @@ def restamp_local_config_reason(
     conn: sqlite3.Connection,
     dry_run: bool = False,
     limit: int | None = None,
-) -> dict:
+) -> dict[str, int]:
     """Re-stamp status_reason from 'in_dot_folder' to 'local_config' for .local.* files.
 
     Args:
@@ -163,6 +163,9 @@ def restamp_local_config_reason(
             """,
             batch,
         )
+
+    if changed_ids:
+        conn.commit()
 
     updated = len(changed_ids)
     print(f"Re-stamped {updated}/{found} .local.* files to local_config")
