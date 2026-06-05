@@ -27,6 +27,7 @@ from footprinter.cli._policy_helpers import (
 )
 from footprinter.db.policies import (
     PERMISSION_SETTINGS,
+    SCOPE_PREFIXES,
     clear_permission_policies,
     clear_visibility_policies,
     delete_permission_policy,
@@ -43,12 +44,9 @@ _VISIBILITY_INPUT = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 _VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 
 _CSV_SCOPE_PREFIX: dict[str, str] = {
-    "files": "file",
-    "emails": "email",
-    "chats": "chat",
-    "folders": "folder",
-    "projects": "project",
-    "clients": "client",
+    meta["table"]: etype
+    for etype, meta in ENTITY_META.items()
+    if etype in SCOPE_PREFIXES
 }
 
 
@@ -258,6 +256,12 @@ def _set_csv(args) -> None:
         console.print(
             "[red]Cannot combine CSV file with --visibility/--access flags.[/red]\n"
             "  Settings come from the CSV columns."
+        )
+        raise SystemExit(1)
+
+    if getattr(args, "dry_run", False):
+        console.print(
+            "[red]Cannot combine CSV file with --dry-run.[/red]"
         )
         raise SystemExit(1)
 

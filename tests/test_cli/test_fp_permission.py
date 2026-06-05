@@ -1413,6 +1413,17 @@ class TestSetCsvValidation:
         assert exc_info.value.code == 1
 
     @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_with_dry_run_flag_errors(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility=None, access=None, dry_run=True))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
     def test_csv_requires_source_scope(self, mock_db):
         from footprinter.cli.permission_cmd import _set
 
