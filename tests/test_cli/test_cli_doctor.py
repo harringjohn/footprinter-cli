@@ -843,6 +843,143 @@ class TestSetupCheckRemoved:
 
 
 # ---------------------------------------------------------------------------
+# 19. MCP config entrypoint validation
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorMcpConfig:
+    """_check_mcp_config() validates command+args against canonical entrypoint."""
+
+    @staticmethod
+    def _write_config(path, servers):
+        path.write_text(json.dumps({"mcpServers": servers}))
+
+    def test_stale_fp_mcp_subcommand_warns(self, tmp_path, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        fp_bin = tmp_path / "fp"
+        fp_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(fp_bin), "args": ["mcp"]},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command", lambda: (str(tmp_path / "fp-mcp"), []),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "WARN"
+        assert "fp setup mcp --claude" in check.message
+
+    def test_valid_fp_mcp_binary_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        fp_mcp_bin = tmp_path / "fp-mcp"
+        fp_mcp_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(fp_mcp_bin)},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command", lambda: (str(fp_mcp_bin), []),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+    def test_valid_python_module_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        py_bin = tmp_path / "python3"
+        py_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(py_bin), "args": ["-m", "footprinter.mcp"]},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command",
+            lambda: (str(py_bin), ["-m", "footprinter.mcp"]),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+    def test_command_not_found_warns_with_remediation(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        self._write_config(config_path, {
+            "footprinter": {"command": "/nonexistent/fp-mcp"},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "WARN"
+        assert "fp setup mcp --claude" in check.message
+
+    def test_no_config_file_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path",
+            lambda: tmp_path / "nonexistent.json",
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+    def test_no_footprinter_entry_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        self._write_config(config_path, {
+            "other-server": {"command": "other"},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+    def test_relative_command_matches_canonical(self, tmp_path, monkeypatch):
+        from footprinter.cli import doctor
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        self._write_config(config_path, {
+            "footprinter": {"command": "fp-mcp"},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command",
+            lambda: ("/usr/local/bin/fp-mcp", []),
+        )
+        original_which = doctor.shutil.which
+        monkeypatch.setattr(
+            doctor.shutil, "which",
+            lambda cmd: "/usr/local/bin/fp-mcp" if cmd == "fp-mcp" else original_which(cmd),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
