@@ -118,8 +118,15 @@ VENV_FP="$WORKDIR/venv/bin/fp"
 "$VENV_PY" -m pip install "$WHEEL_PATH" >/dev/null 2>&1 \
     || { echo "ERROR: Failed to install wheel ${WHEEL_PATH}" >&2; exit 1; }
 
-INSTALLED_VERSION=$("$VENV_FP" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-echo "  Installed: ${INSTALLED_VERSION}"
+INSTALLED_VERSION=$("$VENV_FP" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || true
+
+if [ -z "$INSTALLED_VERSION" ]; then
+    echo "  ERROR: could not determine installed version (fp --version failed)"
+    fail "fp --version did not return a version string"
+    INSTALLED_VERSION="unknown"
+else
+    echo "  Installed: ${INSTALLED_VERSION}"
+fi
 
 # ── Phase 2: Baseline assertions (always) ─────────────────────────────
 
@@ -157,7 +164,7 @@ else
     pass "footprinter.fixture correctly excluded from wheel"
 fi
 
-# ── Phase 3 & 4: pytest (conditional) ─────────────────────────────────
+# ── Phase 3: Copy test tree (conditional) ─────────────────────────────
 
 if [ "$WITH_PYTEST" = true ]; then
 
@@ -180,14 +187,22 @@ if [ "$WITH_PYTEST" = true ]; then
     INSTALLED_CONFIG=$("$VENV_PY" -c "
 from importlib.resources import files
 print(files('footprinter.bundled').joinpath('config.example.yaml'))
-")
-    mkdir -p "$WORKSPACE/footprinter/bundled"
-    cp "$INSTALLED_CONFIG" "$WORKSPACE/footprinter/bundled/config.example.yaml"
+" 2>&1) || true
+
+    if [ -z "$INSTALLED_CONFIG" ] || [ ! -f "$INSTALLED_CONFIG" ]; then
+        fail "could not locate bundled config.example.yaml in installed package"
+    else
+        mkdir -p "$WORKSPACE/footprinter/bundled"
+        cp "$INSTALLED_CONFIG" "$WORKSPACE/footprinter/bundled/config.example.yaml"
+    fi
 
     # Install test dependencies (not in the base wheel)
-    "$VENV_PY" -m pip install pytest httpx >/dev/null 2>&1
+    "$VENV_PY" -m pip install pytest httpx >/dev/null 2>&1 \
+        || { echo "ERROR: Failed to install test dependencies (pytest, httpx)" >&2; exit 1; }
 
     echo "  Copied: tests/, pyproject.toml, bundled config"
+
+# ── Phase 4: Run pytest (conditional) ─────────────────────────────────
 
     echo ""
     echo "==> Phase 4: Running pytest against installed package..."
