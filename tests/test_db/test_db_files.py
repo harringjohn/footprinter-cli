@@ -778,6 +778,34 @@ class TestConditionalVectorizedAtClearing:
         assert row_b["vectorized_at"] is None
         db.close()
 
+    def test_repair_vectorized_at_includes_unlisted(self, temp_db):
+        """Unlisted files with vector store chunks should also be repaired."""
+        from footprinter.ingest.database import Database
+
+        db = Database(temp_db)
+        _, fid = files_db.insert_file(
+            db.conn,
+            {
+                "file_path": "/tmp/test/.hidden.txt",
+                "file_name": ".hidden.txt",
+                "file_type": "txt",
+                "file_size": 10,
+            },
+        )
+        db.conn.execute("UPDATE files SET status = 'unlisted' WHERE id = ?", (fid,))
+        db.conn.commit()
+
+        repaired = files_db.repair_vectorized_at(db.conn, {fid: 2})
+        db.conn.commit()
+
+        row = db.conn.execute(
+            "SELECT vectorized_at, vectorized_chunks FROM files WHERE id = ?", (fid,)
+        ).fetchone()
+        assert repaired == 1
+        assert row["vectorized_at"] is not None
+        assert row["vectorized_chunks"] == 2
+        db.close()
+
 
 class TestDriveFiles:
     """Test files_db.insert_drive_file()."""

@@ -509,6 +509,8 @@ def insert_file(
                 md5_hash = ?,
                 project_id = CASE WHEN project_id IS NULL THEN ? ELSE project_id END,
                 folder_id = ?,
+                -- Only invalidate embeddings when content provably changed.
+                -- Column refs here read PRE-update values (standard SQL).
                 vectorized_at = CASE
                     WHEN status = 'removed' THEN NULL
                     WHEN sha256_hash IS NULL THEN NULL
@@ -669,7 +671,7 @@ def repair_vectorized_at(conn: sqlite3.Connection, vectorized_file_counts: Dict[
     for file_id, chunk_count in vectorized_file_counts.items():
         cursor = conn.execute(
             "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? "
-            "WHERE id = ? AND vectorized_at IS NULL AND status = 'listed'",
+            "WHERE id = ? AND vectorized_at IS NULL AND status != 'removed'",
             (chunk_count, file_id),
         )
         repaired += cursor.rowcount
