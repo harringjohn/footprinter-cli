@@ -744,13 +744,40 @@ class TestDoctorArchitecture:
         monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
             "Python is running as x86_64 on arm64 hardware (Rosetta). "
             "Native dependencies may have compatibility issues. "
-            "Consider recreating venv with native arm64 Python."
+            "Recreate with native arm64 Python: "
+            "pipx reinstall footprinter-cli --python /opt/homebrew/bin/python3"
         ))
 
         result = doctor._check_architecture()
         assert result.status == "WARN"
         assert "Rosetta" in result.message
         assert result.group == "Environment"
+
+    def test_rosetta_warn_includes_pipx_remediation(self, monkeypatch):
+        from footprinter.cli import diagnostics, doctor
+
+        warning = diagnostics.check_architecture
+        monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
+            "Python is running as x86_64 on arm64 hardware (Rosetta). "
+            "Native dependencies may have compatibility issues. "
+            "Recreate with: pipx reinstall footprinter-cli --python <arm64 python>"
+        ))
+
+        result = doctor._check_architecture()
+        assert result.status == "WARN"
+        assert "pipx reinstall" in result.message
+
+    def test_rosetta_warn_includes_native_python_hint(self, monkeypatch):
+        from footprinter.cli import diagnostics, doctor
+
+        monkeypatch.setattr(diagnostics, "check_architecture", lambda: (
+            "Python is running as x86_64 on arm64 hardware (Rosetta). "
+            "Native dependencies may have compatibility issues. "
+            "Recreate with: pipx reinstall footprinter-cli --python <arm64 python>"
+        ))
+
+        result = doctor._check_architecture()
+        assert "arm64" in result.message
 
     def test_native_arm64_ok(self, monkeypatch):
         from footprinter.cli import diagnostics, doctor
@@ -760,6 +787,43 @@ class TestDoctorArchitecture:
         result = doctor._check_architecture()
         assert result.status == "OK"
         assert result.group == "Environment"
+
+
+class TestCheckArchitectureDirect:
+    """Unit tests for diagnostics.check_architecture() with mocked OS signals."""
+
+    def test_rosetta_returns_pipx_remediation(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics.platform, "machine", lambda: "x86_64")
+        mock_result = MagicMock()
+        mock_result.stdout = "1\n"
+        monkeypatch.setattr(diagnostics.subprocess, "run", lambda *a, **kw: mock_result)
+
+        warning = diagnostics.check_architecture()
+        assert warning is not None
+        assert "pipx reinstall footprinter-cli" in warning
+
+    def test_native_arm64_returns_none(self, monkeypatch):
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics.platform, "machine", lambda: "arm64")
+
+        assert diagnostics.check_architecture() is None
+
+    def test_x86_on_intel_returns_none(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from footprinter.cli import diagnostics
+
+        monkeypatch.setattr(diagnostics.platform, "machine", lambda: "x86_64")
+        mock_result = MagicMock()
+        mock_result.stdout = "0\n"
+        monkeypatch.setattr(diagnostics.subprocess, "run", lambda *a, **kw: mock_result)
+
+        assert diagnostics.check_architecture() is None
 
 
 # ---------------------------------------------------------------------------

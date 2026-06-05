@@ -87,7 +87,8 @@ def check_architecture() -> str | None:
                 return (
                     "Python is running as x86_64 on arm64 hardware (Rosetta). "
                     "Native dependencies may have compatibility issues. "
-                    "Consider recreating venv with native arm64 Python."
+                    "Recreate with native arm64 Python: "
+                    "pipx reinstall footprinter-cli --python /opt/homebrew/bin/python3"
                 )
         except Exception:
             pass
