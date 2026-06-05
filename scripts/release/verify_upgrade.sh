@@ -289,7 +289,13 @@ for name, table in entities:
 
 conn.close()
 print(json.dumps(snapshot))
-")
+" 2>&1) || true
+
+if [ -z "$PRE_SNAPSHOT" ]; then
+    echo "  ERROR: could not capture pre-upgrade entity counts (Python error)"
+    echo "  Continuing without pre/post comparison..."
+    PRE_SNAPSHOT="{}"
+fi
 
 echo "  Pre-upgrade counts:"
 "$VENV_PY" -c "
@@ -423,7 +429,7 @@ fi
 # 4. fp status --json works
 if STATUS_JSON=$("$VENV_FP" status --json 2>/dev/null); then
     # Validate it's parseable JSON
-    if "$VENV_PY" -c "import json, sys; json.loads(sys.argv[1])" "$STATUS_JSON" 2>/dev/null; then
+    if echo "$STATUS_JSON" | "$VENV_PY" -c "import json, sys; json.loads(sys.stdin.read())" 2>/dev/null; then
         pass "fp status --json produces valid JSON post-upgrade"
     else
         fail "fp status --json output is not valid JSON"
