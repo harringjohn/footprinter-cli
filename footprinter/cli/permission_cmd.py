@@ -4,7 +4,7 @@ Subcommands:
     fp permission list                   Show all configured policies
     fp permission set <scope>            Set visibility and/or access for a scope
     fp permission reset <scope>          Remove policy (fall back to inheritance)
-    fp permission check <path>           Resolve access for a target
+    fp permission check <scope>           Resolve access for a scope
     fp permission recalculate [scope]    Re-resolve access stamps from the policy chain
 """
 
@@ -446,7 +446,7 @@ def register(subparsers) -> None:
             "  fp permission set global --visibility full --access allow\n"
             "  fp permission set folder:~/Work --visibility hidden --dry-run\n"
             "  fp permission reset folder:~/Work               Remove folder policy\n"
-            "  fp permission check folder:~/Work                Check access resolution\n"
+            "  fp permission check ~/Work/file.py              Check access resolution\n"
             "  fp permission recalculate                       Full recalculation\n"
             "\n"
             "tip: use 'fp permission <command> --help' for details."
@@ -561,6 +561,7 @@ def register(subparsers) -> None:
         epilog=(
             "examples:\n"
             "  fp permission check ~/Work/file.py           Check a file path\n"
+            "  fp permission check file:~/Work/file.py       Same, with explicit prefix\n"
             "  fp permission check folder:~/Work             Check a folder\n"
             "  fp permission check project:3                 Check a project\n"
             "  fp permission check client:7                  Check a client\n"

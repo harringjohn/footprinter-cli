@@ -924,6 +924,22 @@ class TestCheckScopeRouting:
 
         assert exc_info.value.code == 1
 
+    def test_file_numeric_id_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="file:42", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_folder_numeric_id_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="folder:42", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
 
 # ---------------------------------------------------------------------------
 # Check subcommand: no DB

@@ -456,6 +456,7 @@ fp permission list --json            # JSON output
 
 ```bash
 fp permission check ~/Work/file.py       # Check a file path (bare path)
+fp permission check file:~/Work/file.py  # Same, with explicit prefix
 fp permission check folder:~/Work        # Folder aggregate check
 fp permission check project:3            # Project-level check
 fp permission check client:7             # Client-level check
