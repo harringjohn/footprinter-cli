@@ -422,6 +422,30 @@ class TestUpdateBulkPathAssign:
         assert code == 0
         assert mock_svc.assign.call_count == 3
 
+    @patch("footprinter.cli.update._get_service")
+    @patch("footprinter.cli.update.open_db")
+    def test_bulk_assign_files_tilde_path(self, mock_open_db, mock_get_svc):
+        _patched_open_db(mock_open_db)
+        mock_svc = MagicMock()
+        mock_svc.assign.return_value = {"id": 1}
+        mock_get_svc.return_value = mock_svc
+
+        from pathlib import Path
+
+        expected = str(Path.home() / "demo")
+
+        with patch(
+            "footprinter.db.files.list_file_ids_under_path", return_value=[1]
+        ) as mock_list:
+            _, _, code = run_fp(
+                "update", "files", "--folder", "~/demo", "--project-id", "5",
+            )
+
+        assert code == 0
+        mock_list.assert_called_once()
+        actual_path = mock_list.call_args[0][1]
+        assert actual_path == expected
+
     @patch("footprinter.cli.update.open_db")
     def test_bulk_assign_files_no_ids(self, mock_open_db):
         _patched_open_db(mock_open_db)
@@ -431,6 +455,36 @@ class TestUpdateBulkPathAssign:
         assert code == 1
         output = stdout + stderr
         assert "at least one" in output.lower()
+
+
+class TestNormalizePath:
+    """Unit tests for _normalize_path shared helper."""
+
+    def test_absolute_path_unchanged(self):
+        from footprinter.cli.update import _normalize_path
+
+        assert _normalize_path("/tmp/foo") == "/tmp/foo"
+
+    def test_trailing_slash_stripped(self):
+        from footprinter.cli.update import _normalize_path
+
+        assert _normalize_path("/tmp/foo/") == "/tmp/foo"
+
+    def test_tilde_expanded(self):
+        from pathlib import Path
+
+        from footprinter.cli.update import _normalize_path
+
+        result = _normalize_path("~/Documents")
+        assert result == str(Path.home() / "Documents")
+
+    def test_relative_path_under_home(self):
+        from pathlib import Path
+
+        from footprinter.cli.update import _normalize_path
+
+        result = _normalize_path("projects/demo")
+        assert result == str(Path.home() / "projects/demo")
 
 
 # ---------------------------------------------------------------------------
