@@ -2848,6 +2848,53 @@ class TestContexterFolder:
         assert "files" not in result
         assert "subfolders" not in result
 
+    def test_get_unlisted_counts_returns_correct_values(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source)"
+            " VALUES (1, 'root', '/test/root', 'test/root', 'local')"
+        )
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source)"
+            " VALUES (2, 'child', '/test/root/child', 'test/root/child', 'local')"
+        )
+        cursor.executemany(
+            "INSERT INTO files (id, name, source, status, folder_id, visibility)"
+            " VALUES (?, ?, 'local', 'unlisted', ?, 'full')",
+            [(1, "a.py", 1), (2, "b.py", 1), (3, "c.py", 2)],
+        )
+        mcp_db.commit()
+
+        from footprinter.db.folders import get_unlisted_counts
+
+        result = get_unlisted_counts(mcp_db, 1, "/test/root")
+        assert result == {
+            "unlisted_file_count": 2,
+            "unlisted_recursive_file_count": 3,
+        }
+
+    def test_opaque_folder_does_not_call_get_folder_navigation(self, mcp_db):
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source, visibility)"
+            " VALUES (1, 'opaque', '/test/opaque', 'test/opaque', 'local', 'opaque')"
+        )
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db, \
+             patch("footprinter.services.folder_service.db.get_folder_navigation") as mock_nav, \
+             patch("footprinter.services.folder_service.db.get_unlisted_counts",
+                   return_value={"unlisted_file_count": 0, "unlisted_recursive_file_count": 0}) as mock_counts:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            footprinter_folder("/test/opaque")
+
+        mock_nav.assert_not_called()
+        mock_counts.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # TestNavigationModuleRename
