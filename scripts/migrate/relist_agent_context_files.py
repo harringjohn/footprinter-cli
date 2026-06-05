@@ -104,6 +104,72 @@ def relist_agent_context_files(
     return {"found": found, "updated": updated}
 
 
+def restamp_local_config_reason(
+    conn: sqlite3.Connection,
+    dry_run: bool = False,
+    limit: int | None = None,
+) -> dict:
+    """Re-stamp status_reason from 'in_dot_folder' to 'local_config' for .local.* files.
+
+    Args:
+        conn: SQLite connection with row_factory = sqlite3.Row
+        dry_run: If True, report what would change without modifying.
+        limit: Optional cap on number of rows to update.
+
+    Returns:
+        Dict with 'found' and 'updated' counts.
+    """
+    path_sql = _build_path_clauses()
+
+    query = f"""
+        SELECT id, path, name
+        FROM files
+        WHERE status = 'unlisted'
+          AND status_reason = 'in_dot_folder'
+          AND ({path_sql})
+          AND name LIKE '%.local.%'
+    """
+    params = []
+
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    found = len(rows)
+
+    if dry_run:
+        print(f"Found {found} .local.* files to re-stamp (dry run — no changes)")
+        for row in rows[:10]:
+            print(f"  {row['name']:40s} {row['path']}")
+        if found > 10:
+            print(f"  ... and {found - 10} more")
+        return {"found": found, "updated": 0}
+
+    changed_ids = [row["id"] for row in rows]
+
+    for i in range(0, len(changed_ids), BATCH_SIZE):
+        batch = changed_ids[i : i + BATCH_SIZE]
+        placeholders = ",".join("?" * len(batch))
+        cursor.execute(
+            f"""
+            UPDATE files
+            SET status_reason = 'local_config',
+                status_changed_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            """,
+            batch,
+        )
+
+    updated = len(changed_ids)
+    print(f"Re-stamped {updated}/{found} .local.* files to local_config")
+
+    return {"found": found, "updated": updated}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Relist .claude/ and .context/ files marked unlisted by dot-folder rule"
@@ -118,8 +184,10 @@ def main():
     conn.row_factory = sqlite3.Row
     try:
         result = relist_agent_context_files(conn, dry_run=args.dry_run, limit=args.limit)
-        print(f"\nFound: {result['found']}")
-        print(f"Updated: {result['updated']}")
+        print(f"\nRelist — Found: {result['found']}, Updated: {result['updated']}")
+
+        restamp = restamp_local_config_reason(conn, dry_run=args.dry_run, limit=args.limit)
+        print(f"Re-stamp — Found: {restamp['found']}, Updated: {restamp['updated']}")
         print(
             f"\nVerify with:\n"
             f"  sqlite3 {db_path}"

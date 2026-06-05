@@ -71,16 +71,20 @@ class TestRelistAgentContextFiles:
         )
         db.conn.commit()
 
-        from scripts.migrate.relist_agent_context_files import relist_agent_context_files
+        from scripts.migrate.relist_agent_context_files import (
+            relist_agent_context_files,
+            restamp_local_config_reason,
+        )
 
         with patch("scripts.migrate.relist_agent_context_files.stamp_entities"):
             relist_agent_context_files(db.conn, dry_run=False, limit=None)
+        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
 
         cursor = db.conn.cursor()
         cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (fid,))
         row = cursor.fetchone()
         assert row["status"] == "unlisted"
-        assert row["status_reason"] == "in_dot_folder"
+        assert row["status_reason"] == "local_config"
         db.close()
 
     def test_skips_other_dot_folders(self, temp_db):
@@ -188,4 +192,83 @@ class TestRelistAgentContextFiles:
         call_args = mock_stamp.call_args
         stamped_ids = call_args[0][1]["file"]
         assert sorted(stamped_ids) == sorted(ids)
+        db.close()
+
+
+class TestRestampLocalConfigReason:
+    """Test the re-stamp migration for .local.* files under agent-context dirs."""
+
+    def test_restamps_local_config_reason(self, temp_db):
+        db = Database(temp_db)
+        fid = _insert_unlisted_file(
+            db.conn, "/home/user/project/.claude/settings.local.json", "settings.local.json"
+        )
+        db.conn.commit()
+
+        from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
+
+        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
+
+        cursor = db.conn.cursor()
+        cursor.execute(
+            "SELECT status, status_reason, status_changed_at FROM files WHERE id = ?", (fid,)
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "local_config"
+        assert row["status_changed_at"] is not None
+        db.close()
+
+    def test_restamp_skips_non_local_files(self, temp_db):
+        db = Database(temp_db)
+        fid = _insert_unlisted_file(
+            db.conn, "/home/user/project/.claude/CLAUDE.md", "CLAUDE.md"
+        )
+        db.conn.commit()
+
+        from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
+
+        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (fid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "in_dot_folder"
+        db.close()
+
+    def test_restamp_skips_other_dot_folders(self, temp_db):
+        db = Database(temp_db)
+        fid = _insert_unlisted_file(
+            db.conn, "/home/user/project/.git/config.local.json", "config.local.json"
+        )
+        db.conn.commit()
+
+        from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
+
+        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (fid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "in_dot_folder"
+        db.close()
+
+    def test_restamp_dry_run(self, temp_db):
+        db = Database(temp_db)
+        fid = _insert_unlisted_file(
+            db.conn, "/home/user/project/.claude/CLAUDE.local.md", "CLAUDE.local.md"
+        )
+        db.conn.commit()
+
+        from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
+
+        restamp_local_config_reason(db.conn, dry_run=True, limit=None)
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, status_reason FROM files WHERE id = ?", (fid,))
+        row = cursor.fetchone()
+        assert row["status"] == "unlisted"
+        assert row["status_reason"] == "in_dot_folder"
         db.close()
