@@ -475,10 +475,7 @@ def _handle_bulk_assign(args) -> None:
     service = _get_service(svc_name)
 
     raw_folder = args.folder.strip()
-    folder_path = Path(raw_folder).expanduser()
-    if not folder_path.is_absolute():
-        folder_path = Path.home() / folder_path
-    folder_path_str = str(folder_path).rstrip("/")
+    folder_path_str = _normalize_path(raw_folder)
     project_id = getattr(args, "project_id", None)
     client_id = getattr(args, "client_id", None)
 
@@ -568,14 +565,19 @@ def _handle_bulk_folder_assign(args) -> None:
         console.print(f"[green]{assigned} folder(s)/file(s) assigned.[/green]")
 
 
+def _normalize_path(raw_path: str) -> str:
+    """Expand user home and make path absolute, stripping trailing slashes."""
+    p = Path(raw_path).expanduser()
+    if not p.is_absolute():
+        p = Path.home() / p
+    return str(p).rstrip("/")
+
+
 def _resolve_folder_by_path(conn: sqlite3.Connection, raw_path: str) -> tuple[dict | None, str]:
     """Resolve a folder path string to a folder row dict."""
     from footprinter.db.folders import get_folder_by_path, get_folder_by_relative_path
 
-    folder_path = Path(raw_path).expanduser()
-    if not folder_path.is_absolute():
-        folder_path = Path.home() / folder_path
-    path_str = str(folder_path).rstrip("/")
+    path_str = _normalize_path(raw_path)
 
     result = get_folder_by_path(conn, path_str)
     if result is not None:
