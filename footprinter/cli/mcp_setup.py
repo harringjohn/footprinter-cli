@@ -29,9 +29,31 @@ MCP_CLIENT_CONFIGS = [
     {"name": "Claude Desktop", "path": "~/Library/Application Support/Claude/claude_desktop_config.json"},
     {"name": "Claude Code", "command": "claude mcp add footprinter -- fp-mcp"},
     {"name": "Cursor", "path": "~/.cursor/mcp.json"},
-    {"name": "VS Code", "path": ".vscode/mcp.json (per-project)"},
+    {"name": "VS Code", "path": ".vscode/mcp.json (per-project)", "always_show": True},
     {"name": "Gemini CLI", "path": "~/.gemini/settings.json"},
 ]
+
+
+def detect_installed_clients() -> list[dict]:
+    """Return MCP_CLIENT_CONFIGS entries for clients detected on this machine.
+
+    Path-based clients: included if the config file's parent directory exists.
+    Command-based clients: included if the command binary is on PATH.
+    Entries with ``always_show=True`` are always included (e.g. per-project configs).
+    """
+    installed = []
+    for client in MCP_CLIENT_CONFIGS:
+        if client.get("always_show"):
+            installed.append(client)
+        elif "command" in client:
+            cmd = client["command"].split()[0]
+            if shutil.which(cmd):
+                installed.append(client)
+        elif "path" in client:
+            config_path = Path(client["path"]).expanduser()
+            if config_path.parent.exists():
+                installed.append(client)
+    return installed
 
 
 def is_mcp_available() -> bool:
@@ -259,12 +281,19 @@ def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bo
 
 
 def print_client_paths():
-    """Render a table of known MCP clients and their config locations."""
+    """Render a table of detected MCP clients and their config locations."""
+    clients = detect_installed_clients()
+
+    if not clients:
+        console.print()
+        console.print("[dim]No MCP-compatible clients detected on this machine.[/dim]")
+        return
+
     table = Table(title="MCP Client Config Paths", show_header=True)
     table.add_column("Client", style="bold")
     table.add_column("Config Location / Command")
 
-    for client in MCP_CLIENT_CONFIGS:
+    for client in clients:
         if "command" in client:
             table.add_row(client["name"], f"[cyan]{client['command']}[/cyan]")
         else:
