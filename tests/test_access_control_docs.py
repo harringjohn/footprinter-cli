@@ -42,7 +42,8 @@ class TestSecurityPostureSection:
         headings = [line.strip() for line in content.split("\n") if line.strip().startswith("#")]
         posture_headings = [h for h in headings if "security posture" in h.lower()]
         assert posture_headings, (
-            "Expected a '## Security Posture' or '### Security Posture' heading in reference/permission-policies-and-access-control.md"
+            "Expected a '## Security Posture' or '### Security Posture' heading in "
+            "reference/permission-policies-and-access-control.md"
         )
 
     def test_explains_fail_open_design(self, security_posture_section):
