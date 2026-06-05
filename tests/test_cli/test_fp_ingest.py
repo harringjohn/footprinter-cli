@@ -746,3 +746,86 @@ class TestExtractTouchedFileIds:
         assert _extract_touched_file_ids(results) == []
 
 
+# ---------------------------------------------------------------------------
+# Bare ingest scopes file_ids to touched files (FPR-1909)
+# ---------------------------------------------------------------------------
+
+
+class TestBareIngestScopesFileIds:
+    """Bare fp ingest must pass scoped file_ids, not None."""
+
+    @staticmethod
+    def _make_orch_with_callback(stage_result):
+        """Build a mock orchestrator whose run_pipeline invokes on_end with stage_result."""
+        mock_orch = MagicMock()
+
+        def fake_run_pipeline(pipeline_name, on_pipe_start=None, on_pipe_end=None, on_progress=None):
+            stage = stage_result.get("stage", "local_files")
+            if on_pipe_start:
+                on_pipe_start(stage)
+            if on_pipe_end:
+                on_pipe_end(stage, stage_result)
+
+        mock_orch.run_pipeline.side_effect = fake_run_pipeline
+        mock_orch.runner.pipelines = {"all": ["local_files"]}
+        return mock_orch
+
+    @patch("footprinter.cli._vectorize_stage.run_vectorization_stage")
+    @patch("footprinter.ingest.status.print_results")
+    @patch("footprinter.ingest.orchestrator.DataPipelineOrchestrator")
+    def test_bare_ingest_passes_scoped_file_ids(self, mock_orch_cls, _print, mock_vec_stage):
+        stage_result = {
+            "stage": "local_files",
+            "status": "completed",
+            "elapsed_seconds": 0.1,
+            "touched_file_ids": [10, 20, 30],
+        }
+        mock_orch_cls.return_value = self._make_orch_with_callback(stage_result)
+
+        run_fp("ingest", "--quiet")
+
+        mock_vec_stage.assert_called_once()
+        assert mock_vec_stage.call_args[1]["file_ids"] == [10, 20, 30]
+
+    @patch("footprinter.cli._vectorize_stage.run_vectorization_stage")
+    @patch("footprinter.ingest.status.print_results")
+    @patch("footprinter.ingest.orchestrator.DataPipelineOrchestrator")
+    def test_bare_ingest_no_local_files_passes_empty_list(self, mock_orch_cls, _print, mock_vec_stage):
+        stage_result = {
+            "stage": "browser",
+            "status": "completed",
+            "elapsed_seconds": 0.1,
+        }
+        mock_orch_cls.return_value = self._make_orch_with_callback(stage_result)
+
+        run_fp("ingest", "--quiet")
+
+        mock_vec_stage.assert_called_once()
+        assert mock_vec_stage.call_args[1]["file_ids"] == []
+
+
+# ---------------------------------------------------------------------------
+# KeyboardInterrupt handling in _vectorize_stage (FPR-1909)
+# ---------------------------------------------------------------------------
+
+
+class TestVectorizeStageKeyboardInterrupt:
+    """KeyboardInterrupt in vectorization stage re-raises after cleanup."""
+
+    @patch("footprinter.cli._vectorize_stage._file_vectorization_in_config", return_value=True)
+    @patch("footprinter.ingest.orchestrator.DataPipelineOrchestrator")
+    def test_keyboard_interrupt_propagates_after_cleanup(self, mock_orch_cls, _config):
+        import pytest
+
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        mock_orch = MagicMock()
+        mock_orch.run_vectorization.side_effect = KeyboardInterrupt
+        mock_orch_cls.return_value = mock_orch
+
+        with pytest.raises(KeyboardInterrupt):
+            run_vectorization_stage(quiet=True)
+
+        mock_orch.close.assert_called_once()
+
+

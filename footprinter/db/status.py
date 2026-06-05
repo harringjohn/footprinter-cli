@@ -7,13 +7,20 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from footprinter.utils.sqlite_errors import is_schema_busy_error
+
 
 def _safe_count(cursor: sqlite3.Cursor, query: str) -> int:
-    """Execute a COUNT query, returning 0 if the table doesn't exist."""
+    """Execute a COUNT query, returning 0 if the table doesn't exist.
+
+    Re-raises ``OperationalError`` for schema-busy conditions.
+    """
     try:
         cursor.execute(query)
         return cursor.fetchone()[0]
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        if is_schema_busy_error(e):
+            raise
         return 0
 
 
@@ -21,19 +28,27 @@ def _safe_query(conn: sqlite3.Connection, query: str, *, default: Any = None) ->
     """Execute a query and return the first column of the first row.
 
     Returns ``default`` if the table doesn't exist or the query returns no rows.
+    Re-raises ``OperationalError`` for schema-busy conditions.
     """
     try:
         row = conn.execute(query).fetchone()
         return row[0] if row else default
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        if is_schema_busy_error(e):
+            raise
         return default
 
 
 def _safe_fetchall(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
-    """Execute a query and return all rows, or [] on missing table."""
+    """Execute a query and return all rows, or [] on missing table.
+
+    Re-raises ``OperationalError`` for schema-busy conditions.
+    """
     try:
         return conn.execute(query).fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        if is_schema_busy_error(e):
+            raise
         return []
 
 
@@ -210,7 +225,9 @@ def get_mcp_status(conn: sqlite3.Connection) -> dict:
             # Confirm count isn't masking a missing-table error
             try:
                 conn.execute(queries["count"])
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as e:
+                if is_schema_busy_error(e):
+                    raise
                 sources[table] = {"count": 0, "last_sync": None, "error": "table not found"}
                 continue
         sources[table] = {"count": count, "last_sync": latest}

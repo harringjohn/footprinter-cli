@@ -155,9 +155,10 @@ class TestZipValidation:
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
+        config = {"limits": {"zip": {"max_entries": 100}}}
         manager = ChatIndexer(MagicMock())
         with zipfile.ZipFile(zip_path, "r") as zf:
-            with patch("footprinter.ingest.chat_indexer.MAX_ZIP_ENTRIES", 100):
+            with patch("footprinter.source_registry.get_config", return_value=config):
                 with pytest.raises(ValueError, match="entries"):
                     manager._validate_zip(zf, extract_dir)
 
@@ -170,9 +171,10 @@ class TestZipValidation:
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
+        config = {"limits": {"zip": {"max_decompressed_size_mb": 0}}}
         manager = ChatIndexer(MagicMock())
         with zipfile.ZipFile(zip_path, "r") as zf:
-            with patch("footprinter.ingest.chat_indexer.MAX_DECOMPRESSED_SIZE", 500):
+            with patch("footprinter.source_registry.get_config", return_value=config):
                 with pytest.raises(ValueError, match="decompressed size"):
                     manager._validate_zip(zf, extract_dir)
 
@@ -185,9 +187,10 @@ class TestZipValidation:
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
+        config = {"limits": {"zip": {"max_compression_ratio": 2}}}
         manager = ChatIndexer(MagicMock())
         with zipfile.ZipFile(zip_path, "r") as zf:
-            with patch("footprinter.ingest.chat_indexer.MAX_COMPRESSION_RATIO", 2):
+            with patch("footprinter.source_registry.get_config", return_value=config):
                 with pytest.raises(ValueError, match="compression ratio"):
                     manager._validate_zip(zf, extract_dir)
 
@@ -204,6 +207,73 @@ class TestZipValidation:
         manager = ChatIndexer(MagicMock())
         with zipfile.ZipFile(zip_path, "r") as zf:
             manager._validate_zip(zf, extract_dir)  # Should not raise
+
+
+class TestZipLimitsConfig:
+    """Zip security limits should be loaded from config with fallback defaults."""
+
+    def test_zip_limits_from_config(self, tmp_path):
+        """Config override for max_entries should be respected by _validate_zip."""
+        zip_path = tmp_path / "many.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for i in range(60):
+                zf.writestr(f"file_{i}.txt", "x")
+
+        extract_dir = tmp_path / "extract"
+        extract_dir.mkdir()
+
+        config = {"limits": {"zip": {"max_entries": 50}}}
+        manager = ChatIndexer(MagicMock())
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            with patch("footprinter.source_registry.get_config", return_value=config):
+                with pytest.raises(ValueError, match="entries"):
+                    manager._validate_zip(zf, extract_dir)
+
+    def test_zip_limits_fallback_on_missing_config(self, tmp_path):
+        """When config is unavailable, default limits apply and small zips pass."""
+        from footprinter.source_registry import ConfigError
+
+        zip_path = tmp_path / "small.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for i in range(5):
+                zf.writestr(f"file_{i}.txt", "content")
+
+        extract_dir = tmp_path / "extract"
+        extract_dir.mkdir()
+
+        manager = ChatIndexer(MagicMock())
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            with patch("footprinter.source_registry.get_config", side_effect=ConfigError("no config")):
+                manager._validate_zip(zf, extract_dir)  # Should not raise
+
+    def test_default_decompressed_size_is_2gb(self):
+        """Default max decompressed size should be 2 GB when config has no limits section."""
+        from footprinter.ingest.chat_indexer import _get_zip_limits
+
+        config = {"directories": ["~/Work"]}
+        with patch("footprinter.source_registry.get_config", return_value=config):
+            max_size, _, _ = _get_zip_limits()
+        assert max_size == 2 * 1024 * 1024 * 1024, f"Expected 2 GB, got {max_size}"
+
+    def test_chatgpt_export_size_passes(self, tmp_path):
+        """A ~1.04 GB zip (ChatGPT export size) should pass with 2 GB default."""
+        zip_path = tmp_path / "chatgpt.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("conversations.json", "x" * 100)
+
+        extract_dir = tmp_path / "extract"
+        extract_dir.mkdir()
+
+        config = {}  # No limits section — uses defaults (2 GB)
+        manager = ChatIndexer(MagicMock())
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            # Patch infolist to report ~1.04 GB decompressed size
+            original_infolist = zf.infolist()
+            original_infolist[0].file_size = 1_092_000_000  # ~1.04 GB
+            original_infolist[0].compress_size = 200_000_000
+            with patch.object(zf, "infolist", return_value=original_infolist):
+                with patch("footprinter.source_registry.get_config", return_value=config):
+                    manager._validate_zip(zf, extract_dir)  # Should not raise
 
 
 class TestDatabaseDefaultPath:
