@@ -4612,5 +4612,53 @@ class TestIncludeFlagsForwarding:
 
 
 # ---------------------------------------------------------------------------
+# TestSearchSummary — _build_search_summary truncation formatting
+# ---------------------------------------------------------------------------
+
+
+class TestSearchSummary:
+    """Unit tests for _build_search_summary truncation-aware formatting."""
+
+    @staticmethod
+    def _summary():
+        from footprinter.mcp.tools.search import _build_search_summary
+
+        return _build_search_summary
+
+    def test_summary_shows_found_when_not_truncated(self):
+        results = {"files": [{"id": i} for i in range(3)]}
+        counts = {"files": {"returned": 3, "has_more": False}}
+        summary = self._summary()(results, "test", ["files"], counts=counts)
+        assert "Found 3 files" in summary
+
+    def test_summary_shows_showing_when_truncated(self):
+        results = {"files": [{"id": i} for i in range(10)]}
+        counts = {"files": {"returned": 10, "has_more": True}}
+        summary = self._summary()(results, "test", ["files"], counts=counts)
+        assert "10 of 10+" in summary
+
+    def test_summary_mixed_truncation(self):
+        results = {
+            "files": [{"id": i} for i in range(10)],
+            "emails": [{"id": i} for i in range(2)],
+        }
+        counts = {
+            "files": {"returned": 10, "has_more": True},
+            "emails": {"returned": 2, "has_more": False},
+        }
+        summary = self._summary()(
+            results, "test", ["files", "emails"], counts=counts
+        )
+        assert "10 of 10+" in summary
+        assert "2 emails" in summary
+        assert "2 of 2+" not in summary
+
+    def test_summary_no_counts_backward_compat(self):
+        results = {"files": [{"id": i} for i in range(5)]}
+        summary = self._summary()(results, "test", ["files"])
+        assert "Found 5 files" in summary
+
+
+# ---------------------------------------------------------------------------
 # TestSchemaConsistency — verify fixture matches production schema
 # ---------------------------------------------------------------------------

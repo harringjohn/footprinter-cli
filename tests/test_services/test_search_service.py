@@ -283,3 +283,59 @@ class TestSearchIncludeFlags:
         ids = {f.get("id") for f in result["files"]}
         assert 10 not in ids
         assert 11 not in ids
+
+
+class TestSearchCounts:
+    """Truncation detection via counts dict in search results."""
+
+    @staticmethod
+    def _seed_extra_files(conn) -> None:
+        """Add enough listed+visible files to test truncation."""
+        rows = ", ".join(
+            f"({i}, 'file{i}.py', '/Users/u/Work/alpha/file{i}.py', 'local', "
+            f"'listed', 'python', 100, 1, 1, 'full', 'allow')"
+            for i in range(20, 27)
+        )
+        conn.execute(
+            f"""INSERT INTO files (id, name, path, source, status, content_type,
+                                   size_bytes, project_id, folder_id, visibility, access)
+               VALUES {rows}"""
+        )
+        conn.commit()
+
+    def test_counts_present_in_results(self, service_db):
+        """Results dict includes counts with returned and has_more per source."""
+        result = search_service.search(
+            service_db, query="", role=Role.VIEWER
+        )
+        assert "counts" in result
+        for source in ("files", "emails", "chats", "browser"):
+            assert source in result["counts"]
+            assert "returned" in result["counts"][source]
+            assert "has_more" in result["counts"][source]
+
+    def test_has_more_true_when_truncated(self, service_db):
+        """has_more is True when more matches exist beyond the limit."""
+        self._seed_extra_files(service_db)
+        result = search_service.search(
+            service_db, query="", sources=["files"], role=Role.ADMIN, limit=2
+        )
+        assert result["counts"]["files"]["has_more"] is True
+        assert result["counts"]["files"]["returned"] == 2
+
+    def test_has_more_false_when_fits(self, service_db):
+        """has_more is False when all matches fit within the limit."""
+        self._seed_extra_files(service_db)
+        result = search_service.search(
+            service_db, query="", sources=["files"], role=Role.ADMIN, limit=50
+        )
+        assert result["counts"]["files"]["has_more"] is False
+        assert result["counts"]["files"]["returned"] == len(result["files"])
+
+    def test_counts_reflect_post_filter_returned(self, service_db):
+        """returned count matches len(results) after visibility filtering."""
+        self._seed_extra_files(service_db)
+        result = search_service.search(
+            service_db, query="", sources=["files"], role=Role.VIEWER, limit=50
+        )
+        assert result["counts"]["files"]["returned"] == len(result["files"])

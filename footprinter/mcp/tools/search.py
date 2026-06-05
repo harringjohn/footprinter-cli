@@ -37,10 +37,15 @@ _SOURCE_LABELS = {
 
 
 def _build_search_summary(
-    results: dict, query: str, sources: list[str], was_capped: bool = False
+    results: dict,
+    query: str,
+    sources: list[str],
+    was_capped: bool = False,
+    counts: dict | None = None,
 ) -> str:
     """Build a human-readable summary of search results."""
     found_parts = []
+    truncated_parts = []
     empty_parts = []
 
     for source in sources:
@@ -49,15 +54,26 @@ def _build_search_summary(
         count = len(items)
         if count > 0:
             label = singular if count == 1 else plural
-            found_parts.append(f"{count} {label}")
+            has_more = (
+                counts.get(source, {}).get("has_more", False) if counts else False
+            )
+            if has_more:
+                truncated_parts.append(f"{count} of {count}+ {label}")
+            else:
+                found_parts.append(f"{count} {label}")
         else:
             empty_parts.append(plural)
 
     total_suppressed = results.get("suppressed", 0)
 
-    if found_parts:
+    if found_parts or truncated_parts:
         query_part = f" matching '{query}'" if query and query.strip() else ""
-        summary = f"Found {', '.join(found_parts)}{query_part}."
+        parts = []
+        if found_parts:
+            parts.append(f"Found {', '.join(found_parts)}")
+        if truncated_parts:
+            parts.append(f"Showing {', '.join(truncated_parts)}")
+        summary = f"{'. '.join(parts)}{query_part}."
         if empty_parts:
             summary += f" No {' or '.join(empty_parts)} matched."
     else:
@@ -188,5 +204,7 @@ def footprinter_search(
         if "path" in f:
             f["path"] = _shorten_path(f["path"])
 
-    results["summary"] = _build_search_summary(results, query, sources, was_capped=was_capped)
+    results["summary"] = _build_search_summary(
+        results, query, sources, was_capped=was_capped, counts=results.get("counts")
+    )
     return results

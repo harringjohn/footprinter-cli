@@ -62,6 +62,7 @@ def search(
     )
 
     results: dict = {}
+    counts: dict = {}
     total_suppressed = 0
     has_query = bool(query and query.strip())
     terms = split_query_terms(query) if has_query else []
@@ -79,16 +80,19 @@ def search(
             account=account,
             folder=folder,
             mime_type=mime_type,
-            limit=limit,
+            limit=limit + 1,
             exclude_hidden=not role.sees_all,
             status=status_arg,
         )
+        has_more = len(file_results) > limit
+        file_results = file_results[:limit]
         if role.sees_all:
             results["files"] = file_results
         else:
             filtered, suppressed = filter_results_list("file", file_results)
             results["files"] = filtered
             total_suppressed += suppressed
+        counts["files"] = {"returned": len(results["files"]), "has_more": has_more}
 
     if "emails" in sources:
         email_results = search_emails_keyword(
@@ -102,10 +106,12 @@ def search(
             account=account,
             sender=sender,
             days_back=days_back,
-            limit=limit,
+            limit=limit + 1,
             exclude_hidden=not role.sees_all,
             status=status_arg,
         )
+        has_more = len(email_results) > limit
+        email_results = email_results[:limit]
         if role.sees_all:
             results["emails"] = email_results
         else:
@@ -113,6 +119,7 @@ def search(
             strip_content_for_denied("email", filtered)
             results["emails"] = filtered
             total_suppressed += suppressed
+        counts["emails"] = {"returned": len(results["emails"]), "has_more": has_more}
 
     if "chats" in sources:
         chat_results = search_chats_keyword(
@@ -123,10 +130,12 @@ def search(
             client=client,
             date_from=date_from,
             date_to=date_to,
-            limit=limit,
+            limit=limit + 1,
             exclude_hidden=not role.sees_all,
             status=status_arg,
         )
+        has_more = len(chat_results) > limit
+        chat_results = chat_results[:limit]
         if role.sees_all:
             results["chats"] = chat_results
         else:
@@ -134,6 +143,7 @@ def search(
             strip_content_for_denied("chat", filtered)
             results["chats"] = filtered
             total_suppressed += suppressed
+        counts["chats"] = {"returned": len(results["chats"]), "has_more": has_more}
 
     if "browser" in sources:
         browser_results = search_browser_keyword(
@@ -142,20 +152,24 @@ def search(
             has_query=has_query,
             date_from=date_from,
             date_to=date_to,
-            limit=limit,
+            limit=limit + 1,
             exclude_hidden=not role.sees_all,
             status=status_arg,
         )
+        has_more = len(browser_results) > limit
+        browser_results = browser_results[:limit]
         if role.sees_all:
             results["browser"] = browser_results
         else:
             filtered, suppressed = filter_results_list("visit", browser_results)
             results["browser"] = filtered
             total_suppressed += suppressed
+        counts["browser"] = {"returned": len(results["browser"]), "has_more": has_more}
 
     if total_suppressed > 0:
         results["suppressed"] = total_suppressed
 
+    results["counts"] = counts
     return results
 
 
