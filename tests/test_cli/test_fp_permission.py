@@ -1441,7 +1441,10 @@ class TestSetCsvValidation:
         mock_db.return_value = _mock_conn()
 
         with pytest.raises(SystemExit) as exc_info:
-            _set(Namespace(scope="source:emails", csv_file="/nonexistent/path.csv", visibility=None, access=None, dry_run=False))
+            _set(Namespace(
+                scope="source:emails", csv_file="/nonexistent/path.csv",
+                visibility=None, access=None, dry_run=False,
+            ))
 
         assert exc_info.value.code == 1
 
