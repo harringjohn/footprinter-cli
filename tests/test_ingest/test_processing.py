@@ -497,7 +497,7 @@ class TestScopedVectorization:
 
 
 class TestVectorizationInterruptSafety:
-    """Periodic commits and graceful shutdown in run_vectorization (FPR-1909)."""
+    """Periodic commits and graceful shutdown in run_vectorization."""
 
     def _setup_files(self, tmp_path, db, count):
         """Insert N file rows with corresponding disk files."""
