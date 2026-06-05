@@ -115,7 +115,7 @@ def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int
             for entry in skipped_large_files:
                 size_mb = entry.get("size_bytes", 0) / (1024 * 1024)
                 console.print(f"      {size_mb:>7.1f} MB  {abbreviate_home(entry.get('path', ''))}")
-    except Exception as e:  # Intentional broad catch: follow-up stage must not crash setup/ingest
+    except (Exception, KeyboardInterrupt) as e:  # Intentional broad catch: follow-up stage must not crash setup/ingest
         if progress is not None:
             progress.stop()
         if not quiet:

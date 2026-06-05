@@ -804,3 +804,25 @@ class TestBareIngestScopesFileIds:
         assert mock_vec_stage.call_args[1]["file_ids"] == []
 
 
+# ---------------------------------------------------------------------------
+# KeyboardInterrupt handling in _vectorize_stage (FPR-1909)
+# ---------------------------------------------------------------------------
+
+
+class TestVectorizeStageKeyboardInterrupt:
+    """KeyboardInterrupt in vectorization stage must not propagate."""
+
+    @patch("footprinter.cli._vectorize_stage._file_vectorization_in_config", return_value=True)
+    @patch("footprinter.ingest.orchestrator.DataPipelineOrchestrator")
+    def test_keyboard_interrupt_does_not_propagate(self, mock_orch_cls, _config):
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        mock_orch = MagicMock()
+        mock_orch.run_vectorization.side_effect = KeyboardInterrupt
+        mock_orch_cls.return_value = mock_orch
+
+        run_vectorization_stage(quiet=True)
+
+        mock_orch.close.assert_called_once()
+
+
