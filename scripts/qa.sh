@@ -38,7 +38,7 @@ case "${1:-}" in
         ;;
     pytest)
         shift
-        exec ./venv/bin/python3 -m pytest "$@"
+        exec "$SCRIPT_DIR/../venv/bin/python3" -m pytest "$@"
         ;;
     smoke)
         exec bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
@@ -56,7 +56,7 @@ case "${1:-}" in
         ;;
     all)
         echo "=== Tier 1: pytest ==="
-        ./venv/bin/python3 -m pytest
+        "$SCRIPT_DIR/../venv/bin/python3" -m pytest
         echo ""
         echo "=== Tier 2: smoke ==="
         bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
