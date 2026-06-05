@@ -1,7 +1,7 @@
 """Database connection for Footprinter MCP server.
 
-Schema Migration Resilience (FPR-1916)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Schema Migration Resilience
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 WAL mode is set by ``init_db()`` (schema.py) and persists at the DB file
 level — MCP reads already benefit from snapshot isolation.  However, WAL
 does NOT prevent ``SQLITE_SCHEMA`` errors when a writer bumps
