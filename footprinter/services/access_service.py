@@ -9,7 +9,8 @@ Gating stages (for non-ADMIN roles):
   3. Visibility — ``visibility`` must not be hidden/opaque
   4. Permission — ``access`` must not be deny
 
-Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields,
+Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields
+(identifiers, source, and aggregate counts — no content or child lists),
 'full' -> full.  'inherit' -> resolves to the global policy at query
 time (loaded by ``load_globals``).  Missing (None) -> treated as 'opaque'
 (fail-closed).

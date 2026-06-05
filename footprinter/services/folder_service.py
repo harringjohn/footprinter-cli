@@ -96,7 +96,8 @@ def get_by_path(
     """Look up a folder by exact path with navigation data, filtered by role.
 
     Returns None if folder doesn't exist or is hidden (for VIEWER).
-    Returns opaque dict (no children) for opaque folders (for VIEWER).
+    Returns opaque dict for opaque folders (for VIEWER) — fetches nav data
+    to include aggregate counts, then strips to opaque-allowed fields.
     Returns full navigation dict for visible folders.
 
     ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
@@ -112,11 +113,9 @@ def get_by_path(
         if visibility == "hidden":
             return None
         if visibility == "opaque":
-            status_arg = status_arg_for_role(
-                role, include_unlisted=include_unlisted, include_removed=include_removed,
-            )
-            nav = db.get_folder_navigation(conn, row["id"], path, status=status_arg)
-            row = {**row, **nav}
+            nav = db.get_folder_navigation(conn, row["id"], path)
+            row["unlisted_file_count"] = nav["unlisted_file_count"]
+            row["unlisted_recursive_file_count"] = nav["unlisted_recursive_file_count"]
             return filter_result("folder", row)
 
     status_arg = status_arg_for_role(

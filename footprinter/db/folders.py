@@ -198,11 +198,16 @@ def get_folder_navigation(
     *,
     status: "str | list[str] | None" = None,
 ) -> dict:
-    """Return navigation data for a folder: files, subfolders, recursive file count.
+    """Return navigation data for a folder.
 
-    All results include ``visibility`` so the service layer can filter by visibility.
-    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
-    Recursive count widens to match. ``status_reason`` is surfaced on files.
+    Returns files, subfolders, recursive file count, and unlisted file counts
+    (direct + recursive).  All results include ``visibility`` so the service
+    layer can filter by visibility.
+
+    The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to
+    widen.  Recursive count widens to match.  Unlisted counts are always
+    computed independently of ``status``.  ``status_reason`` is surfaced on
+    files.
     """
     status_conds, status_params = build_status_filter(
         status, column="status", default_include=["listed"]

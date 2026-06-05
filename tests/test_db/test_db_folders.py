@@ -622,6 +622,25 @@ class TestRecursiveFileCountWithNestedFolders:
         result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
         assert result["recursive_file_count"] == 1
 
+    def test_unlisted_recursive_count_excludes_files_in_sibling_folder(self, tool_db):
+        root_id = self._insert_folder(tool_db, "/Users/u/proj", "proj")
+        sub_id = self._insert_folder(tool_db, "/Users/u/proj/sub", "sub")
+        sibling_id = self._insert_folder(tool_db, "/Users/u/proj_other", "proj_other")
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('mine.py', '/Users/u/proj/sub/mine.py', 'local', 'unlisted', ?, 'full', 'allow')""",
+            (sub_id,),
+        )
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('theirs.py', '/Users/u/proj_other/theirs.py', 'local', 'unlisted', ?, 'full', 'allow')""",
+            (sibling_id,),
+        )
+        tool_db.commit()
+
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
+        assert result["unlisted_recursive_file_count"] == 1
+
 
 class TestGetFolderByRelativePath:
     """get_folder_by_relative_path looks up folders by the relative_path column."""
