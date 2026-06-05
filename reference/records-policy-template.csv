@@ -1,0 +1,4 @@
+id,visibility,access
+42,hidden,deny
+10,,deny
+15,opaque,

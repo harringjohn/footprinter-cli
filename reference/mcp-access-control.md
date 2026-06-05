@@ -471,6 +471,29 @@ fp permission set <scope> --visibility <val>                  # Set visibility o
 fp permission set <scope> --access <val>                      # Set access only
 ```
 
+### Bulk record policies via CSV (`fp permission set source:<type> <csv>`)
+
+```bash
+fp view emails --csv --all > emails.csv
+# Edit emails.csv: set visibility and/or access columns per record
+fp permission set source:emails emails.csv
+fp permission set source:files  records.csv
+```
+
+CSV format:
+- Required column: `id` (from the export CSV)
+- At least one of: `visibility` (`full`/`opaque`/`hidden`), `access` (`allow`/`deny`)
+- Empty cells leave the setting to inheritance (only non-empty values create policies)
+- Extra columns (name, path, subject, etc.) are ignored — safe to use an export CSV directly
+
+Validation is atomic: all rows are checked before any policies are written.
+On first invalid row, the operation aborts with a line-numbered error and nothing is changed.
+
+Supported source types: `files`, `emails`, `chats`, `folders`, `projects`, `clients`.
+Not supported: `browser` (no per-record scope prefix for visits).
+
+A sample CSV is at `reference/records-policy-template.csv`.
+
 ### Reset policies (`fp permission reset`)
 
 ```bash
