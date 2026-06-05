@@ -82,3 +82,49 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+
+  purge-badge-cache:
+    if: github.event_name == 'release'
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for shields.io to reflect new version
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          MAX_ATTEMPTS=12
+          DELAY=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            SHIELDS_VERSION=$(curl -sf "https://img.shields.io/pypi/v/footprinter-cli.json" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])" 2>/dev/null || echo "")
+            if [ "$SHIELDS_VERSION" = "$VERSION" ]; then
+              echo "shields.io shows $VERSION after attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i/$MAX_ATTEMPTS: shields.io shows '$SHIELDS_VERSION', waiting for '$VERSION' (sleep ${DELAY}s)"
+            sleep $DELAY
+            DELAY=$((DELAY < 120 ? DELAY * 2 : 120))
+          done
+          echo "::warning::shields.io did not reflect $VERSION within timeout — badge will self-heal within ~3h"
+
+      - name: Purge GitHub Camo cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Anonymous Camo PURGE returns 200 but propagates per Fastly POP,
+          # so we repeat the request and verify afterward.
+          CAMO_URL=$(gh api repos/${{ github.repository }}/readme \
+            -H "Accept: application/vnd.github.html" \
+            | grep -o 'https://camo.githubusercontent.com[^"]*' | head -1)
+          if [ -z "$CAMO_URL" ]; then
+            echo "::warning::Could not resolve Camo URL from README"
+            exit 0
+          fi
+          echo "Camo URL: $CAMO_URL"
+          for i in $(seq 1 5); do
+            STATUS=$(curl -s -X PURGE "$CAMO_URL" -o /dev/null -w "%{http_code}")
+            echo "PURGE attempt $i: HTTP $STATUS"
+            sleep 2
+          done
+          echo "Camo purge complete — badge should update shortly"
