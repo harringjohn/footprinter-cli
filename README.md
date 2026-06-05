@@ -52,6 +52,8 @@ To install with extras: use the [full install script](https://raw.githubusercont
 
 **ChromaDB telemetry:** Footprinter sets `anonymized_telemetry=False`. ChromaDB also removed product telemetry in v1.5.4. See [Chroma OSS overview](https://docs.trychroma.com/docs/overview/oss).
 
+**Apple Silicon (Rosetta):** If `fp doctor` warns about x86_64 Python on arm64 hardware, recreate the venv with a native interpreter: `pipx reinstall footprinter-cli --python /opt/homebrew/bin/python3`. This avoids compatibility issues with native-extension dependencies.
+
 </details>
 
 ### Uninstall
