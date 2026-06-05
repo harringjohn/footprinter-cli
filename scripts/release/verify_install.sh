@@ -196,6 +196,13 @@ print(files('footprinter.bundled').joinpath('config.example.yaml'))
         cp "$INSTALLED_CONFIG" "$WORKSPACE/footprinter/bundled/config.example.yaml"
     fi
 
+    EXPECTED_CONFIG="$WORKSPACE/footprinter/bundled/config.example.yaml"
+    if [ ! -f "$EXPECTED_CONFIG" ]; then
+        fail "bundled config not at ${EXPECTED_CONFIG} — conftest fixture will break"
+    else
+        pass "bundled config.example.yaml in place for conftest"
+    fi
+
     # Install test dependencies (not in the base wheel)
     "$VENV_PY" -m pip install pytest httpx >/dev/null 2>&1 \
         || { echo "ERROR: Failed to install test dependencies (pytest, httpx)" >&2; exit 1; }
@@ -214,7 +221,7 @@ print(files('footprinter.bundled').joinpath('config.example.yaml'))
     if PYTHONPATH="$WORKSPACE" "$VENV_PY" -m pytest \
         "$WORKSPACE/tests" \
         --rootdir="$WORKSPACE" \
-        -x -q --tb=short 2>&1; then
+        -q --tb=short 2>&1; then
         pass "pytest against installed package passed"
     else
         fail "pytest against installed package had failures"
