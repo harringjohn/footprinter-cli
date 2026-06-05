@@ -151,8 +151,6 @@ limits:
   mcp_search_limit_cap: 200
   # Embedding batch size for vector rebuild
   vector_batch_size: 100
-  # Semantic chunking character limit (tuned for MiniLM-L6-v2)
-  chunk_size: 1000
 
 # Source registry seeds — loaded into the sources table on init
 # Connector sources added by: fp connect install <name>

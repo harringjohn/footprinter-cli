@@ -329,6 +329,7 @@ def _vectorize_messages(conn, cursor, store, console, mode: str = "full") -> dic
     messages = cursor.fetchall()
     total = len(messages)
     done = 0
+    batch_size = _get_batch_size()
 
     batch_ids: list = []
     batch_texts: list = []
@@ -403,7 +404,7 @@ def _vectorize_messages(conn, cursor, store, console, mode: str = "full") -> dic
                 )
             batch_msg_chunks[msg["id"]] = len(msg_chunks)
             batch_msg_ids.append(msg["id"])
-            if len(batch_ids) >= _get_batch_size():
+            if len(batch_ids) >= batch_size:
                 done += flush_batch()
                 conn.commit()
                 if console:
@@ -440,6 +441,7 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
     chats = cursor.fetchall()
     total = len(chats)
     done = 0
+    batch_size = _get_batch_size()
 
     batch_ids: list = []
     batch_texts: list = []
@@ -504,7 +506,7 @@ def _vectorize_chat_info(conn, cursor, store, console, mode: str = "full") -> di
                 }
             )
             batch_conv_ids.append(conv["id"])
-            if len(batch_ids) >= _get_batch_size():
+            if len(batch_ids) >= batch_size:
                 done += flush_batch()
                 conn.commit()
                 if console:

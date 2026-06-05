@@ -121,7 +121,7 @@ class TestChunkSize:
     def test_override(self):
         from footprinter.semantic.chunking import _get_chunk_size
 
-        config = {"limits": {"chunk_size": 2000}}
+        config = {"vectorization": {"chunk_size": 2000}}
         with patch("footprinter.source_registry.get_config", return_value=config):
             assert _get_chunk_size() == 2000
 
@@ -139,11 +139,11 @@ class TestChunkSize:
 
         with patch(
             "footprinter.source_registry.get_config",
-            return_value={"limits": {"chunk_size": 500}},
+            return_value={"vectorization": {"chunk_size": 500}},
         ):
             assert _get_chunk_size() == 500
         with patch(
             "footprinter.source_registry.get_config",
-            return_value={"limits": {"chunk_size": 800}},
+            return_value={"vectorization": {"chunk_size": 800}},
         ):
             assert _get_chunk_size() == 800

@@ -14,7 +14,7 @@ def _get_chunk_size() -> int:
     try:
         from footprinter.source_registry import get_config
 
-        return get_config().get("limits", {}).get("chunk_size", DEFAULT_CHUNK_SIZE)
+        return get_config().get("vectorization", {}).get("chunk_size", DEFAULT_CHUNK_SIZE)
     except Exception:
         _logger.debug("Config unavailable for chunk_size, using default %d", DEFAULT_CHUNK_SIZE)
         return DEFAULT_CHUNK_SIZE
@@ -30,7 +30,7 @@ def chunk_content(
 
     Args:
         content: Text to split.
-        chunk_size: Maximum characters per chunk.
+        chunk_size: Maximum characters per chunk (None = read from config).
         chunk_overlap: Fractional overlap (0.0–1.0) between consecutive chunks.
 
     Returns:
