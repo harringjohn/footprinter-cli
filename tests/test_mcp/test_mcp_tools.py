@@ -4429,6 +4429,11 @@ class TestContexterRead:
             result = footprinter_read("file", 1)
 
         assert "error" not in result
+        # Verify content_service.read_file was called with gate_access metadata
+        mock_read.assert_called_once()
+        gate_meta = mock_read.call_args[0][1]
+        assert gate_meta["name"] == "readme.md"
+        assert gate_meta["project_name"] == "AcmeWeb"
         keys = list(result.keys())
         expected_leading = ["name", "path", "source", "created_at", "modified_at", "project_name"]
         assert keys[: len(expected_leading)] == expected_leading
@@ -4443,9 +4448,9 @@ class TestContexterRead:
         cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, from_name, "
-            "to_addresses, received_at, body_preview, project_id, visibility) "
+            "to_addresses, received_at, body_preview, project_id, visibility, access) "
             "VALUES (1, 'msg-1', 'thread-1', 'work', 'Weekly Update', 'bob@acme.com', 'Bob', "
-            "'alice@test.com', '2024-01-15', 'Email body here.', 1, 'full')"
+            "'alice@test.com', '2024-01-15', 'Email body here.', 1, 'full', 'allow')"
         )
         cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:emails', 'full')")
         cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:emails', 'allow')")

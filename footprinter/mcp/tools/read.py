@@ -49,7 +49,7 @@ def footprinter_read(
                 'raw' returns raw decoded content without extraction.
 
     Returns:
-        Dict with 'content' and 'metadata' on success,
+        Dict with per-type identity fields, 'content', and 'metadata' on success,
         or 'error', 'error_code', and 'metadata' on denial/failure.
     """
     with get_db() as conn:
