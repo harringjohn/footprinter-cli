@@ -4389,6 +4389,145 @@ class TestContexterRead:
             for field in ("visibility", "access"):
                 assert field not in meta, f"chat: internal field '{field}' leaked"
 
+    def test_read_file_hoists_identity_fields(self, mcp_db):
+        """File read should hoist name/path/source/created_at/modified_at/project_name before content."""
+        cursor = mcp_db.cursor()
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, created_at, modified_at, visibility, access, project_id) "
+            "VALUES (1, 'readme.md', '/Users/u/readme.md', 'local', 'listed',"
+            " 'markdown', 100, '2024-01-15', '2024-01-16', 'full', 'allow', 1)"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:local', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:local', 'allow')")
+        mcp_db.commit()
+
+        with (
+            patch("footprinter.mcp.tools.read.get_db") as mock_get_db,
+            patch("footprinter.mcp.tools.read.content_service.read_file") as mock_read,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_read.return_value = {
+                "status": "ok",
+                "content": "# Hello",
+                "metadata": {
+                    "id": 1,
+                    "name": "readme.md",
+                    "path": "/Users/u/readme.md",
+                    "source": "local",
+                    "created_at": "2024-01-15",
+                    "modified_at": "2024-01-16",
+                    "project_name": "AcmeWeb",
+                    "content_type": "markdown",
+                },
+            }
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1)
+
+        assert "error" not in result
+        keys = list(result.keys())
+        expected_leading = ["name", "path", "source", "created_at", "modified_at", "project_name"]
+        assert keys[: len(expected_leading)] == expected_leading
+        assert keys[len(expected_leading)] == "content"
+        # Non-breaking: fields still in metadata
+        for field in expected_leading:
+            assert field in result["metadata"]
+
+    def test_read_email_hoists_identity_fields(self, mcp_db):
+        """Email read should hoist subject/from_address/from_name/account/received_at/project_name."""
+        cursor = mcp_db.cursor()
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
+        cursor.execute(
+            "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, from_name, "
+            "to_addresses, received_at, body_preview, project_id, visibility) "
+            "VALUES (1, 'msg-1', 'thread-1', 'work', 'Weekly Update', 'bob@acme.com', 'Bob', "
+            "'alice@test.com', '2024-01-15', 'Email body here.', 1, 'full')"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:emails', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:emails', 'allow')")
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("email", 1)
+
+        assert "error" not in result
+        keys = list(result.keys())
+        expected_leading = ["subject", "from_address", "from_name", "account", "received_at", "project_name"]
+        assert keys[: len(expected_leading)] == expected_leading
+        assert keys[len(expected_leading)] == "content"
+        for field in expected_leading:
+            assert field in result["metadata"]
+
+    def test_read_chat_hoists_identity_fields(self, mcp_db):
+        """Chat read should hoist title/account/created_at/project_name."""
+        cursor = mcp_db.cursor()
+        cursor.execute("INSERT INTO projects (id, name) VALUES (1, 'AcmeWeb')")
+        cursor.execute(
+            "INSERT INTO chats "
+            "(id, external_id, account, title, created_at, message_count, project_id, visibility) "
+            "VALUES (1, 'conv-uuid-1', 'claude', 'Design Chat', '2024-01-15', 1, 1, 'full')"
+        )
+        cursor.execute(
+            "INSERT INTO messages (chat_id, role, content, created_at) "
+            "VALUES (1, 'user', 'Hello!', '2024-01-15 10:00:00')"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:chats', 'allow')")
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("chat", 1)
+
+        assert "error" not in result
+        keys = list(result.keys())
+        expected_leading = ["title", "account", "created_at", "project_name"]
+        assert keys[: len(expected_leading)] == expected_leading
+        assert keys[len(expected_leading)] == "content"
+        for field in expected_leading:
+            assert field in result["metadata"]
+
+    def test_read_hoisted_fields_none_when_missing(self, mcp_db):
+        """Hoisted project_name should be None (not absent) when no project is set."""
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO chats "
+            "(id, external_id, account, title, created_at, message_count, visibility) "
+            "VALUES (1, 'conv-uuid-1', 'claude', 'Orphan Chat', '2024-01-15', 1, 'full')"
+        )
+        cursor.execute(
+            "INSERT INTO messages (chat_id, role, content, created_at) "
+            "VALUES (1, 'user', 'Hi', '2024-01-15 10:00:00')"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:chats', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:chats', 'allow')")
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("chat", 1)
+
+        assert "error" not in result
+        assert "project_name" in result
+        assert result["project_name"] is None
+
 
 # ---------------------------------------------------------------------------
 # TestPathContainment

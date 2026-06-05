@@ -7,6 +7,18 @@ from footprinter.mcp.errors import mcp_error
 from footprinter.services import access_service, content_service
 from footprinter.services.roles import Role
 
+_IDENTITY_FIELDS = {
+    "file": ("name", "path", "source", "created_at", "modified_at", "project_name"),
+    "email": ("subject", "from_address", "from_name", "account", "received_at", "project_name"),
+    "chat": ("title", "account", "created_at", "project_name"),
+}
+
+
+def _with_identity(item_type: str, content: str, metadata: dict) -> dict:
+    identity = {k: metadata.get(k) for k in _IDENTITY_FIELDS.get(item_type, ())}
+    return {**identity, "content": content, "metadata": metadata}
+
+
 # Map service status codes to MCP error codes
 _STATUS_TO_MCP = {
     "hidden": "NOT_FOUND",
@@ -58,10 +70,7 @@ def footprinter_read(
 
         # Email/chat: content already in result
         if item_type != "file":
-            return {
-                "content": result.get("content", ""),
-                "metadata": result["metadata"],
-            }
+            return _with_identity(item_type, result.get("content", ""), result["metadata"])
 
         # File: read content via service I/O
         file_result = content_service.read_file(conn, result["metadata"], format=format)
@@ -71,7 +80,4 @@ def footprinter_read(
                 metadata=file_result.get("metadata", result["metadata"]),
                 internal_message=file_result.get("message"),
             )
-        return {
-            "content": file_result["content"],
-            "metadata": file_result["metadata"],
-        }
+        return _with_identity(item_type, file_result["content"], file_result["metadata"])
