@@ -4074,12 +4074,15 @@ class TestContexterRead:
 
     def test_unresolved_visibility_defaults_opaque(self, mcp_db):
         """Email without visibility (defaults to inherit) should be opaque."""
+        from footprinter.services.access_service import load_globals
+
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, from_address, received_at, body_preview) "
             "VALUES (1, 'msg-1', 'thread-1', 'personal', 'Unresolved', 'a@b.com', '2024-01-01', 'body')"
         )
         mcp_db.commit()
+        load_globals(mcp_db)
 
         with patch("footprinter.mcp.tools.read.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__ = lambda s: mcp_db
