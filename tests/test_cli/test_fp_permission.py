@@ -4,10 +4,13 @@ Covers:
   - Parser tree: help exits 0 for all subcommands
   - List: show all policies with target terminology
   - Set: unified policy setter (--visibility / --access / --dry-run)
+  - Set CSV: bulk record policies via CSV file
   - Reset: policy delete / reseed with confirmation changes
   - Check: resolve target with required argument
 """
 
+import os
+import tempfile
 from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
@@ -1354,3 +1357,417 @@ class TestCheckFilePathVerbose:
 
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
         assert "verbose" not in printed.lower()
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: argument parsing
+# ---------------------------------------------------------------------------
+
+
+class TestSetCsvArgParsing:
+    def test_csv_arg_accepted_by_parser(self):
+        _, _, code = run_fp("permission", "set", "--help")
+        assert code == 0
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.count_affected_entities", return_value={"file": 3})
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_set_without_csv_unchanged(self, mock_db, mock_count, mock_set_vis, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _set(Namespace(scope="global", visibility="full", access=None, dry_run=False, csv_file=None))
+
+        mock_set_vis.assert_called_once_with(conn, "global", "full")
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: validation (flag conflicts, scope, file, header)
+# ---------------------------------------------------------------------------
+
+
+class TestSetCsvValidation:
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_with_visibility_flag_errors(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility="full", access=None, dry_run=False))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_with_access_flag_errors(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="source:emails", csv_file="x.csv", visibility=None, access="deny", dry_run=False))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_requires_source_scope(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="global", csv_file="x.csv", visibility=None, access=None, dry_run=False))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_rejects_source_browser(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="source:browser", csv_file="x.csv", visibility=None, access=None, dry_run=False))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_file_not_found(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(
+                scope="source:emails", csv_file="/nonexistent/path.csv",
+                visibility=None, access=None, dry_run=False,
+            ))
+
+        assert exc_info.value.code == 1
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_missing_id_column(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("visibility,access\nhidden,deny\n")
+            f.flush()
+            try:
+                with pytest.raises(SystemExit) as exc_info:
+                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                assert exc_info.value.code == 1
+            finally:
+                os.unlink(f.name)
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_no_policy_columns(self, mock_db):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("id,name\n10,test\n")
+            f.flush()
+            try:
+                with pytest.raises(SystemExit) as exc_info:
+                    _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                assert exc_info.value.code == 1
+            finally:
+                os.unlink(f.name)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_csv_empty_no_data_rows(self, mock_db, mock_set_perm, mock_set_vis, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("id,visibility,access\n")
+            f.flush()
+            try:
+                _set(Namespace(scope="source:emails", csv_file=f.name, visibility=None, access=None, dry_run=False))
+                mock_set_vis.assert_not_called()
+                mock_set_perm.assert_not_called()
+                mock_recalc.assert_not_called()
+            finally:
+                os.unlink(f.name)
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: atomic abort on row validation
+# ---------------------------------------------------------------------------
+
+
+def _write_csv(content: str) -> str:
+    """Write CSV content to a temp file and return its path."""
+    f = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    f.write(content)
+    f.close()
+    return f.name
+
+
+def _mock_conn_with_id_check(valid_ids: set[int] | None = None):
+    """Return a mock connection that responds to ID existence queries."""
+    conn = _mock_conn()
+    if valid_ids is None:
+        valid_ids = set()
+
+    def fake_execute(sql, params=None):
+        result = MagicMock()
+        if sql.startswith("SELECT 1 FROM") and params:
+            result.fetchone.return_value = {"1": 1} if params[0] in valid_ids else None
+        else:
+            result.fetchone.return_value = None
+            result.fetchall.return_value = []
+        return result
+
+    conn.execute = MagicMock(side_effect=fake_execute)
+    return conn
+
+
+class TestSetCsvAtomicAbort:
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_invalid_id_not_integer(self, mock_db, mock_set_perm, mock_set_vis):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn()
+        csv_path = _write_csv("id,visibility\nabc,hidden\n")
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert exc_info.value.code == 1
+            mock_set_vis.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_invalid_visibility(self, mock_db, mock_set_vis):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check({10})
+        csv_path = _write_csv("id,visibility\n10,secret\n")
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert exc_info.value.code == 1
+            mock_set_vis.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_invalid_access(self, mock_db, mock_set_perm):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check({10})
+        csv_path = _write_csv("id,access\n10,maybe\n")
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert exc_info.value.code == 1
+            mock_set_perm.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_row_with_neither_setting(self, mock_db, mock_set_perm, mock_set_vis):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check({10})
+        csv_path = _write_csv("id,visibility,access\n10,,\n")
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert exc_info.value.code == 1
+            mock_set_vis.assert_not_called()
+            mock_set_perm.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_nonexistent_id(self, mock_db, mock_set_perm, mock_set_vis):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check(set())
+        csv_path = _write_csv("id,visibility\n99,hidden\n")
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert exc_info.value.code == 1
+            mock_set_vis.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_abort_prevents_any_writes(self, mock_db, mock_set_perm, mock_set_vis):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check({10})
+        csv_path = _write_csv("id,visibility\n10,hidden\n20,secret\n")
+        try:
+            with pytest.raises(SystemExit):
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            mock_set_vis.assert_not_called()
+            mock_set_perm.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_line_number_includes_header(self, mock_db, mock_set_vis, capsys):
+        from footprinter.cli.permission_cmd import _set
+
+        mock_db.return_value = _mock_conn_with_id_check({10, 20})
+        csv_path = _write_csv("id,visibility\n10,hidden\n20,full\n30,secret\n")
+        try:
+            with pytest.raises(SystemExit):
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            output = capsys.readouterr().out
+            assert "Row 4" in output
+        finally:
+            os.unlink(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: successful apply
+# ---------------------------------------------------------------------------
+
+
+class TestSetCsvApply:
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_applies_visibility_policies(self, mock_db, mock_set_vis, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10, 42})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert mock_set_vis.call_count == 2
+            mock_set_vis.assert_any_call(conn, "email:10", "hidden")
+            mock_set_vis.assert_any_call(conn, "email:42", "opaque")
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_applies_access_policies(self, mock_db, mock_set_perm, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10, 42})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,access\n10,deny\n42,allow\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            assert mock_set_perm.call_count == 2
+            mock_set_perm.assert_any_call(conn, "email:10", "deny")
+            mock_set_perm.assert_any_call(conn, "email:42", "allow")
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_applies_both_policies(self, mock_db, mock_set_vis, mock_set_perm, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility,access\n10,hidden,deny\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
+            mock_set_perm.assert_called_once_with(conn, "email:10", "deny")
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_permission_policy")
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_skips_empty_cells(self, mock_db, mock_set_vis, mock_set_perm, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility,access\n10,hidden,\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
+            mock_set_perm.assert_not_called()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_recalculates_once(self, mock_db, mock_set_vis, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10, 42})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            mock_recalc.assert_called_once_with(conn, "source:emails")
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_conn_closed(self, mock_db, mock_set_vis, mock_recalc):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n10,hidden\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            conn.close.assert_called_once()
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.set_visibility_policy")
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_prints_summary(self, mock_db, mock_set_vis, mock_recalc, capsys):
+        from footprinter.cli.permission_cmd import _set
+
+        conn = _mock_conn_with_id_check({10, 42})
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None, dry_run=False))
+            output = capsys.readouterr().out
+            assert "2" in output
+        finally:
+            os.unlink(csv_path)

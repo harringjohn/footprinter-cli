@@ -2,17 +2,19 @@
 
 Subcommands:
     fp permission list                   Show all configured policies
-    fp permission set <scope>            Set visibility and/or access for a scope
+    fp permission set <scope> [csv]      Set visibility and/or access for a scope
     fp permission reset <scope>          Remove policy (fall back to inheritance)
     fp permission check <scope>           Resolve access for a scope
     fp permission recalculate [scope]    Re-resolve access stamps from the policy chain
 """
 
+import csv
+import os
 import time
 
 from rich.table import Table
 
-from footprinter.access_stamper import count_affected_entities
+from footprinter.access_stamper import ENTITY_META, count_affected_entities
 from footprinter.cli._common import FORMATTER, add_json_flag, console, output_json
 from footprinter.cli._policy_helpers import (
     check_client,
@@ -39,6 +41,15 @@ from footprinter.db.policies import (
 
 _VISIBILITY_INPUT = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
 _VISIBILITY_DISPLAY = {"full": "full", "opaque": "opaque", "hidden": "hidden"}
+
+_CSV_SCOPE_PREFIX: dict[str, str] = {
+    "files": "file",
+    "emails": "email",
+    "chats": "chat",
+    "folders": "folder",
+    "projects": "project",
+    "clients": "client",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +173,10 @@ def _list(args) -> None:
 
 
 def _set(args) -> None:
+    csv_file = getattr(args, "csv_file", None)
+    if csv_file is not None:
+        return _set_csv(args)
+
     visibility = getattr(args, "visibility", None)
     access = getattr(args, "access", None)
     dry_run = getattr(args, "dry_run", False)
@@ -224,6 +239,139 @@ def _set(args) -> None:
             f"Set [cyan]{args.scope}[/cyan]: {', '.join(settings_desc)}"
         )
         stats = recalculate_with_progress(conn, args.scope)
+        _print_recalc_stats(stats)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Handler: set (CSV bulk path)
+# ---------------------------------------------------------------------------
+
+
+def _set_csv(args) -> None:
+    visibility_flag = getattr(args, "visibility", None)
+    access_flag = getattr(args, "access", None)
+    csv_file = args.csv_file
+
+    if visibility_flag or access_flag:
+        console.print(
+            "[red]Cannot combine CSV file with --visibility/--access flags.[/red]\n"
+            "  Settings come from the CSV columns."
+        )
+        raise SystemExit(1)
+
+    scope = args.scope
+    if ":" not in scope or not scope.startswith("source:"):
+        console.print(
+            "[red]CSV bulk requires a source:<type> scope.[/red]\n"
+            f"  Got: {scope}"
+        )
+        raise SystemExit(1)
+
+    source_type = scope.split(":", 1)[1]
+    scope_prefix = _CSV_SCOPE_PREFIX.get(source_type)
+    if scope_prefix is None:
+        console.print(
+            f"[red]CSV bulk is not supported for {scope}.[/red]\n"
+            f"  Supported: {', '.join(sorted(_CSV_SCOPE_PREFIX))}"
+        )
+        raise SystemExit(1)
+
+    if not os.path.isfile(csv_file):
+        console.print(f"[red]File not found:[/red] {csv_file}")
+        raise SystemExit(1)
+
+    with open(csv_file, newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+
+        if "id" not in fieldnames:
+            console.print("[red]CSV must contain an 'id' column.[/red]")
+            raise SystemExit(1)
+
+        has_visibility = "visibility" in fieldnames
+        has_access = "access" in fieldnames
+        if not has_visibility and not has_access:
+            console.print(
+                "[red]CSV must contain at least one of: visibility, access.[/red]"
+            )
+            raise SystemExit(1)
+
+        rows = list(reader)
+
+    if not rows:
+        console.print("[dim]No rows in CSV — nothing to apply.[/dim]")
+        return
+
+    conn = get_policy_db()
+    if conn is None:
+        console.print("[yellow]No database found.[/yellow]")
+        raise SystemExit(1)
+
+    try:
+        entity_type = scope_prefix
+        table = ENTITY_META[entity_type]["table"]
+
+        validated: list[tuple[int, str | None, str | None]] = []
+        for i, row in enumerate(rows, start=2):
+            raw_id = row.get("id", "").strip()
+            try:
+                record_id = int(raw_id)
+            except (ValueError, TypeError):
+                console.print(
+                    f"[red]Row {i}: Invalid id '{raw_id}' — must be an integer.[/red]"
+                )
+                raise SystemExit(1)
+
+            vis = row.get("visibility", "").strip() if has_visibility else ""
+            acc = row.get("access", "").strip() if has_access else ""
+
+            if not vis and not acc:
+                console.print(
+                    f"[red]Row {i}: At least one of visibility or access must be set.[/red]"
+                )
+                raise SystemExit(1)
+
+            if vis and vis not in _VISIBILITY_INPUT:
+                console.print(
+                    f"[red]Row {i}: Invalid visibility '{vis}'.[/red]\n"
+                    f"  Valid: {', '.join(sorted(_VISIBILITY_INPUT))}"
+                )
+                raise SystemExit(1)
+
+            if acc and acc not in PERMISSION_SETTINGS:
+                console.print(
+                    f"[red]Row {i}: Invalid access '{acc}'.[/red]\n"
+                    f"  Valid: {', '.join(sorted(PERMISSION_SETTINGS))}"
+                )
+                raise SystemExit(1)
+
+            exists = conn.execute(
+                f"SELECT 1 FROM {table} WHERE id = ?", (record_id,)
+            ).fetchone()
+            if not exists:
+                console.print(
+                    f"[red]Row {i}: {entity_type} {record_id} not found in database.[/red]"
+                )
+                raise SystemExit(1)
+
+            validated.append((record_id, vis or None, acc or None))
+
+        for record_id, vis, acc in validated:
+            record_scope = f"{scope_prefix}:{record_id}"
+            if vis:
+                set_visibility_policy(conn, record_scope, vis)
+            if acc:
+                set_permission_policy(conn, record_scope, acc)
+
+        stats = recalculate_with_progress(conn, scope)
+
+        console.print(
+            f"\nApplied [bold]{len(validated)}[/bold] record "
+            f"{'policy' if len(validated) == 1 else 'policies'} "
+            f"for [cyan]{scope}[/cyan]."
+        )
         _print_recalc_stats(stats)
     finally:
         conn.close()
@@ -444,7 +592,7 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp permission list                              Show all policies\n"
             "  fp permission set global --visibility full --access allow\n"
-            "  fp permission set folder:~/Work --visibility hidden --dry-run\n"
+            "  fp permission set source:emails records.csv     Bulk per-record policies\n"
             "  fp permission reset folder:~/Work               Remove folder policy\n"
             "  fp permission check ~/Work/file.py              Check access resolution\n"
             "  fp permission recalculate                       Full recalculation\n"
@@ -485,7 +633,9 @@ def register(subparsers) -> None:
         help="Set policy for a scope",
         description=(
             "Set visibility and/or access for a scope.\n\n"
-            "At least one of --visibility or --access is required.\n"
+            "Single-scope mode: at least one of --visibility or --access is required.\n"
+            "CSV bulk mode: pass a CSV file with id,visibility,access columns after\n"
+            "a source:<type> scope to set per-record policies in bulk.\n\n"
             "Scopes: global, folder:~/path, project:<id>, client:<id>, source:<type>."
         ),
         epilog=(
@@ -494,13 +644,21 @@ def register(subparsers) -> None:
             "  fp permission set folder:~/Work --visibility hidden\n"
             "  fp permission set folder:~/Work --access deny --dry-run\n"
             "  fp permission set project:3 --access deny\n"
-            "  fp permission set source:emails --visibility opaque --access deny"
+            "  fp permission set source:emails --visibility opaque --access deny\n"
+            "  fp permission set source:emails records.csv   # bulk per-record policies\n"
+            "  fp permission set source:files  records.csv   # bulk per-record policies"
         ),
         formatter_class=FORMATTER,
     )
     set_parser.add_argument(
         "scope",
-        help="Policy scope (e.g. global, folder:~/Work, project:3)",
+        help="Policy scope (e.g. global, folder:~/Work, source:emails)",
+    )
+    set_parser.add_argument(
+        "csv_file",
+        nargs="?",
+        default=None,
+        help="CSV file with id,visibility,access columns (requires source:<type> scope)",
     )
     set_parser.add_argument(
         "--visibility",
