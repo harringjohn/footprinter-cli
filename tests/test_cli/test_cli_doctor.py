@@ -616,7 +616,8 @@ class TestDoctorFtsHealth:
 
         result = _check_fts_health()
 
-        assert "FTS" in result.message
+        assert result.message.startswith("FTS health check failed:")
+        assert "fp doctor search" in result.message
         assert result.status == "WARN"
 
     def test_database_open_failure_is_warn_status(self, tmp_path, monkeypatch):
