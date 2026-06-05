@@ -102,7 +102,7 @@ _COMMIT_INTERVAL = 100
 _shutdown = False
 
 
-def _handle_shutdown(signum, frame):
+def _handle_shutdown(signum: int, frame: Any) -> None:
     global _shutdown
     _shutdown = True
     logger.warning("Received %s — finishing current file...", signal.Signals(signum).name)

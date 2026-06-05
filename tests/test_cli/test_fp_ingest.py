@@ -810,18 +810,21 @@ class TestBareIngestScopesFileIds:
 
 
 class TestVectorizeStageKeyboardInterrupt:
-    """KeyboardInterrupt in vectorization stage must not propagate."""
+    """KeyboardInterrupt in vectorization stage re-raises after cleanup."""
 
     @patch("footprinter.cli._vectorize_stage._file_vectorization_in_config", return_value=True)
     @patch("footprinter.ingest.orchestrator.DataPipelineOrchestrator")
-    def test_keyboard_interrupt_does_not_propagate(self, mock_orch_cls, _config):
+    def test_keyboard_interrupt_propagates_after_cleanup(self, mock_orch_cls, _config):
+        import pytest
+
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
         mock_orch = MagicMock()
         mock_orch.run_vectorization.side_effect = KeyboardInterrupt
         mock_orch_cls.return_value = mock_orch
 
-        run_vectorization_stage(quiet=True)
+        with pytest.raises(KeyboardInterrupt):
+            run_vectorization_stage(quiet=True)
 
         mock_orch.close.assert_called_once()
 
