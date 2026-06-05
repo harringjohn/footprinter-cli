@@ -179,7 +179,6 @@ def _set(args) -> None:
 
     visibility = getattr(args, "visibility", None)
     access = getattr(args, "access", None)
-    dry_run = getattr(args, "dry_run", False)
 
     if not visibility and not access:
         console.print(
@@ -225,10 +224,6 @@ def _set(args) -> None:
             else f"\nScope: [cyan]{args.scope}[/cyan]  (0 entities)"
         )
         console.print(f"  Setting: {', '.join(settings_desc)}")
-
-        if dry_run:
-            console.print("\n[dim]Dry run — no changes made.[/dim]")
-            return
 
         if visibility:
             set_visibility_policy(conn, args.scope, _VISIBILITY_INPUT[visibility])
@@ -642,7 +637,6 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp permission set global --visibility full --access allow\n"
             "  fp permission set folder:~/Work --visibility hidden\n"
-            "  fp permission set folder:~/Work --access deny --dry-run\n"
             "  fp permission set project:3 --access deny\n"
             "  fp permission set source:emails --visibility opaque --access deny\n"
             "  fp permission set source:emails records.csv   # bulk per-record policies\n"
@@ -671,12 +665,6 @@ def register(subparsers) -> None:
         default=None,
         choices=["allow", "deny"],
         help="Access: allow or deny",
-    )
-    set_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        dest="dry_run",
-        help="Preview changes without applying",
     )
     set_parser.set_defaults(func=_set)
 
