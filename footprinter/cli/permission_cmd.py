@@ -348,12 +348,17 @@ def _set_csv(args) -> None:
 
             validated.append((record_id, vis or None, acc or None))
 
-        for record_id, vis, acc in validated:
-            record_scope = f"{scope_prefix}:{record_id}"
-            if vis:
-                set_visibility_policy(conn, record_scope, vis)
-            if acc:
-                set_permission_policy(conn, record_scope, acc)
+        try:
+            for record_id, vis, acc in validated:
+                record_scope = f"{scope_prefix}:{record_id}"
+                if vis:
+                    set_visibility_policy(conn, record_scope, vis, commit=False)
+                if acc:
+                    set_permission_policy(conn, record_scope, acc, commit=False)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
         stats = recalculate_with_progress(conn, scope)
 

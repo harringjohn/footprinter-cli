@@ -10,6 +10,7 @@ Covers:
 """
 
 import os
+import sqlite3
 import tempfile
 from argparse import Namespace
 from unittest.mock import MagicMock, patch
@@ -1639,8 +1640,8 @@ class TestSetCsvApply:
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert mock_set_vis.call_count == 2
-            mock_set_vis.assert_any_call(conn, "email:10", "hidden")
-            mock_set_vis.assert_any_call(conn, "email:42", "opaque")
+            mock_set_vis.assert_any_call(conn, "email:10", "hidden", commit=False)
+            mock_set_vis.assert_any_call(conn, "email:42", "opaque", commit=False)
         finally:
             os.unlink(csv_path)
 
@@ -1657,8 +1658,8 @@ class TestSetCsvApply:
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             assert mock_set_perm.call_count == 2
-            mock_set_perm.assert_any_call(conn, "email:10", "deny")
-            mock_set_perm.assert_any_call(conn, "email:42", "allow")
+            mock_set_perm.assert_any_call(conn, "email:10", "deny", commit=False)
+            mock_set_perm.assert_any_call(conn, "email:42", "allow", commit=False)
         finally:
             os.unlink(csv_path)
 
@@ -1675,8 +1676,8 @@ class TestSetCsvApply:
         csv_path = _write_csv("id,visibility,access\n10,hidden,deny\n")
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
-            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
-            mock_set_perm.assert_called_once_with(conn, "email:10", "deny")
+            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden", commit=False)
+            mock_set_perm.assert_called_once_with(conn, "email:10", "deny", commit=False)
         finally:
             os.unlink(csv_path)
 
@@ -1693,7 +1694,7 @@ class TestSetCsvApply:
         csv_path = _write_csv("id,visibility,access\n10,hidden,\n")
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
-            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden")
+            mock_set_vis.assert_called_once_with(conn, "email:10", "hidden", commit=False)
             mock_set_perm.assert_not_called()
         finally:
             os.unlink(csv_path)
@@ -1744,5 +1745,113 @@ class TestSetCsvApply:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
             output = capsys.readouterr().out
             assert "2" in output
+        finally:
+            os.unlink(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Fixture: real DB for integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def policy_db(tmp_path):
+    """Real SQLite DB with schema + test entities for transaction and round-trip tests.
+
+    Yields (conn, db_path).  _set_csv closes conn in its finally block,
+    so tests that need to verify post-call state should re-open from db_path.
+    """
+    from footprinter.ingest.database import Database
+
+    db_path = tmp_path / "policy_test.db"
+    db = Database(str(db_path))
+    db.conn.close()
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+
+    conn.execute(
+        """INSERT OR IGNORE INTO sources (name, source_type, adapter, account, label, icon, enabled)
+           VALUES ('local', 'file', 'local_fs', NULL, 'Local Files', 'folder', 1)"""
+    )
+    conn.execute(
+        """INSERT INTO emails (id, message_id, thread_id, account, from_address, from_name,
+                               to_addresses, subject, body_preview, received_at,
+                               labels, status, visibility, access)
+           VALUES
+               (1, 'msg-1', 'thr-1', 'work', 'a@test.com', 'Alice',
+                'b@test.com', 'Subj 1', 'Body 1', '2026-01-15T10:00:00',
+                'inbox', 'listed', 'full', 'allow'),
+               (2, 'msg-2', 'thr-2', 'work', 'b@test.com', 'Bob',
+                'a@test.com', 'Subj 2', 'Body 2', '2026-01-15T11:00:00',
+                'inbox', 'listed', 'opaque', 'allow'),
+               (3, 'msg-3', 'thr-3', 'work', 'c@test.com', 'Carol',
+                'a@test.com', 'Subj 3', 'Body 3', '2026-01-15T12:00:00',
+                'inbox', 'listed', 'full', 'deny')"""
+    )
+    conn.commit()
+    yield conn, db_path
+
+
+# ---------------------------------------------------------------------------
+# Set CSV: transaction atomicity
+# ---------------------------------------------------------------------------
+
+
+class TestSetCsvTransactionAtomicity:
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_mid_write_failure_rolls_back(self, mock_db, mock_recalc, policy_db):
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+        call_count = 0
+        original = __import__("footprinter.db.policies", fromlist=["set_visibility_policy"]).set_visibility_policy
+
+        def explode_on_third(conn, scope, setting, *, commit=True):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 3:
+                raise RuntimeError("simulated write failure")
+            return original(conn, scope, setting, commit=commit)
+
+        csv_path = _write_csv("id,visibility\n1,hidden\n2,opaque\n3,full\n")
+        try:
+            with patch("footprinter.cli.permission_cmd.set_visibility_policy", side_effect=explode_on_third):
+                with pytest.raises(RuntimeError, match="simulated write failure"):
+                    _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            rows = verify.execute("SELECT * FROM visibility_policies").fetchall()
+            verify.close()
+            assert len(rows) == 0, f"Expected rollback to clear all rows, found {len(rows)}"
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_successful_bulk_commits_all(self, mock_db, mock_recalc, policy_db):
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n1,hidden\n2,opaque\n")
+        try:
+            _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            rows = verify.execute(
+                "SELECT scope, setting FROM visibility_policies ORDER BY scope"
+            ).fetchall()
+            verify.close()
+            assert len(rows) == 2
+            by_scope = {r["scope"]: r["setting"] for r in rows}
+            assert by_scope["email:1"] == "hidden"
+            assert by_scope["email:2"] == "opaque"
         finally:
             os.unlink(csv_path)
