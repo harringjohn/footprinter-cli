@@ -1,6 +1,6 @@
-# Access Control
+# Permission Policies and Access Control
 
-Reference for the security model that controls access to Footprinter data. The model applies to both interfaces (CLI and MCP), with **roles** determining which path a caller takes.
+Reference for the permission-policy and access-control system that governs Footprinter data. Covers visibility (existence / metadata / content), read access, and the `fp permission` command across both interfaces (CLI and MCP), with **roles** determining which path a caller takes.
 
 ---
 

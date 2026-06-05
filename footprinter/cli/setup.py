@@ -1509,7 +1509,7 @@ def seed_access_policies() -> dict:
         console.print("  [dim]Permission: allow[/dim] = AI clients can read file contents when asked")
         console.print(
             "  [dim]Security posture: fail-open (all reads allowed). "
-            "See reference/mcp-access-control.md § Security Posture.[/dim]"
+            "See reference/permission-policies-and-access-control.md § Security Posture.[/dim]"
         )
 
         if Confirm.ask(

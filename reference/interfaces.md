@@ -86,7 +86,7 @@ fp setup mcp --claude    # Write MCP config into Claude Desktop
 | `footprinter_folder` | Folder metadata and contents |
 | `footprinter_read` | Read file content (subject to permission checks) |
 
-All tools respect the two-layer access control model (visibility + access). See [mcp-access-control.md](mcp-access-control.md) for the full security model.
+All tools respect the two-layer access control model (visibility + access). See [permission-policies-and-access-control.md](permission-policies-and-access-control.md) for the full security model.
 
 ### HTTP API
 
@@ -184,7 +184,7 @@ Items also have a `access` column for content access:
 | `allow` | Content fields included |
 | `deny` | Content fields stripped; item still appears in results |
 
-The special value `inherit` resolves to the global policy at query time. See [mcp-access-control.md](mcp-access-control.md) for the full model.
+The special value `inherit` resolves to the global policy at query time. See [permission-policies-and-access-control.md](permission-policies-and-access-control.md) for the full model.
 
 ---
 
@@ -508,6 +508,6 @@ Returns `None` if the database file does not exist. Call `fp setup` and `fp inge
 
 ## Related Documentation
 
-- [mcp-access-control.md](mcp-access-control.md) — MCP security model and access control
+- [permission-policies-and-access-control.md](permission-policies-and-access-control.md) — MCP security model and access control
 - [data-model.md](data-model.md) — Database schema reference
 - [pipeline.md](pipeline.md) — Data pipeline stages and configuration

@@ -136,7 +136,7 @@ Sources are scanned into SQLite with bidirectional links connecting local files 
 - [Data Model](https://github.com/harringjohn/footprinter-cli/blob/main/reference/data-model.md) — database schema
 - [Pipeline](https://github.com/harringjohn/footprinter-cli/blob/main/reference/pipeline.md) — indexing stages and configuration
 - [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
-- [Access Control](https://github.com/harringjohn/footprinter-cli/blob/main/reference/mcp-access-control.md) — MCP security model
+- [Permission Policies and Access Control](https://github.com/harringjohn/footprinter-cli/blob/main/reference/permission-policies-and-access-control.md) — permission policies and access control
 
 ## Contributing
 
