@@ -75,19 +75,6 @@ class TestUnregisterMcpServer:
         assert ok is True
         assert not cfg_path.exists()
 
-    def test_dry_run_does_not_write(self, tmp_path):
-        """dry_run=True leaves the file untouched."""
-        from footprinter.cli.mcp_setup import unregister_mcp_server
-
-        cfg_path = tmp_path / "claude_desktop_config.json"
-        self._write_config(cfg_path, {"mcpServers": {"footprinter": {"command": "fp"}}})
-        original = cfg_path.read_text()
-
-        ok = unregister_mcp_server(config_path=cfg_path, dry_run=True)
-
-        assert ok is True
-        assert cfg_path.read_text() == original
-
     def test_mcp_servers_null_is_handled(self, tmp_path):
         """``"mcpServers": null`` (hand-edited config) is treated as no entries."""
         from footprinter.cli.mcp_setup import unregister_mcp_server

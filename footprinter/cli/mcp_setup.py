@@ -222,7 +222,7 @@ def has_footprinter_entry(config: dict) -> bool:
     return "footprinter" in (config.get("mcpServers") or {})
 
 
-def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bool:
+def unregister_mcp_server(config_path: Path = None) -> bool:
     """Remove the footprinter entry from the Claude Desktop MCP config.
 
     Backs up the existing file before mutating.
@@ -230,7 +230,6 @@ def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bo
 
     Args:
         config_path: Override config path (default: auto-detected).
-        dry_run: If True, report intent without writing.
 
     Returns:
         True on success (including no-op cases — missing file, missing
@@ -259,10 +258,6 @@ def unregister_mcp_server(config_path: Path = None, dry_run: bool = False) -> bo
         return True
 
     servers = existing.get("mcpServers") or {}
-
-    if dry_run:
-        console.print(f"[dim]Would remove footprinter from:[/dim] {path}")
-        return True
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup = path.with_suffix(f".backup_{timestamp}.json")
