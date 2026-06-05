@@ -364,7 +364,8 @@ def register(subparsers) -> None:
             "  fp doctor --json           Machine-readable output\n"
             "  fp doctor search           Rebuild FTS search indexes\n"
             "  fp doctor semantic         Rebuild vector store (incremental)\n"
-            "  fp doctor semantic full    Rebuild vector store (full reset)"
+            "  fp doctor semantic full    Rebuild vector store (full reset)\n"
+            "  fp doctor repair-vectorized-at  Restore lost vectorized_at timestamps"
         ),
         formatter_class=FORMATTER,
     )
@@ -420,6 +421,51 @@ def register(subparsers) -> None:
         "--quiet", "-q", action="store_true", help="Suppress Rich output",
     )
     semantic_p.set_defaults(func=_handle_semantic)
+
+    # fp doctor repair-vectorized-at
+    repair_vec_p = sub.add_parser(
+        "repair-vectorized-at",
+        help="Restore vectorized_at timestamps from vector store",
+        description="Fix files with NULL vectorized_at that have chunks in the vector store.",
+        formatter_class=FORMATTER,
+    )
+    repair_vec_p.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress Rich output",
+    )
+    repair_vec_p.set_defaults(func=_handle_repair_vectorized_at)
+
+
+def _handle_repair_vectorized_at(args) -> None:
+    from footprinter.cli._common import console
+    from footprinter.ingest.database import Database
+    from footprinter.paths import get_db_path
+
+    quiet = getattr(args, "quiet", False)
+
+    try:
+        from footprinter.semantic.vector_store import VectorStore
+    except Exception as e:
+        if not quiet:
+            console.print(f"[yellow]Vector store unavailable:[/yellow] {e}")
+        return
+
+    db = Database(str(get_db_path()))
+    try:
+        store = VectorStore.get_instance()
+        counts = store.get_vectorized_file_counts()
+
+        from footprinter.db.files import repair_vectorized_at
+
+        repaired = repair_vectorized_at(db.conn, counts)
+        db.conn.commit()
+
+        if not quiet:
+            console.print(
+                f"[green]Repaired {repaired} file(s)[/green] — "
+                f"checked {len(counts)} vectorized files in store"
+            )
+    finally:
+        db.close()
 
 
 def _handle_search(args) -> None:
