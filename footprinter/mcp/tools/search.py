@@ -10,7 +10,18 @@ from footprinter.utils.paths import abbreviate_home as _shorten_path
 # Per-source result cap enforced at the MCP layer to stay under the
 # 1MB tool-result protocol limit. The service layer remains uncapped
 # so CLI/API callers can request larger result sets directly.
-MCP_SEARCH_LIMIT_CAP = 200
+
+
+def _load_mcp_search_limit_cap() -> int:
+    try:
+        from footprinter.source_registry import get_config
+
+        return get_config().get("limits", {}).get("mcp_search_limit_cap", 200)
+    except Exception:
+        return 200
+
+
+MCP_SEARCH_LIMIT_CAP = _load_mcp_search_limit_cap()
 
 # Display names for source keys in summary text
 _SOURCE_LABELS = {
