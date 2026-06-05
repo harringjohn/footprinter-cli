@@ -1104,6 +1104,91 @@ class TestDoctorMcpConfig:
         check = _check_mcp_config()
         assert check.status == "OK"
 
+    def test_get_mcp_command_failure_returns_warn(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        fp_mcp_bin = tmp_path / "fp-mcp"
+        fp_mcp_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(fp_mcp_bin)},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+
+        def _boom():
+            raise RuntimeError("cannot resolve canonical command")
+
+        monkeypatch.setattr("footprinter.cli.mcp_setup.get_mcp_command", _boom)
+
+        check = _check_mcp_config()
+        assert check.status == "WARN"
+        assert "cannot verify" in check.message
+
+    def test_different_absolute_paths_same_basename_warns(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        old_bin = tmp_path / "old-venv" / "bin" / "fp-mcp"
+        old_bin.parent.mkdir(parents=True)
+        old_bin.touch()
+        new_bin = tmp_path / "new-venv" / "bin" / "fp-mcp"
+        new_bin.parent.mkdir(parents=True)
+        new_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(old_bin)},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command", lambda: (str(new_bin), []),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "WARN"
+
+    def test_python_module_configured_vs_fp_mcp_canonical_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        py_bin = tmp_path / "python3"
+        py_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(py_bin), "args": ["-m", "footprinter.mcp"]},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command",
+            lambda: (str(tmp_path / "fp-mcp"), []),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
+    def test_canonical_module_vs_fp_mcp_configured_ok(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        fp_mcp_bin = tmp_path / "fp-mcp"
+        fp_mcp_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(fp_mcp_bin)},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command",
+            lambda: (str(tmp_path / "python3"), ["-m", "footprinter.mcp"]),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "OK"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
