@@ -75,6 +75,16 @@ class TestPermissionParserTree:
         assert "recalculate" in combined
 
 
+class TestCheckHelpContent:
+    def test_check_help_mentions_scope(self):
+        stdout, stderr, code = run_fp("permission", "check", "--help")
+        combined = stdout + stderr
+        assert "scope" in combined.lower()
+        assert "--folder" not in combined
+        assert "--project" not in combined
+        assert "--client" not in combined
+
+
 class TestResetHelpContent:
     def test_reset_help_mentions_inheritance(self):
         stdout, stderr, code = run_fp("permission", "reset", "--help")
@@ -813,72 +823,120 @@ class TestResetAll:
 # ---------------------------------------------------------------------------
 
 
-class TestCheckRouting:
+class TestCheckScopeRouting:
     @patch("footprinter.cli.permission_cmd.check_file_path", return_value=0)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_check_path_calls_check_file_path(self, mock_db, mock_check):
+    def test_bare_path_routes_to_check_file_path(self, mock_db, mock_check):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=False, verbose=False))
+        _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "~/Work/file.py", False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_file_path", return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_file_prefix_path_routes_to_check_file_path(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="file:~/Work/file.py", json=False, verbose=False))
 
         mock_check.assert_called_once_with(conn, "~/Work/file.py", False, False)
 
     @patch("footprinter.cli.permission_cmd.check_folder", return_value=0)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_check_folder_calls_check_folder(self, mock_db, mock_check):
+    def test_folder_prefix_routes_to_check_folder(self, mock_db, mock_check):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path=None, folder="~/Work", project=None, client=None, json=False, verbose=True))
+        _check(Namespace(scope="folder:~/Work", json=False, verbose=True))
 
         mock_check.assert_called_once_with(conn, "~/Work", False, True)
 
     @patch("footprinter.cli.permission_cmd.check_project", return_value=0)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_check_project_calls_check_project(self, mock_db, mock_check):
+    def test_project_prefix_routes_to_check_project(self, mock_db, mock_check):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path=None, folder=None, project=3, client=None, json=False, verbose=True))
+        _check(Namespace(scope="project:3", json=False, verbose=True))
 
         mock_check.assert_called_once_with(conn, 3, False, True)
 
     @patch("footprinter.cli.permission_cmd.check_client", return_value=0)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_check_client_calls_check_client(self, mock_db, mock_check):
+    def test_client_prefix_routes_to_check_client(self, mock_db, mock_check):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path=None, folder=None, project=None, client=5, json=False, verbose=True))
+        _check(Namespace(scope="client:7", json=False, verbose=True))
 
-        mock_check.assert_called_once_with(conn, 5, False, True)
+        mock_check.assert_called_once_with(conn, 7, False, True)
 
-    def test_check_no_target_exits_1(self):
+    def test_no_scope_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(path=None, folder=None, project=None, client=None, json=False, verbose=False))
+            _check(Namespace(scope=None, json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
-    @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_check_multiple_targets_exits_1(self, mock_db):
+    def test_unsupported_scope_source_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
-        conn = _mock_conn()
-        mock_db.return_value = conn
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="source:emails", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_unsupported_scope_global_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(path="~/file.py", folder="~/Work", project=None, client=None, json=False, verbose=False))
+            _check(Namespace(scope="global", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_unsupported_scope_account_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="account:personal", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_invalid_scope_prefix_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="bogus:42", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_file_numeric_id_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="file:42", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_folder_numeric_id_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="folder:42", json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
@@ -893,7 +951,7 @@ class TestCheckNoDb:
     def test_check_no_db_shows_baseline(self, mock_db, capsys):
         from footprinter.cli.permission_cmd import _check
 
-        _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=False, verbose=False))
+        _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
 
         output = capsys.readouterr().out
         assert "Access" in output
@@ -905,12 +963,24 @@ class TestCheckNoDb:
 
         from footprinter.cli.permission_cmd import _check
 
-        _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=True, verbose=False))
+        _check(Namespace(scope="~/Work/file.py", json=True, verbose=False))
 
         output = capsys.readouterr().out
         data = json.loads(output)
         assert "permission" in data
         assert data["found_in_db"] is False
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db", return_value=None)
+    def test_check_no_db_json_scope_in_path_field(self, mock_db, capsys):
+        import json
+
+        from footprinter.cli.permission_cmd import _check
+
+        _check(Namespace(scope="folder:~/Work", json=True, verbose=False))
+
+        output = capsys.readouterr().out
+        data = json.loads(output)
+        assert data["path"] == "folder:~/Work"
 
 
 # ---------------------------------------------------------------------------
@@ -927,7 +997,7 @@ class TestCheckConnection:
         conn = _mock_conn()
         mock_db.return_value = conn
 
-        _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=False, verbose=False))
+        _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
 
         conn.close.assert_called_once()
 
@@ -940,7 +1010,7 @@ class TestCheckConnection:
         mock_db.return_value = conn
 
         with pytest.raises(RuntimeError):
-            _check(Namespace(path="~/Work/file.py", folder=None, project=None, client=None, json=False, verbose=False))
+            _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
 
         conn.close.assert_called_once()
 
