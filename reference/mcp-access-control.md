@@ -455,10 +455,11 @@ fp permission list --json            # JSON output
 ### Check access resolution (`fp permission check`)
 
 ```bash
-fp permission check <path>           # Check both visibility and permission for a path
-fp permission check --folder <path>  # Folder aggregate check
-fp permission check --project <id>   # Project-level check
-fp permission check --client <id>    # Client-level check
+fp permission check ~/Work/file.py       # Check a file path (bare path)
+fp permission check folder:~/Work        # Folder aggregate check
+fp permission check project:3            # Project-level check
+fp permission check client:7             # Client-level check
+fp permission check folder:~/Work --verbose  # Show per-file details
 ```
 
 ### Set policies (`fp permission set`)

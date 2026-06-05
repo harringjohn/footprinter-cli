@@ -313,43 +313,76 @@ def _reset(args) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _parse_check_scope(scope: str) -> tuple[str, str]:
+    """Parse a check scope string into (type, value)."""
+    if scope == "global":
+        console.print(
+            "[red]check is not supported for scope[/red] [cyan]global[/cyan]\n"
+            "  Supported: file path, folder:<path>, project:<id>, client:<id>"
+        )
+        raise SystemExit(1)
+
+    if ":" not in scope:
+        return ("path", scope)
+
+    prefix, value = scope.split(":", 1)
+
+    if prefix == "file":
+        if value.isdigit():
+            console.print(
+                "[red]check does not support numeric file IDs.[/red] Use the file path instead.\n"
+                "  Example: fp permission check ~/Work/file.py"
+            )
+            raise SystemExit(1)
+        return ("path", value)
+
+    if prefix == "folder":
+        from footprinter.db.policies import is_folder_path_scope
+
+        if not is_folder_path_scope(scope):
+            console.print(
+                "[red]check does not support numeric folder IDs.[/red] Use a folder path instead.\n"
+                "  Example: fp permission check folder:~/Work"
+            )
+            raise SystemExit(1)
+        return ("folder", value)
+
+    if prefix in ("project", "client"):
+        try:
+            int(value)
+        except ValueError:
+            console.print(
+                f"[red]Invalid {prefix} ID:[/red] {value!r}. Must be a number."
+            )
+            raise SystemExit(1)
+        return (prefix, value)
+
+    console.print(
+        f"[red]check is not supported for scope[/red] [cyan]{scope}[/cyan]\n"
+        "  Supported: file path, folder:<path>, project:<id>, client:<id>"
+    )
+    raise SystemExit(1)
+
+
 def _check(args) -> None:
     from footprinter.permissions import BASELINE_PERMISSION
     from footprinter.visibility import BASELINE_VISIBILITY
 
-    path = getattr(args, "path", None)
-    folder = getattr(args, "folder", None)
-    project = getattr(args, "project", None)
-    client = getattr(args, "client", None)
+    scope = getattr(args, "scope", None)
     json_output = getattr(args, "json", False)
     verbose = getattr(args, "verbose", False)
 
-    targets = []
-    if path:
-        targets.append("path")
-    if folder:
-        targets.append("folder")
-    if project is not None:
-        targets.append("project")
-    if client is not None:
-        targets.append("client")
-
-    if len(targets) == 0:
-        console.print(
-            "[red]Specify a target to check.[/red] Use a file path, --folder, --project, or --client."
-        )
+    if not scope:
+        console.print("[red]Specify a scope to check.[/red]")
         console.print()
         console.print("Usage:")
         console.print("  fp permission check ~/Work/file.py")
-        console.print("  fp permission check --folder ~/Work")
-        console.print("  fp permission check --project 3")
+        console.print("  fp permission check folder:~/Work")
+        console.print("  fp permission check project:3")
+        console.print("  fp permission check client:7")
         raise SystemExit(1)
 
-    if len(targets) > 1:
-        console.print(
-            "[red]Specify only one target.[/red] Got: " + ", ".join(targets)
-        )
-        raise SystemExit(1)
+    scope_type, scope_value = _parse_check_scope(scope)
 
     conn = get_policy_db()
     if conn is None:
@@ -358,7 +391,7 @@ def _check(args) -> None:
         if json_output:
             output_json(
                 {
-                    "path": path or folder or str(project) or str(client),
+                    "path": scope,
                     "found_in_db": False,
                     "permission": {"resolved": perm_str, "source": "baseline"},
                     "visibility": {"resolved": vis_str, "source": "baseline"},
@@ -380,14 +413,14 @@ def _check(args) -> None:
         return
 
     try:
-        if path:
-            check_file_path(conn, path, json_output, verbose)
-        elif folder:
-            check_folder(conn, folder, json_output, verbose)
-        elif project is not None:
-            check_project(conn, project, json_output, verbose)
-        elif client is not None:
-            check_client(conn, client, json_output, verbose)
+        if scope_type == "path":
+            check_file_path(conn, scope_value, json_output, verbose)
+        elif scope_type == "folder":
+            check_folder(conn, scope_value, json_output, verbose)
+        elif scope_type == "project":
+            check_project(conn, int(scope_value), json_output, verbose)
+        elif scope_type == "client":
+            check_client(conn, int(scope_value), json_output, verbose)
     finally:
         conn.close()
 
@@ -413,7 +446,7 @@ def register(subparsers) -> None:
             "  fp permission set global --visibility full --access allow\n"
             "  fp permission set folder:~/Work --visibility hidden --dry-run\n"
             "  fp permission reset folder:~/Work               Remove folder policy\n"
-            "  fp permission check ~/Work/file.py              Check access resolution\n"
+            "  fp permission check folder:~/Work                Check access resolution\n"
             "  fp permission recalculate                       Full recalculation\n"
             "\n"
             "tip: use 'fp permission <command> --help' for details."
@@ -519,31 +552,30 @@ def register(subparsers) -> None:
     # -- check --
     check_parser = sub.add_parser(
         "check",
-        help="Check access resolution for a target",
+        help="Check access resolution for a scope",
         description=(
-            "Check both access and visibility resolution for a target.\n\n"
-            "Specify exactly one target: a file path, --folder, --project, or --client."
+            "Check both access and visibility resolution for a scope.\n\n"
+            "Accepts the same scope strings as set/reset/recalculate.\n"
+            "A bare path (no prefix) is treated as a file path."
         ),
         epilog=(
             "examples:\n"
             "  fp permission check ~/Work/file.py           Check a file path\n"
-            "  fp permission check --folder ~/Work           Check a folder\n"
-            "  fp permission check --project 3               Check a project\n"
-            "  fp permission check --folder ~/Work --verbose Show per-file details"
+            "  fp permission check folder:~/Work             Check a folder\n"
+            "  fp permission check project:3                 Check a project\n"
+            "  fp permission check client:7                  Check a client\n"
+            "  fp permission check folder:~/Work --verbose   Show per-file details"
         ),
         formatter_class=FORMATTER,
     )
     check_parser.add_argument(
-        "path", nargs="?", default=None, help="File path to check"
-    )
-    check_parser.add_argument(
-        "--folder", default=None, help="Folder path to check"
-    )
-    check_parser.add_argument(
-        "--project", type=int, default=None, help="Project ID to check"
-    )
-    check_parser.add_argument(
-        "--client", type=int, default=None, help="Client ID to check"
+        "scope",
+        nargs="?",
+        default=None,
+        help=(
+            "Scope to check. Examples: ~/Work/file.py, folder:~/Work, project:3, client:7. "
+            "A bare path (no prefix) is treated as a file path."
+        ),
     )
     check_parser.add_argument(
         "--verbose", action="store_true", help="Show per-file details"
