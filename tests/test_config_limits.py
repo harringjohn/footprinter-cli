@@ -10,8 +10,6 @@ hardcoded default.  These tests verify:
 
 from unittest.mock import patch
 
-import pytest
-
 from footprinter.source_registry import ConfigError
 
 
