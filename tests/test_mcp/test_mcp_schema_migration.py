@@ -7,8 +7,6 @@ transient OperationalError on the first call, then succeed on retries.
 import sqlite3
 from unittest.mock import patch
 
-import pytest
-
 from footprinter.mcp.tools.search import footprinter_search
 from footprinter.mcp.tools.status import footprinter_status
 
