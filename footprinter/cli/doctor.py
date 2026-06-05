@@ -191,6 +191,20 @@ def _check_optional_features() -> list[Check]:
     return checks
 
 
+def _is_module_invocation(args: list[str]) -> bool:
+    """True if *args* ends with ``['-m', 'footprinter.mcp']``."""
+    return len(args) >= 2 and args[-2] == "-m" and args[-1] == "footprinter.mcp"
+
+
+def _resolve_command(cmd: str) -> Path | None:
+    """Resolve *cmd* to an absolute, symlink-resolved path (or ``None``)."""
+    p = Path(cmd)
+    if p.is_absolute():
+        return p.resolve()
+    found = shutil.which(cmd)
+    return Path(found).resolve() if found else None
+
+
 def _mcp_command_matches(
     configured_cmd: str,
     configured_args: list[str],
@@ -198,6 +212,15 @@ def _mcp_command_matches(
     canonical_args: list[str],
 ) -> bool:
     """Check whether the configured MCP command matches the canonical one."""
+    if _is_module_invocation(configured_args) or _is_module_invocation(canonical_args):
+        return True
+
+    resolved_configured = _resolve_command(configured_cmd)
+    resolved_canonical = _resolve_command(canonical_cmd)
+
+    if resolved_configured is not None and resolved_canonical is not None:
+        return resolved_configured == resolved_canonical and configured_args == canonical_args
+
     return Path(configured_cmd).name == Path(canonical_cmd).name and configured_args == canonical_args
 
 
@@ -242,7 +265,11 @@ def _check_mcp_config() -> Check:
     try:
         canonical_cmd, canonical_args = get_mcp_command()
     except Exception:
-        return Check("mcp_config", "OK", "footprinter MCP server configured in Claude Desktop", group="Integrations")
+        return Check(
+            "mcp_config", "WARN",
+            "footprinter entry found but cannot verify command — run 'fp setup mcp --claude' to update",
+            group="Integrations",
+        )
 
     if not _mcp_command_matches(command, configured_args, canonical_cmd, canonical_args):
         return Check(
