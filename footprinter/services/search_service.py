@@ -45,9 +45,11 @@ def search(
 ) -> dict:
     """Search across indexed sources by keyword.
 
-    Returns dict with per-source result lists and a ``suppressed`` count.
-    VIEWER role: hidden items excluded, opaque items minimized, content
-    stripped for permission-denied items.
+    Returns dict with per-source result lists, a ``counts`` dict with
+    per-source ``returned`` (int) and ``has_more`` (bool) for truncation
+    detection, and a ``suppressed`` count when visibility filtering
+    removes items.  VIEWER role: hidden items excluded, opaque items
+    minimized, content stripped for permission-denied items.
 
     ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
     accept them but the service ignores them and applies the listed-only default.

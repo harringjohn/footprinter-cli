@@ -332,10 +332,14 @@ class TestSearchCounts:
         assert result["counts"]["files"]["has_more"] is False
         assert result["counts"]["files"]["returned"] == len(result["files"])
 
-    def test_counts_reflect_post_filter_returned(self, service_db):
-        """returned count matches len(results) after visibility filtering."""
+    def test_viewer_returned_less_than_admin(self, service_db):
+        """VIEWER returned count is lower than ADMIN due to visibility filtering."""
         self._seed_extra_files(service_db)
-        result = search_service.search(
+        admin = search_service.search(
+            service_db, query="", sources=["files"], role=Role.ADMIN, limit=50
+        )
+        viewer = search_service.search(
             service_db, query="", sources=["files"], role=Role.VIEWER, limit=50
         )
-        assert result["counts"]["files"]["returned"] == len(result["files"])
+        assert viewer["counts"]["files"]["returned"] < admin["counts"]["files"]["returned"]
+        assert viewer["counts"]["files"]["returned"] == len(viewer["files"])

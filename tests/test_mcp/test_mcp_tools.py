@@ -637,7 +637,7 @@ class TestContexterSearch:
 
         summary = result["summary"]
         assert "200" in summary
-        assert "limit capped" in summary
+        assert "Limit capped" in summary
         assert "Narrow" in summary
 
     def test_search_limit_under_cap_no_truncation_message(self, mcp_db):
@@ -652,7 +652,7 @@ class TestContexterSearch:
             result = footprinter_search("file", sources=["files"], limit=50)
 
         assert len(result["files"]) == 5
-        assert "limit capped" not in result["summary"]
+        assert "Limit capped" not in result["summary"]
 
     def test_search_limit_exactly_200_no_truncation_message(self, mcp_db):
         self._seed_files(mcp_db, 200)
@@ -666,7 +666,7 @@ class TestContexterSearch:
             result = footprinter_search("file", sources=["files"], limit=200)
 
         assert len(result["files"]) == 200
-        assert "limit capped" not in result["summary"]
+        assert "Limit capped" not in result["summary"]
 
     def test_search_emails_include_project_client(self, mcp_db):
         cursor = mcp_db.cursor()
@@ -4637,7 +4637,7 @@ class TestSearchSummary:
         summary = self._summary()(results, "test", ["files"], counts=counts)
         assert "10 of 10+" in summary
 
-    def test_summary_mixed_truncation(self):
+    def test_summary_mixed_truncation_query_applies_to_all(self):
         results = {
             "files": [{"id": i} for i in range(10)],
             "emails": [{"id": i} for i in range(2)],
@@ -4647,16 +4647,34 @@ class TestSearchSummary:
             "emails": {"returned": 2, "has_more": False},
         }
         summary = self._summary()(
-            results, "test", ["files", "emails"], counts=counts
+            results, "report", ["files", "emails"], counts=counts
         )
         assert "10 of 10+" in summary
         assert "2 emails" in summary
         assert "2 of 2+" not in summary
+        assert summary.count("for 'report'") == 1
+        assert summary.endswith("for 'report'.")
 
     def test_summary_no_counts_backward_compat(self):
         results = {"files": [{"id": i} for i in range(5)]}
         summary = self._summary()(results, "test", ["files"])
         assert "Found 5 files" in summary
+
+    def test_was_capped_suppressed_when_not_truncated(self):
+        results = {"files": [{"id": i} for i in range(5)]}
+        counts = {"files": {"returned": 5, "has_more": False}}
+        summary = self._summary()(
+            results, "test", ["files"], was_capped=True, counts=counts
+        )
+        assert "capped" not in summary.lower()
+
+    def test_was_capped_shown_when_truncated(self):
+        results = {"files": [{"id": i} for i in range(10)]}
+        counts = {"files": {"returned": 10, "has_more": True}}
+        summary = self._summary()(
+            results, "test", ["files"], was_capped=True, counts=counts
+        )
+        assert "capped" in summary.lower()
 
 
 # ---------------------------------------------------------------------------
