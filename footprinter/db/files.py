@@ -237,6 +237,8 @@ def list_file_ids_under_path(
 
 logger = logging.getLogger(__name__)
 
+AGENT_CONTEXT_DIRS = frozenset({".claude", ".context"})
+
 
 def _determine_file_status(name: str, path: str) -> tuple:
     """Determine status for a file based on name/path.
@@ -250,6 +252,10 @@ def _determine_file_status(name: str, path: str) -> tuple:
     path_parts = path.split("/")
     for part in path_parts:
         if part.startswith(".") and part not in ("", "."):
+            if part in AGENT_CONTEXT_DIRS:
+                if ".local." in name:
+                    return "unlisted", "in_dot_folder"
+                continue
             return "unlisted", "in_dot_folder"
 
     return "listed", None
