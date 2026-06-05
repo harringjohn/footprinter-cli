@@ -12,6 +12,7 @@ Validates:
   9. Data entity status update routes through db.update_file_status()
   10. Data entity combined assign + status
   11. Bulk path assign for files
+  11b. _normalize_path shared helper
   12. Bulk CSV update for files
   13. Bulk folder assign
 """
@@ -455,6 +456,11 @@ class TestUpdateBulkPathAssign:
         assert code == 1
         output = stdout + stderr
         assert "at least one" in output.lower()
+
+
+# ---------------------------------------------------------------------------
+# 11b. _normalize_path shared helper
+# ---------------------------------------------------------------------------
 
 
 class TestNormalizePath:
