@@ -36,6 +36,10 @@ case "${1:-}" in
         echo "Excluded from 'all': verify-upgrade, verify-install (need version args)"
         echo "and cli-verify (heavy — clones the source and builds a throwaway venv; run on demand)."
         ;;
+    pytest)
+        shift
+        exec ./venv/bin/python3 -m pytest "$@"
+        ;;
     smoke)
         exec bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
         ;;
@@ -51,6 +55,9 @@ case "${1:-}" in
         exec bash "$SCRIPT_DIR/release/verify_install.sh" "$@"
         ;;
     all)
+        echo "=== Tier 1: pytest ==="
+        ./venv/bin/python3 -m pytest
+        echo ""
         echo "=== Tier 2: smoke ==="
         bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"
         echo ""
