@@ -194,6 +194,13 @@ print(files('footprinter.bundled').joinpath('config.example.yaml'))
     else
         mkdir -p "$WORKSPACE/footprinter/bundled"
         cp "$INSTALLED_CONFIG" "$WORKSPACE/footprinter/bundled/config.example.yaml"
+
+        EXPECTED_CONFIG="$WORKSPACE/footprinter/bundled/config.example.yaml"
+        if [ ! -f "$EXPECTED_CONFIG" ]; then
+            fail "bundled config not at ${EXPECTED_CONFIG} — conftest fixture will break"
+        else
+            pass "bundled config.example.yaml in place for conftest"
+        fi
     fi
 
     # Install test dependencies (not in the base wheel)
@@ -214,7 +221,7 @@ print(files('footprinter.bundled').joinpath('config.example.yaml'))
     if PYTHONPATH="$WORKSPACE" "$VENV_PY" -m pytest \
         "$WORKSPACE/tests" \
         --rootdir="$WORKSPACE" \
-        -x -q --tb=short 2>&1; then
+        -q --tb=short 2>&1; then
         pass "pytest against installed package passed"
     else
         fail "pytest against installed package had failures"

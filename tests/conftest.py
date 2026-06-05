@@ -21,6 +21,18 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _resolve_bundled_config():
+    """Return the path to bundled config.example.yaml, or raise if missing."""
+    config_path = REPO_ROOT / "footprinter" / "bundled" / "config.example.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Bundled config not found at {config_path}. "
+            f"_repo_local_paths resolves config via Path(__file__).parent.parent; "
+            f"if conftest.py moved, update REPO_ROOT."
+        )
+    return config_path
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _repo_local_paths(tmp_path_factory):
     """Point footprinter.paths at the bundled config and a temp DB for tests.
@@ -30,11 +42,11 @@ def _repo_local_paths(tmp_path_factory):
     the bundled config.example.yaml (the shipped single source of truth).
     Restores original env on teardown.
     """
-    repo = Path(__file__).resolve().parent.parent
+    config_path = _resolve_bundled_config()
     session_tmp = tmp_path_factory.mktemp("footprinter_test_db")
     env = {
         "FOOTPRINTER_HOME": str(session_tmp),
-        "FOOTPRINTER_CONFIG": str(repo / "footprinter" / "bundled" / "config.example.yaml"),
+        "FOOTPRINTER_CONFIG": str(config_path),
         "FOOTPRINTER_DB_PATH": str(session_tmp / "footprinter.db"),
     }
     old = {k: os.environ.get(k) for k in env}
