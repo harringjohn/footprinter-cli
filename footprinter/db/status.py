@@ -11,7 +11,10 @@ from footprinter.utils.sqlite_errors import is_schema_busy_error
 
 
 def _safe_count(cursor: sqlite3.Cursor, query: str) -> int:
-    """Execute a COUNT query, returning 0 if the table doesn't exist."""
+    """Execute a COUNT query, returning 0 if the table doesn't exist.
+
+    Re-raises ``OperationalError`` for schema-busy conditions.
+    """
     try:
         cursor.execute(query)
         return cursor.fetchone()[0]
@@ -25,6 +28,7 @@ def _safe_query(conn: sqlite3.Connection, query: str, *, default: Any = None) ->
     """Execute a query and return the first column of the first row.
 
     Returns ``default`` if the table doesn't exist or the query returns no rows.
+    Re-raises ``OperationalError`` for schema-busy conditions.
     """
     try:
         row = conn.execute(query).fetchone()
@@ -36,7 +40,10 @@ def _safe_query(conn: sqlite3.Connection, query: str, *, default: Any = None) ->
 
 
 def _safe_fetchall(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
-    """Execute a query and return all rows, or [] on missing table."""
+    """Execute a query and return all rows, or [] on missing table.
+
+    Re-raises ``OperationalError`` for schema-busy conditions.
+    """
     try:
         return conn.execute(query).fetchall()
     except sqlite3.OperationalError as e:

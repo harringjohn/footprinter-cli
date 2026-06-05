@@ -43,8 +43,9 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 def handle_db_errors(func):
     """Decorator that catches database errors and returns structured MCP errors.
 
-    Retries transient schema errors (e.g. during a concurrent migration) on a
-    fresh connection before giving up.
+    Retries transient schema errors (e.g. during a concurrent migration) by
+    re-invoking *func*.  Each MCP tool opens its own connection via
+    ``get_db()``, so a retry naturally gets a fresh schema snapshot.
     """
 
     @functools.wraps(func)
