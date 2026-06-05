@@ -194,13 +194,13 @@ print(files('footprinter.bundled').joinpath('config.example.yaml'))
     else
         mkdir -p "$WORKSPACE/footprinter/bundled"
         cp "$INSTALLED_CONFIG" "$WORKSPACE/footprinter/bundled/config.example.yaml"
-    fi
 
-    EXPECTED_CONFIG="$WORKSPACE/footprinter/bundled/config.example.yaml"
-    if [ ! -f "$EXPECTED_CONFIG" ]; then
-        fail "bundled config not at ${EXPECTED_CONFIG} — conftest fixture will break"
-    else
-        pass "bundled config.example.yaml in place for conftest"
+        EXPECTED_CONFIG="$WORKSPACE/footprinter/bundled/config.example.yaml"
+        if [ ! -f "$EXPECTED_CONFIG" ]; then
+            fail "bundled config not at ${EXPECTED_CONFIG} — conftest fixture will break"
+        else
+            pass "bundled config.example.yaml in place for conftest"
+        fi
     fi
 
     # Install test dependencies (not in the base wheel)
