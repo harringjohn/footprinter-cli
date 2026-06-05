@@ -114,6 +114,9 @@ jobs:
           echo "::warning::shields.io did not reflect $VERSION within timeout — dispatching delayed retry"
           echo "dispatch=true" >> "$GITHUB_OUTPUT"
 
+      # Inline purge only fires when shields.io confirmed the new version.
+      # On timeout, the delayed retry (purge-badge-cache.yml) handles it —
+      # purging here before shields updates would re-cache the stale image.
       - name: Purge GitHub Camo cache
         if: steps.poll-shields.outputs.ready == 'true'
         env:
@@ -124,7 +127,7 @@ jobs:
           # that handled the request, so we repeat across multiple requests.
           CAMO_URL=$(gh api "repos/$REPO/readme" \
             -H "Accept: application/vnd.github.html" \
-            | grep -o 'https://camo.githubusercontent.com[^"]*' | head -1)
+            | grep -o 'https://camo.githubusercontent.com[^"]*68747470733a2f2f696d672e736869656c64732e696f[^"]*' | head -1)
           if [ -z "$CAMO_URL" ]; then
             echo "::warning::Could not resolve Camo URL for shields.io badge from README"
             exit 0

@@ -47,6 +47,9 @@ jobs:
           echo "::warning::shields.io still does not reflect '$EXPECTED_VERSION' — purging anyway (badge will self-heal within ~3h)"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
+      # This workflow runs after a delay (~2h), so shields.io has almost
+      # certainly updated. Purge fires even on poll timeout — unlike the
+      # inline job in publish.yml, which skips to avoid re-caching stale data.
       - name: Purge GitHub Camo cache
         if: steps.poll-shields.outputs.ready == 'true'
         env:
@@ -55,7 +58,7 @@ jobs:
         run: |
           CAMO_URL=$(gh api "repos/$REPO/readme" \
             -H "Accept: application/vnd.github.html" \
-            | grep -o 'https://camo.githubusercontent.com[^"]*' | head -1)
+            | grep -o 'https://camo.githubusercontent.com[^"]*68747470733a2f2f696d672e736869656c64732e696f[^"]*' | head -1)
           if [ -z "$CAMO_URL" ]; then
             echo "::warning::Could not resolve Camo URL for shields.io badge from README"
             exit 0
