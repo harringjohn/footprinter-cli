@@ -66,8 +66,12 @@ def _build_search_summary(
 
     total_suppressed = results.get("suppressed", 0)
 
+    any_truncated = any(
+        counts.get(s, {}).get("has_more", False) for s in sources
+    ) if counts else False
+
     if found_parts or truncated_parts:
-        query_part = f" matching '{query}'" if query and query.strip() else ""
+        query_part = f" for '{query}'" if query and query.strip() else ""
         parts = []
         if found_parts:
             parts.append(f"Found {', '.join(found_parts)}")
@@ -89,10 +93,10 @@ def _build_search_summary(
         item_word = "item" if total_suppressed == 1 else "items"
         summary += f" ({total_suppressed} {item_word} hidden by visibility policy)"
 
-    if was_capped:
+    if was_capped and any_truncated:
         summary += (
-            f" Showing up to {MCP_SEARCH_LIMIT_CAP} results per source (limit capped). "
-            "Narrow with folder, date_from, or query keywords."
+            f" Limit capped at {MCP_SEARCH_LIMIT_CAP} per source."
+            " Narrow with folder, date_from, or query keywords."
         )
 
     return summary
@@ -171,7 +175,8 @@ def footprinter_search(
     Returns:
         Dict with keys per source (e.g. "files", "emails", "chats", "browser"),
         each containing a list of result dicts. Includes a "summary" key with
-        a human-readable overview of what was found.
+        a human-readable overview and a "counts" dict with per-source
+        "returned" (int) and "has_more" (bool) for truncation detection.
     """
     if not sources:
         sources = ["files", "emails", "chats", "browser"]
