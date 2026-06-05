@@ -1,15 +1,28 @@
 """Pure chunking function for splitting content into overlapping chunks."""
 
+import logging
 import warnings
 from typing import List, Tuple
 
 DEFAULT_CHUNK_SIZE = 1000  # chars — tuned for MiniLM-L6-v2 (256-token window)
 DEFAULT_CHUNK_OVERLAP = 0.15  # fraction of chunk_size (15%)
 
+_logger = logging.getLogger(__name__)
+
+
+def _get_chunk_size() -> int:
+    try:
+        from footprinter.source_registry import get_config
+
+        return get_config().get("limits", {}).get("chunk_size", DEFAULT_CHUNK_SIZE)
+    except Exception:
+        _logger.debug("Config unavailable for chunk_size, using default %d", DEFAULT_CHUNK_SIZE)
+        return DEFAULT_CHUNK_SIZE
+
 
 def chunk_content(
     content: str,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_size: int | None = None,
     chunk_overlap: float = DEFAULT_CHUNK_OVERLAP,
 ) -> List[Tuple[str, int, int]]:
     """
@@ -23,6 +36,9 @@ def chunk_content(
     Returns:
         List of (chunk_text, chunk_index, total_chunks) tuples.
     """
+    if chunk_size is None:
+        chunk_size = _get_chunk_size()
+
     if chunk_overlap < 0:
         raise ValueError(
             f"chunk_overlap must be non-negative, got {chunk_overlap}"

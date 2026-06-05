@@ -5,7 +5,7 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-def _load_api_max_limit() -> int:
+def _get_api_max_limit() -> int:
     try:
         from footprinter.source_registry import get_config
 
@@ -15,5 +15,5 @@ def _load_api_max_limit() -> int:
         return 200
 
 
-MAX_LIMIT = _load_api_max_limit()
+MAX_LIMIT = _get_api_max_limit()
 """Upper bound for `limit` query params on HTTP list/search endpoints."""
