@@ -113,9 +113,9 @@ def get_by_path(
         if visibility == "hidden":
             return None
         if visibility == "opaque":
-            nav = db.get_folder_navigation(conn, row["id"], path)
-            row["unlisted_file_count"] = nav["unlisted_file_count"]
-            row["unlisted_recursive_file_count"] = nav["unlisted_recursive_file_count"]
+            counts = db.get_unlisted_counts(conn, row["id"], path)
+            row["unlisted_file_count"] = counts["unlisted_file_count"]
+            row["unlisted_recursive_file_count"] = counts["unlisted_recursive_file_count"]
             return filter_result("folder", row)
 
     status_arg = status_arg_for_role(

@@ -291,6 +291,36 @@ def get_folder_navigation(
     }
 
 
+def get_unlisted_counts(
+    conn: sqlite3.Connection, folder_id: int, path: str
+) -> dict:
+    """Return direct and recursive unlisted file counts for a folder."""
+    unlisted_direct = conn.execute(
+        """SELECT COUNT(*) as total
+           FROM files
+           WHERE folder_id = ?
+             AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        [folder_id],
+    ).fetchone()
+
+    unlisted_recursive = conn.execute(
+        """SELECT COUNT(*) as total
+           FROM files
+           WHERE folder_id IN (
+               SELECT id FROM folders WHERE path LIKE ? OR path = ?
+           )
+             AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        [path + "/%", path],
+    ).fetchone()
+
+    return {
+        "unlisted_file_count": unlisted_direct["total"],
+        "unlisted_recursive_file_count": unlisted_recursive["total"],
+    }
+
+
 def resolve_folder(conn: sqlite3.Connection, identifier: str) -> int:
     """Resolve folder ID or relative_path to row ID.
 
