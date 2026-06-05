@@ -85,6 +85,7 @@ testpaths = ["tests"]
 pythonpath = [".", "tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+markers = ["slow: marks tests that exercise real concurrency and may take longer"]
 
 [tool.ruff]
 line-length = 120
