@@ -292,6 +292,8 @@ def _check_fts_health() -> Check:
             f"FTS health check failed: {e} — run 'fp doctor search'",
             group="Data Integrity",
         )
+    finally:
+        db.close()
 
 
 def _table_columns(conn) -> dict[str, set[str]]:
