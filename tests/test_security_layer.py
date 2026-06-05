@@ -816,7 +816,10 @@ class TestOpaqueFieldSets:
         assert OPAQUE_CHAT_FIELDS == {"id", "account", "project_id", "client_id"}
 
     def test_folder_fields(self):
-        assert OPAQUE_FOLDER_FIELDS == {"id", "direct_files", "direct_file_count", "source", "project_id"}
+        assert OPAQUE_FOLDER_FIELDS == {
+            "id", "direct_files", "direct_file_count", "source", "project_id",
+            "unlisted_file_count", "unlisted_recursive_file_count",
+        }
 
     def test_project_fields(self):
         assert OPAQUE_PROJECT_FIELDS == {"id", "status", "client_id"}

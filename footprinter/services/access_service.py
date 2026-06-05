@@ -9,7 +9,8 @@ Gating stages (for non-ADMIN roles):
   3. Visibility — ``visibility`` must not be hidden/opaque
   4. Permission — ``access`` must not be deny
 
-Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields,
+Visibility values: 'hidden' -> exclude, 'opaque' -> minimal fields
+(identifiers, source, and aggregate counts — no content or child lists),
 'full' -> full.  'inherit' -> resolves to the global policy at query
 time (loaded by ``load_globals``).  Missing (None) -> treated as 'opaque'
 (fail-closed).
@@ -150,7 +151,10 @@ def resolve_inherit_permission(value: Optional[str]) -> str:
 OPAQUE_FILE_FIELDS = {"id", "content_type", "source", "project_id"}
 OPAQUE_EMAIL_FIELDS = {"id", "account", "project_id", "client_id"}
 OPAQUE_CHAT_FIELDS = {"id", "account", "project_id", "client_id"}
-OPAQUE_FOLDER_FIELDS = {"id", "direct_files", "direct_file_count", "source", "project_id"}
+OPAQUE_FOLDER_FIELDS = {
+    "id", "direct_files", "direct_file_count", "source", "project_id",
+    "unlisted_file_count", "unlisted_recursive_file_count",
+}
 OPAQUE_BROWSER_FIELDS = {"id", "browser", "project_id"}
 OPAQUE_PROJECT_FIELDS = {"id", "status", "client_id"}
 OPAQUE_CLIENT_FIELDS = {"id", "client_type", "status"}

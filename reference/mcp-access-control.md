@@ -396,7 +396,7 @@ When an item is opaque, only a minimal set of fields is returned. The allowed fi
 | File | `id`, `content_type`, `source`, `project_id` |
 | Email | `id`, `account`, `project_id`, `client_id` |
 | Chat | `id`, `account`, `project_id`, `client_id` |
-| Folder | `id`, `direct_files`, `direct_file_count`, `source`, `project_id` |
+| Folder | `id`, `direct_files`, `direct_file_count`, `source`, `project_id`, `unlisted_file_count`, `unlisted_recursive_file_count` |
 | Browser | `id`, `browser`, `project_id` |
 | Project | `id`, `status`, `client_id` |
 | Client | `id`, `client_type`, `status` |

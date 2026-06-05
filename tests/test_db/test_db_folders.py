@@ -396,6 +396,123 @@ class TestGetFolderNavigationStatusFilter:
         names = sorted(sf["name"] for sf in result["subfolders"])
         assert names == ["listed_sub", "unlisted_sub"]
 
+    # -- unlisted count tests --
+
+    def test_unlisted_file_count_direct_default_status(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj")
+        assert result["unlisted_file_count"] == 1
+
+    def test_unlisted_file_count_independent_of_status_kwarg(self, tool_db):
+        folder_id = self._setup(tool_db)
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/proj", status="all")
+        assert result["unlisted_file_count"] == 1
+
+    def test_unlisted_file_count_zero_when_none(self, tool_db):
+        cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/clean', '/clean', 'clean', 'local', 'full')"""
+        )
+        folder_id = cur.lastrowid
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('a.py', '/Users/u/clean/a.py', 'local', 'listed', ?, 'full', 'allow')""",
+            (folder_id,),
+        )
+        tool_db.commit()
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/clean")
+        assert result["unlisted_file_count"] == 0
+
+    def test_unlisted_file_count_excludes_removed(self, tool_db):
+        cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/mixed', '/mixed', 'mixed', 'local', 'full')"""
+        )
+        folder_id = cur.lastrowid
+        tool_db.executemany(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES (?, ?, 'local', ?, ?, 'full', 'allow')""",
+            [
+                ("r1.py", "/Users/u/mixed/r1.py", "removed", folder_id),
+                ("r2.py", "/Users/u/mixed/r2.py", "removed", folder_id),
+                ("u1.py", "/Users/u/mixed/u1.py", "unlisted", folder_id),
+            ],
+        )
+        tool_db.commit()
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/mixed")
+        assert result["unlisted_file_count"] == 1
+
+    def _setup_recursive_unlisted(self, conn) -> int:
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/root', '/root', 'root', 'local', 'full')"""
+        )
+        root_id = cur.lastrowid
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, parent_folder_id, visibility)
+               VALUES ('/Users/u/root/sub', '/root/sub', 'sub', 'local', ?, 'full')""",
+            (root_id,),
+        )
+        sub_id = cur.lastrowid
+        cur = conn.execute(
+            """INSERT INTO folders (path, relative_path, name, source, parent_folder_id, visibility)
+               VALUES ('/Users/u/root/sub/deep', '/root/sub/deep', 'deep', 'local', ?, 'full')""",
+            (sub_id,),
+        )
+        deep_id = cur.lastrowid
+        conn.executemany(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES (?, ?, 'local', ?, ?, 'full', 'allow')""",
+            [
+                ("u1.py", "/Users/u/root/u1.py", "unlisted", root_id),
+                ("listed.py", "/Users/u/root/listed.py", "listed", root_id),
+                ("u2.py", "/Users/u/root/sub/u2.py", "unlisted", sub_id),
+                ("u3.py", "/Users/u/root/sub/u3.py", "unlisted", sub_id),
+                ("removed.py", "/Users/u/root/sub/removed.py", "removed", sub_id),
+                ("u4.py", "/Users/u/root/sub/deep/u4.py", "unlisted", deep_id),
+            ],
+        )
+        conn.commit()
+        return root_id
+
+    def test_unlisted_recursive_file_count(self, tool_db):
+        root_id = self._setup_recursive_unlisted(tool_db)
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/root")
+        assert result["unlisted_recursive_file_count"] == 4
+
+    def test_unlisted_recursive_file_count_excludes_hidden(self, tool_db):
+        cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/hid', '/hid', 'hid', 'local', 'full')"""
+        )
+        folder_id = cur.lastrowid
+        tool_db.executemany(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES (?, ?, 'local', 'unlisted', ?, ?, 'allow')""",
+            [
+                ("visible.py", "/Users/u/hid/visible.py", folder_id, "full"),
+                ("hidden.py", "/Users/u/hid/hidden.py", folder_id, "hidden"),
+            ],
+        )
+        tool_db.commit()
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/hid")
+        assert result["unlisted_recursive_file_count"] == 1
+
+    def test_unlisted_recursive_file_count_zero_leaf(self, tool_db):
+        cur = tool_db.execute(
+            """INSERT INTO folders (path, relative_path, name, source, visibility)
+               VALUES ('/Users/u/leaf', '/leaf', 'leaf', 'local', 'full')"""
+        )
+        folder_id = cur.lastrowid
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('a.py', '/Users/u/leaf/a.py', 'local', 'listed', ?, 'full', 'allow')""",
+            (folder_id,),
+        )
+        tool_db.commit()
+        result = get_folder_navigation(tool_db, folder_id, "/Users/u/leaf")
+        assert result["unlisted_recursive_file_count"] == 0
+
 
 class TestListFoldersNullFolderId:
     """list_folders with depth must count files even when folder_id is NULL."""
@@ -504,6 +621,25 @@ class TestRecursiveFileCountWithNestedFolders:
 
         result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
         assert result["recursive_file_count"] == 1
+
+    def test_unlisted_recursive_count_excludes_files_in_sibling_folder(self, tool_db):
+        root_id = self._insert_folder(tool_db, "/Users/u/proj", "proj")
+        sub_id = self._insert_folder(tool_db, "/Users/u/proj/sub", "sub")
+        sibling_id = self._insert_folder(tool_db, "/Users/u/proj_other", "proj_other")
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('mine.py', '/Users/u/proj/sub/mine.py', 'local', 'unlisted', ?, 'full', 'allow')""",
+            (sub_id,),
+        )
+        tool_db.execute(
+            """INSERT INTO files (name, path, source, status, folder_id, visibility, access)
+               VALUES ('theirs.py', '/Users/u/proj_other/theirs.py', 'local', 'unlisted', ?, 'full', 'allow')""",
+            (sibling_id,),
+        )
+        tool_db.commit()
+
+        result = get_folder_navigation(tool_db, root_id, "/Users/u/proj")
+        assert result["unlisted_recursive_file_count"] == 1
 
 
 class TestGetFolderByRelativePath:
