@@ -293,7 +293,7 @@ def get_folder_navigation(
 
 def get_unlisted_counts(
     conn: sqlite3.Connection, folder_id: int, path: str
-) -> dict:
+) -> dict[str, int]:
     """Return direct and recursive unlisted file counts for a folder."""
     unlisted_direct = conn.execute(
         """SELECT COUNT(*) as total

@@ -96,8 +96,8 @@ def get_by_path(
     """Look up a folder by exact path with navigation data, filtered by role.
 
     Returns None if folder doesn't exist or is hidden (for VIEWER).
-    Returns opaque dict for opaque folders (for VIEWER) — fetches nav data
-    to include aggregate counts, then strips to opaque-allowed fields.
+    Returns opaque dict for opaque folders (for VIEWER) — fetches unlisted
+    counts only, then strips to opaque-allowed fields.
     Returns full navigation dict for visible folders.
 
     ``include_unlisted`` / ``include_removed`` are ADMIN-only — VIEWER callers
