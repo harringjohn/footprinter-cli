@@ -1451,6 +1451,104 @@ class TestCheckFilePathVerbose:
 
 
 # ---------------------------------------------------------------------------
+# Check subcommand: entity check (email, chat, visit)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckEntity:
+    def _make_conn(self, entity_row):
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = entity_row
+        conn.execute.return_value = cursor
+        return conn
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    def test_check_entity_email_json(self, mock_perm, mock_vis, mock_json, mock_chain):
+        from footprinter.cli._policy_helpers import check_entity
+
+        email_row = {"id": 10, "subject": "Test Email", "account": "work", "project_id": None, "client_id": None}
+        conn = self._make_conn(email_row)
+
+        check_entity(conn, "email", 10, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert data["entity_type"] == "email"
+        assert data["entity_id"] == 10
+        assert data["display_name"] == "Test Email"
+        assert data["permission"]["resolved"] == "allow"
+        assert data["visibility"]["resolved"] == "full"
+
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_email_not_found(self, mock_console):
+        from footprinter.cli._policy_helpers import check_entity
+
+        conn = self._make_conn(None)
+
+        result = check_entity(conn, "email", 99, json_output=False, verbose=False)
+
+        assert result == 1
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_chat_rich_output(
+        self, mock_console, mock_perm, mock_vis, mock_chain_print, mock_chain_build
+    ):
+        from footprinter.cli._policy_helpers import check_entity
+
+        chat_row = {"id": 5, "title": "Dev Chat", "account": "work", "project_id": 3, "client_id": 1}
+        conn = self._make_conn(chat_row)
+
+        check_entity(conn, "chat", 5, json_output=False, verbose=False)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "Dev Chat" in printed
+        assert "allow" in printed
+        assert "full" in printed
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "source:browser"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "source:browser"))
+    def test_check_entity_visit_json(self, mock_perm, mock_vis, mock_json, mock_chain):
+        from footprinter.cli._policy_helpers import check_entity
+
+        visit_row = {"id": 3, "title": "GitHub", "url": "https://github.com"}
+        conn = self._make_conn(visit_row)
+
+        check_entity(conn, "visit", 3, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert data["entity_type"] == "visit"
+        assert data["entity_id"] == 3
+        assert data["display_name"] == "GitHub"
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_verbose_note(
+        self, mock_console, mock_perm, mock_vis, mock_chain_print, mock_chain_build
+    ):
+        from footprinter.cli._policy_helpers import check_entity
+
+        email_row = {"id": 10, "subject": "Test", "account": "work", "project_id": None, "client_id": None}
+        conn = self._make_conn(email_row)
+
+        check_entity(conn, "email", 10, json_output=False, verbose=True)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "verbose" in printed.lower()
+
+
+# ---------------------------------------------------------------------------
 # Set CSV: argument parsing
 # ---------------------------------------------------------------------------
 
