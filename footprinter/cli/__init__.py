@@ -133,7 +133,10 @@ def main(argv=None) -> None:
     from footprinter.cli._prompt import PromptCancelled
 
     try:
-        args.func(args)
+        # A handler may signal its exit status by returning an int; None means
+        # success. This complements the raise SystemExit(n) pattern used
+        # elsewhere — those bubble out before the wrapper here ever runs.
+        raise SystemExit(args.func(args) or 0)
     except _ConfigError as e:
         print(str(e), file=_sys.stderr)
         _sys.exit(1)

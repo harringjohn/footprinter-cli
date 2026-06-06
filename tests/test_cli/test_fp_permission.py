@@ -844,13 +844,12 @@ class TestCheckScopeRouting:
 
         mock_check.assert_called_once_with(conn, 7, False, True)
 
-    def test_no_scope_exits_1(self):
+    def test_no_scope_returns_1(self):
         from footprinter.cli.permission_cmd import _check
 
-        with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope=None, json=False, verbose=False))
+        rc = _check(Namespace(scope=None, json=False, verbose=False))
 
-        assert exc_info.value.code == 1
+        assert rc == 1
 
     def test_unsupported_scope_source_exits_1(self):
         from footprinter.cli.permission_cmd import _check
@@ -1056,7 +1055,7 @@ class TestCheckConnection:
 
 class TestCheckNumericIdLookup:
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_file_id_not_found_exits_1(self, mock_db, capsys):
+    def test_file_id_not_found_returns_1(self, mock_db, capsys):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
@@ -1065,15 +1064,14 @@ class TestCheckNumericIdLookup:
         conn.execute.return_value = cursor
         mock_db.return_value = conn
 
-        with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="file:99", json=False, verbose=False))
+        rc = _check(Namespace(scope="file:99", json=False, verbose=False))
 
-        assert exc_info.value.code == 1
+        assert rc == 1
         output = capsys.readouterr().out
         assert "not found" in output.lower()
 
     @patch("footprinter.cli.permission_cmd.get_policy_db")
-    def test_folder_id_not_found_exits_1(self, mock_db, capsys):
+    def test_folder_id_not_found_returns_1(self, mock_db, capsys):
         from footprinter.cli.permission_cmd import _check
 
         conn = _mock_conn()
@@ -1082,12 +1080,54 @@ class TestCheckNumericIdLookup:
         conn.execute.return_value = cursor
         mock_db.return_value = conn
 
-        with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="folder:99", json=False, verbose=False))
+        rc = _check(Namespace(scope="folder:99", json=False, verbose=False))
 
-        assert exc_info.value.code == 1
+        assert rc == 1
         output = capsys.readouterr().out
         assert "not found" in output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: exit-code propagation
+# ---------------------------------------------------------------------------
+
+
+class TestCheckExitCodePropagation:
+    """A check helper's return value must reach the process exit code.
+
+    _check returns the helper's int rather than discarding it, and the CLI
+    dispatch turns that int into the process exit status. Without both, a
+    failed check (e.g. a non-existent entity) would print an error but exit 0.
+    """
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=1)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_check_does_not_swallow_entity_return(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        mock_db.return_value = _mock_conn()
+
+        rc = _check(Namespace(scope="email:99", json=False, verbose=False))
+
+        assert rc == 1
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=1)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_main_converts_nonzero_return_to_exit_code(self, mock_db, mock_check):
+        mock_db.return_value = _mock_conn()
+
+        _stdout, _stderr, code = run_fp("permission", "check", "email:99")
+
+        assert code == 1
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_main_exits_zero_on_successful_check(self, mock_db, mock_check):
+        mock_db.return_value = _mock_conn()
+
+        _stdout, _stderr, code = run_fp("permission", "check", "email:10")
+
+        assert code == 0
 
 
 # ---------------------------------------------------------------------------
