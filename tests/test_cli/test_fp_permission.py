@@ -884,19 +884,93 @@ class TestCheckScopeRouting:
 
         assert exc_info.value.code == 1
 
-    def test_file_numeric_id_exits_1(self):
+    @patch("footprinter.cli.permission_cmd.check_file_path", return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_file_numeric_id_routes_to_check_file_path(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        file_cursor = MagicMock()
+        file_cursor.fetchone.return_value = {"path": "/home/user/test.py", "status": "listed"}
+        conn.execute.return_value = file_cursor
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="file:42", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "/home/user/test.py", False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_folder", return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_folder_numeric_id_routes_to_check_folder(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        folder_cursor = MagicMock()
+        folder_cursor.fetchone.return_value = {"path": "/home/user/Work"}
+        conn.execute.return_value = folder_cursor
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="folder:42", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "/home/user/Work", False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_email_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="email:10", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "email", 10, False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_chat_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="chat:5", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "chat", 5, False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_visit_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="visit:3", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "visit", 3, False, False)
+
+    def test_email_non_numeric_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="file:42", json=False, verbose=False))
+            _check(Namespace(scope="email:abc", json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
-    def test_folder_numeric_id_exits_1(self):
+    def test_chat_non_numeric_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="folder:42", json=False, verbose=False))
+            _check(Namespace(scope="chat:abc", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_visit_non_numeric_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="visit:abc", json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
@@ -973,6 +1047,47 @@ class TestCheckConnection:
             _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
 
         conn.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: numeric ID lookup edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestCheckNumericIdLookup:
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_file_id_not_found_exits_1(self, mock_db, capsys):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+        mock_db.return_value = conn
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="file:99", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_folder_id_not_found_exits_1(self, mock_db, capsys):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+        mock_db.return_value = conn
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="folder:99", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1333,6 +1448,104 @@ class TestCheckFilePathVerbose:
         assert "--project" not in printed
         assert "folder:" in printed
         assert "project:" in printed
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: entity check (email, chat, visit)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckEntity:
+    def _make_conn(self, entity_row):
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = entity_row
+        conn.execute.return_value = cursor
+        return conn
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    def test_check_entity_email_json(self, mock_perm, mock_vis, mock_json, mock_chain):
+        from footprinter.cli._policy_helpers import check_entity
+
+        email_row = {"id": 10, "subject": "Test Email", "account": "work", "project_id": None, "client_id": None}
+        conn = self._make_conn(email_row)
+
+        check_entity(conn, "email", 10, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert data["entity_type"] == "email"
+        assert data["entity_id"] == 10
+        assert data["display_name"] == "Test Email"
+        assert data["permission"]["resolved"] == "allow"
+        assert data["visibility"]["resolved"] == "full"
+
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_email_not_found(self, mock_console):
+        from footprinter.cli._policy_helpers import check_entity
+
+        conn = self._make_conn(None)
+
+        result = check_entity(conn, "email", 99, json_output=False, verbose=False)
+
+        assert result == 1
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_chat_rich_output(
+        self, mock_console, mock_perm, mock_vis, mock_chain_print, mock_chain_build
+    ):
+        from footprinter.cli._policy_helpers import check_entity
+
+        chat_row = {"id": 5, "title": "Dev Chat", "account": "work", "project_id": 3, "client_id": 1}
+        conn = self._make_conn(chat_row)
+
+        check_entity(conn, "chat", 5, json_output=False, verbose=False)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "Dev Chat" in printed
+        assert "allow" in printed
+        assert "full" in printed
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.output_json")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "source:browser"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "source:browser"))
+    def test_check_entity_visit_json(self, mock_perm, mock_vis, mock_json, mock_chain):
+        from footprinter.cli._policy_helpers import check_entity
+
+        visit_row = {"id": 3, "title": "GitHub", "url": "https://github.com"}
+        conn = self._make_conn(visit_row)
+
+        check_entity(conn, "visit", 3, json_output=True, verbose=False)
+
+        data = mock_json.call_args[0][0]
+        assert data["entity_type"] == "visit"
+        assert data["entity_id"] == 3
+        assert data["display_name"] == "GitHub"
+
+    @patch("footprinter.cli._policy_helpers.build_entity_policy_chain", return_value=[])
+    @patch("footprinter.cli._policy_helpers.print_policy_chain")
+    @patch("footprinter.visibility.resolve_visibility_with_source", return_value=("full", "baseline"))
+    @patch("footprinter.permissions.resolve_permission_with_source", return_value=(True, "baseline"))
+    @patch("footprinter.cli._policy_helpers.console")
+    def test_check_entity_verbose_note(
+        self, mock_console, mock_perm, mock_vis, mock_chain_print, mock_chain_build
+    ):
+        from footprinter.cli._policy_helpers import check_entity
+
+        email_row = {"id": 10, "subject": "Test", "account": "work", "project_id": None, "client_id": None}
+        conn = self._make_conn(email_row)
+
+        check_entity(conn, "email", 10, json_output=False, verbose=True)
+
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "verbose" in printed.lower()
 
 
 # ---------------------------------------------------------------------------
