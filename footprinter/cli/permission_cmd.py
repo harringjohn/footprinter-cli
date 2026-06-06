@@ -461,7 +461,9 @@ def _parse_check_scope(scope: str) -> tuple[str, str]:
     if scope == "global":
         console.print(
             "[red]check is not supported for scope[/red] [cyan]global[/cyan]\n"
-            "  Supported: file path, folder:<path>, project:<id>, client:<id>"
+            "  Hint: use 'fp permission list' to view policies by scope.\n"
+            "  Supported: file path, file:<id>, folder:<path|id>, project:<id>, client:<id>,\n"
+            "             email:<id>, chat:<id>, visit:<id>"
         )
         raise SystemExit(1)
 
@@ -534,6 +536,9 @@ def _check(args) -> None:
         console.print("  fp permission check folder:~/Work")
         console.print("  fp permission check project:3")
         console.print("  fp permission check client:7")
+        console.print("  fp permission check email:10")
+        console.print("  fp permission check chat:5")
+        console.print("  fp permission check visit:3")
         raise SystemExit(1)
 
     scope_type, scope_value = _parse_check_scope(scope)
@@ -745,9 +750,14 @@ def register(subparsers) -> None:
             "examples:\n"
             "  fp permission check ~/Work/file.py           Check a file path\n"
             "  fp permission check file:~/Work/file.py       Same, with explicit prefix\n"
+            "  fp permission check file:42                   Check a file by ID\n"
             "  fp permission check folder:~/Work             Check a folder\n"
+            "  fp permission check folder:42                 Check a folder by ID\n"
             "  fp permission check project:3                 Check a project\n"
             "  fp permission check client:7                  Check a client\n"
+            "  fp permission check email:10                  Check an email\n"
+            "  fp permission check chat:5                    Check a chat\n"
+            "  fp permission check visit:3                   Check a visit\n"
             "  fp permission check folder:~/Work --verbose   Show per-file details"
         ),
         formatter_class=FORMATTER,
@@ -757,7 +767,8 @@ def register(subparsers) -> None:
         nargs="?",
         default=None,
         help=(
-            "Scope to check. Examples: ~/Work/file.py, folder:~/Work, project:3, client:7. "
+            "Scope to check. Examples: ~/Work/file.py, file:42, folder:~/Work, "
+            "project:3, client:7, email:10, chat:5, visit:3. "
             "A bare path (no prefix) is treated as a file path."
         ),
     )

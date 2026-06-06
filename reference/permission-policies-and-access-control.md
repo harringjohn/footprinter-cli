@@ -457,9 +457,14 @@ fp permission list --json            # JSON output
 ```bash
 fp permission check ~/Work/file.py       # Check a file path (bare path)
 fp permission check file:~/Work/file.py  # Same, with explicit prefix
+fp permission check file:42              # Check a file by numeric ID
 fp permission check folder:~/Work        # Folder aggregate check
+fp permission check folder:42            # Folder aggregate by numeric ID
 fp permission check project:3            # Project-level check
 fp permission check client:7             # Client-level check
+fp permission check email:10             # Check an email
+fp permission check chat:5              # Check a chat
+fp permission check visit:3             # Check a visit (browser history)
 fp permission check folder:~/Work --verbose  # Show per-file details
 ```
 
