@@ -484,7 +484,148 @@ def check_client(
 
 
 # ---------------------------------------------------------------------------
-# Policy chain / simulation
+# Single-entity check helper (email, chat, visit)
+# ---------------------------------------------------------------------------
+
+_ENTITY_QUERIES: dict[str, tuple[str, str]] = {
+    "email": (
+        "SELECT id, subject, account, project_id, client_id FROM emails WHERE id = ?",
+        "subject",
+    ),
+    "chat": (
+        "SELECT id, title, account, project_id, client_id FROM chats WHERE id = ?",
+        "title",
+    ),
+    "visit": (
+        "SELECT id, title, url FROM visits WHERE id = ?",
+        "title",
+    ),
+}
+
+_SOURCE_TYPE: dict[str, str] = {
+    "email": "emails",
+    "chat": "chats",
+    "visit": "browser",
+}
+
+
+def check_entity(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_id: int,
+    json_output: bool,
+    verbose: bool = False,
+) -> int:
+    """Check resolved access for a single entity (email, chat, or visit) by ID."""
+    from footprinter.permissions import resolve_permission_with_source
+    from footprinter.visibility import resolve_visibility_with_source
+
+    query, name_col = _ENTITY_QUERIES[entity_type]
+    row = conn.execute(query, (entity_id,)).fetchone()
+
+    if not row:
+        console.print(f"[red]{entity_type.title()} not found:[/red] id={entity_id}")
+        return 1
+
+    display_name = row[name_col] or (row["url"] if entity_type == "visit" else f"(no {name_col})")
+
+    perm_val, perm_src = resolve_permission_with_source(conn, entity_type, entity_id)
+    vis_val, vis_src = resolve_visibility_with_source(conn, entity_type, entity_id)
+    perm_str = "allow" if perm_val else "deny"
+
+    chain = build_entity_policy_chain(
+        conn,
+        entity_type,
+        entity_id,
+        project_id=row["project_id"] if "project_id" in row.keys() else None,
+        client_id=row["client_id"] if "client_id" in row.keys() else None,
+        account=row["account"] if "account" in row.keys() else None,
+    )
+
+    if json_output:
+        data = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "display_name": display_name,
+            "permission": {"resolved": perm_str, "source": perm_src},
+            "visibility": {"resolved": vis_val, "source": vis_src},
+            "chain": chain,
+        }
+        if verbose:
+            data["verbose_note"] = "single-entity output already includes the full policy chain"
+        output_json(data)
+    else:
+        console.print(f"\n{entity_type.title()} Check: [bold]{display_name}[/bold]  (id={entity_id})")
+        console.print()
+        console.print(f"  Permission: [bold]{perm_str}[/bold]   (from {perm_src})")
+        console.print(f"  Visibility: [bold]{vis_val}[/bold]   (from {vis_src})")
+        if chain:
+            console.print()
+            print_policy_chain(chain)
+        if verbose:
+            console.print(
+                "  [dim](--verbose adds no additional detail — single-entity output "
+                "already includes the full policy chain)[/dim]"
+            )
+
+    return 0
+
+
+def build_entity_policy_chain(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_id: int,
+    project_id: int | None,
+    client_id: int | None,
+    account: str | None,
+) -> list[dict]:
+    """Build diagnostic policy chain for an entity (email/chat/visit)."""
+    from footprinter.permissions import BASELINE_PERMISSION
+    from footprinter.visibility import BASELINE_VISIBILITY
+
+    chain: list[dict] = []
+
+    def _policy_entry(scope: str) -> dict:
+        perm = conn.execute(
+            "SELECT setting FROM permission_policies WHERE scope = ?", (scope,),
+        ).fetchone()
+        vis = conn.execute(
+            "SELECT setting FROM visibility_policies WHERE scope = ?", (scope,),
+        ).fetchone()
+        return {
+            "scope": scope,
+            "permission": perm["setting"] if perm else None,
+            "visibility": vis["setting"] if vis else None,
+        }
+
+    if entity_type != "visit":
+        chain.append(_policy_entry(f"{entity_type}:{entity_id}"))
+
+    if project_id is not None:
+        chain.append(_policy_entry(f"project:{project_id}"))
+
+    if client_id is not None:
+        chain.append(_policy_entry(f"client:{client_id}"))
+
+    if account is not None:
+        chain.append(_policy_entry(f"account:{account}"))
+
+    source_type = _SOURCE_TYPE[entity_type]
+    chain.append(_policy_entry(f"source:{source_type}"))
+
+    chain.append(_policy_entry("global"))
+
+    chain.append({
+        "scope": "baseline",
+        "permission": "allow" if BASELINE_PERMISSION else "deny",
+        "visibility": BASELINE_VISIBILITY,
+    })
+
+    return chain
+
+
+# ---------------------------------------------------------------------------
+# Policy chain / simulation (file-path specific)
 # ---------------------------------------------------------------------------
 
 

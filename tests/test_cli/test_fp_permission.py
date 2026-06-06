@@ -884,19 +884,93 @@ class TestCheckScopeRouting:
 
         assert exc_info.value.code == 1
 
-    def test_file_numeric_id_exits_1(self):
+    @patch("footprinter.cli.permission_cmd.check_file_path", return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_file_numeric_id_routes_to_check_file_path(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        file_cursor = MagicMock()
+        file_cursor.fetchone.return_value = {"path": "/home/user/test.py", "status": "listed"}
+        conn.execute.return_value = file_cursor
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="file:42", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "/home/user/test.py", False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_folder", return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_folder_numeric_id_routes_to_check_folder(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        folder_cursor = MagicMock()
+        folder_cursor.fetchone.return_value = {"path": "/home/user/Work"}
+        conn.execute.return_value = folder_cursor
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="folder:42", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "/home/user/Work", False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_email_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="email:10", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "email", 10, False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_chat_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="chat:5", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "chat", 5, False, False)
+
+    @patch("footprinter.cli.permission_cmd.check_entity", create=True, return_value=0)
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_visit_routes_to_check_entity(self, mock_db, mock_check):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        mock_db.return_value = conn
+
+        _check(Namespace(scope="visit:3", json=False, verbose=False))
+
+        mock_check.assert_called_once_with(conn, "visit", 3, False, False)
+
+    def test_email_non_numeric_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="file:42", json=False, verbose=False))
+            _check(Namespace(scope="email:abc", json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
-    def test_folder_numeric_id_exits_1(self):
+    def test_chat_non_numeric_exits_1(self):
         from footprinter.cli.permission_cmd import _check
 
         with pytest.raises(SystemExit) as exc_info:
-            _check(Namespace(scope="folder:42", json=False, verbose=False))
+            _check(Namespace(scope="chat:abc", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+
+    def test_visit_non_numeric_exits_1(self):
+        from footprinter.cli.permission_cmd import _check
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="visit:abc", json=False, verbose=False))
 
         assert exc_info.value.code == 1
 
@@ -973,6 +1047,47 @@ class TestCheckConnection:
             _check(Namespace(scope="~/Work/file.py", json=False, verbose=False))
 
         conn.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Check subcommand: numeric ID lookup edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestCheckNumericIdLookup:
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_file_id_not_found_exits_1(self, mock_db, capsys):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+        mock_db.return_value = conn
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="file:99", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()
+
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_folder_id_not_found_exits_1(self, mock_db, capsys):
+        from footprinter.cli.permission_cmd import _check
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+        mock_db.return_value = conn
+
+        with pytest.raises(SystemExit) as exc_info:
+            _check(Namespace(scope="folder:99", json=False, verbose=False))
+
+        assert exc_info.value.code == 1
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()
 
 
 # ---------------------------------------------------------------------------

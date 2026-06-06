@@ -18,6 +18,7 @@ from footprinter.access_stamper import ENTITY_META, count_affected_entities
 from footprinter.cli._common import FORMATTER, add_json_flag, console, output_json
 from footprinter.cli._policy_helpers import (
     check_client,
+    check_entity,
     check_file_path,
     check_folder,
     check_project,
@@ -471,22 +472,14 @@ def _parse_check_scope(scope: str) -> tuple[str, str]:
 
     if prefix == "file":
         if value.isdigit():
-            console.print(
-                "[red]check does not support numeric file IDs.[/red] Use the file path instead.\n"
-                "  Example: fp permission check ~/Work/file.py"
-            )
-            raise SystemExit(1)
+            return ("file_id", value)
         return ("path", value)
 
     if prefix == "folder":
         from footprinter.db.policies import is_folder_path_scope
 
         if not is_folder_path_scope(scope):
-            console.print(
-                "[red]check does not support numeric folder IDs.[/red] Use a folder path instead.\n"
-                "  Example: fp permission check folder:~/Work"
-            )
-            raise SystemExit(1)
+            return ("folder_id", value)
         return ("folder", value)
 
     if prefix in ("project", "client"):
@@ -499,9 +492,28 @@ def _parse_check_scope(scope: str) -> tuple[str, str]:
             raise SystemExit(1)
         return (prefix, value)
 
+    if prefix in ("email", "chat", "visit"):
+        try:
+            int(value)
+        except ValueError:
+            console.print(
+                f"[red]Invalid {prefix} ID:[/red] {value!r}. Must be a number."
+            )
+            raise SystemExit(1)
+        return (prefix, value)
+
+    if prefix in ("source", "account"):
+        console.print(
+            f"[red]check is not supported for scope[/red] [cyan]{scope}[/cyan]\n"
+            "  Hint: source/account scopes name a level in the policy chain, not a single entity.\n"
+            "  Use 'fp permission list' to view policies by scope."
+        )
+        raise SystemExit(1)
+
     console.print(
         f"[red]check is not supported for scope[/red] [cyan]{scope}[/cyan]\n"
-        "  Supported: file path, folder:<path>, project:<id>, client:<id>"
+        "  Supported: file path, file:<id>, folder:<path|id>, project:<id>, client:<id>,\n"
+        "             email:<id>, chat:<id>, visit:<id>"
     )
     raise SystemExit(1)
 
@@ -563,6 +575,32 @@ def _check(args) -> None:
             check_project(conn, int(scope_value), json_output, verbose)
         elif scope_type == "client":
             check_client(conn, int(scope_value), json_output, verbose)
+        elif scope_type == "file_id":
+            file_id = int(scope_value)
+            row = conn.execute(
+                "SELECT path, status FROM files WHERE id = ?", (file_id,),
+            ).fetchone()
+            if not row:
+                console.print(f"[red]File not found:[/red] id={file_id}")
+                raise SystemExit(1)
+            if row["status"] != "listed":
+                console.print(
+                    f"[red]File id={file_id} has status '{row['status']}'.[/red]\n"
+                    "  Only listed files are checked."
+                )
+                raise SystemExit(1)
+            check_file_path(conn, row["path"], json_output, verbose)
+        elif scope_type == "folder_id":
+            folder_id = int(scope_value)
+            row = conn.execute(
+                "SELECT path FROM folders WHERE id = ?", (folder_id,),
+            ).fetchone()
+            if not row:
+                console.print(f"[red]Folder not found:[/red] id={folder_id}")
+                raise SystemExit(1)
+            check_folder(conn, row["path"], json_output, verbose)
+        elif scope_type in ("email", "chat", "visit"):
+            check_entity(conn, scope_type, int(scope_value), json_output, verbose)
     finally:
         conn.close()
 
