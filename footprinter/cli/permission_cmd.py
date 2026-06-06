@@ -520,7 +520,7 @@ def _parse_check_scope(scope: str) -> tuple[str, str]:
     raise SystemExit(1)
 
 
-def _check(args) -> None:
+def _check(args) -> int:
     from footprinter.permissions import BASELINE_PERMISSION
     from footprinter.visibility import BASELINE_VISIBILITY
 
@@ -539,7 +539,7 @@ def _check(args) -> None:
         console.print("  fp permission check email:10")
         console.print("  fp permission check chat:5")
         console.print("  fp permission check visit:3")
-        raise SystemExit(1)
+        return 1
 
     scope_type, scope_value = _parse_check_scope(scope)
 
@@ -569,17 +569,17 @@ def _check(args) -> None:
             )
             console.print(f"  Access: [bold]{perm_str}[/bold]  (baseline)")
             console.print(f"  Visibility: [bold]{vis_str}[/bold]  (baseline)")
-        return
+        return 0
 
     try:
         if scope_type == "path":
-            check_file_path(conn, scope_value, json_output, verbose)
+            return check_file_path(conn, scope_value, json_output, verbose)
         elif scope_type == "folder":
-            check_folder(conn, scope_value, json_output, verbose)
+            return check_folder(conn, scope_value, json_output, verbose)
         elif scope_type == "project":
-            check_project(conn, int(scope_value), json_output, verbose)
+            return check_project(conn, int(scope_value), json_output, verbose)
         elif scope_type == "client":
-            check_client(conn, int(scope_value), json_output, verbose)
+            return check_client(conn, int(scope_value), json_output, verbose)
         elif scope_type == "file_id":
             file_id = int(scope_value)
             row = conn.execute(
@@ -587,14 +587,14 @@ def _check(args) -> None:
             ).fetchone()
             if not row:
                 console.print(f"[red]File not found:[/red] id={file_id}")
-                raise SystemExit(1)
+                return 1
             if row["status"] != "listed":
                 console.print(
                     f"[red]File id={file_id} has status '{row['status']}'.[/red]\n"
                     "  Only listed files are checked."
                 )
-                raise SystemExit(1)
-            check_file_path(conn, row["path"], json_output, verbose)
+                return 1
+            return check_file_path(conn, row["path"], json_output, verbose)
         elif scope_type == "folder_id":
             folder_id = int(scope_value)
             row = conn.execute(
@@ -602,10 +602,11 @@ def _check(args) -> None:
             ).fetchone()
             if not row:
                 console.print(f"[red]Folder not found:[/red] id={folder_id}")
-                raise SystemExit(1)
-            check_folder(conn, row["path"], json_output, verbose)
+                return 1
+            return check_folder(conn, row["path"], json_output, verbose)
         elif scope_type in ("email", "chat", "visit"):
-            check_entity(conn, scope_type, int(scope_value), json_output, verbose)
+            return check_entity(conn, scope_type, int(scope_value), json_output, verbose)
+        return 0
     finally:
         conn.close()
 
