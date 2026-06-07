@@ -181,9 +181,10 @@ if [ "$WITH_PYTEST" = true ]; then
     cp "$REPO_ROOT/pyproject.toml" "$WORKSPACE/pyproject.toml"
 
     # The session-scoped _repo_local_paths fixture in conftest.py resolves
-    # config.example.yaml relative to Path(__file__).parent.parent, which in
-    # the neutral dir is $WORKSPACE.  Create that path from the installed
-    # package so the fixture works without modification.
+    # config.example.yaml at footprinter/bundled/config.example.yaml relative
+    # to Path(__file__).parent.parent, which in the neutral dir is $WORKSPACE.
+    # Create that path from the installed package so the fixture works without
+    # modification.
     INSTALLED_CONFIG=$("$VENV_PY" -c "
 from importlib.resources import files
 print(files('footprinter.bundled').joinpath('config.example.yaml'))
