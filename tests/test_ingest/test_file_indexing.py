@@ -201,7 +201,7 @@ class TestExclusionPatterns:
 
 
 class TestDotFolderExclusionPatterns:
-    """Dot-folders that should never enter the DB (FPR-1797).
+    """Dot-folders that should never enter the DB.
 
     Tests load the real bundled config to verify shipped patterns.
     """
