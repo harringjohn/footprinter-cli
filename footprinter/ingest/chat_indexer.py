@@ -22,7 +22,6 @@ from rich.progress import track
 
 from footprinter.db import chats as chats_db
 from footprinter.db import uploads as uploads_db
-from footprinter.semantic.vector_store import _chat_vectorization_enabled
 
 from ..utils.hash_utils import compute_sha256
 from ..utils.time import utc_now_iso
@@ -74,68 +73,6 @@ class ChatIndexer:
             except (ImportError, Exception):
                 self._vector_store = False  # sentinel: don't retry
         return self._vector_store if self._vector_store is not False else None
-
-    def _vectorize_message(self, msg_id, chat_id, msg, conv_data):
-        if not _chat_vectorization_enabled():
-            return
-        # Check per-record vectorize flag
-        row = self.db.conn.execute(
-            "SELECT vectorize as vec FROM messages WHERE id = ?",
-            (msg_id,),
-        ).fetchone()
-        if row and row["vec"] == 0:
-            return
-        store = self._get_vector_store()
-        if not store or not msg.get("content"):
-            return
-        try:
-            metadata = {
-                "source": conv_data.get("source", "unknown"),
-                "role": msg.get("role", "unknown"),
-                "chat_title": (conv_data.get("title") or "(untitled)")[:200],
-                "created_at": msg.get("created_at", ""),
-                "message_position": 0,
-            }
-            store.upsert_chat_message(
-                message_id=msg_id,
-                chat_id=chat_id,
-                content=msg["content"],
-                metadata=metadata,
-            )
-            self.db.conn.execute(
-                "UPDATE messages SET vectorized_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (msg_id,),
-            )
-        except Exception as e:
-            logger.debug(f"Chat message vectorization skipped for msg {msg_id}: {e}")
-
-    def _vectorize_chat_info(self, chat_id, conv_data):
-        if not _chat_vectorization_enabled():
-            return
-        # Check per-record vectorize flag
-        row = self.db.conn.execute(
-            "SELECT vectorize as vec FROM chats WHERE id = ?",
-            (chat_id,),
-        ).fetchone()
-        if row and row["vec"] == 0:
-            return
-        store = self._get_vector_store()
-        if not store:
-            return
-        try:
-            store.index_chat_info(
-                chat_id=chat_id,
-                title=conv_data.get("title"),
-                source=conv_data.get("source", "unknown"),
-                created_at=conv_data.get("created_at", ""),
-                message_count=conv_data.get("message_count", 0),
-            )
-            self.db.conn.execute(
-                "UPDATE chats SET metadata_vectorized_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (chat_id,),
-            )
-        except Exception as e:
-            logger.debug(f"Chat info vectorization skipped for {chat_id}: {e}")
 
     def _validate_zip(self, zf: zipfile.ZipFile, extract_dir: Path) -> None:
         """Validate zip contents for path traversal, size, and compression ratio."""
@@ -309,15 +246,6 @@ class ChatIndexer:
         logger.info(f"  {stats['total_messages']} total messages")
         logger.info(f"  Date range: {stats['earliest_chat']} to {stats['latest_chat']}")
 
-        # Pre-warm the vector store so the sentence-transformer model load
-        # happens here, under a visible spinner, not during the first chat's
-        # vectorize step. Skip when vectorization is disabled — otherwise
-        # chromadb + model init would fire despite config opting out.
-        if _chat_vectorization_enabled():
-            vector_ctx = console.status("Loading vector store…") if console else nullcontext()
-            with vector_ctx:
-                self._get_vector_store()
-
         chats_added = 0
         chats_updated = 0
         messages_imported = 0
@@ -381,12 +309,9 @@ class ChatIndexer:
                             "metadata": msg.get("metadata", {}),
                         },
                     )
-                    self._vectorize_message(msg_id, internal_id, msg, conv_data)
                     messages_imported += 1
 
-                self._vectorize_chat_info(internal_id, conv_data)
-
-                # Commit per-chat: all messages + vectorization for this chat
+                # Commit per-chat: all messages for this chat
                 self.db.conn.commit()
 
                 if console is None:

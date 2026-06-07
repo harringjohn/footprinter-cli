@@ -1,26 +1,20 @@
-"""Tests for chat indexer vectorization gating."""
+"""Tests for ChatIndexer — inline vectorization removed (FPR-1760).
 
-from unittest.mock import MagicMock, patch
+Chat vectorization is now handled by the post-ingest follow-up stage
+(run_vectorization), not inline during import. These tests verify
+that the inline methods no longer exist.
+"""
 
 
-def test_vectorization_skipped_when_chat_vectorization_disabled():
-    """Chat vectorization should be skipped when semantic.chat_vectorization is False."""
+def test_messages_not_vectorized_inline():
+    """ChatIndexer should not have a _vectorize_message method."""
     from footprinter.ingest.chat_indexer import ChatIndexer
 
-    mock_db = MagicMock()
-    indexer = ChatIndexer(mock_db)
+    assert not hasattr(ChatIndexer, "_vectorize_message")
 
-    # Force a vector store to be available
-    mock_store = MagicMock()
-    indexer._vector_store = mock_store
 
-    msg = {"content": "Hello world", "role": "user", "created_at": "2026-01-01"}
-    conv_data = {"source": "claude", "title": "Test Chat", "message_count": 1}
+def test_chat_info_not_vectorized_inline():
+    """ChatIndexer should not have a _vectorize_chat_info method."""
+    from footprinter.ingest.chat_indexer import ChatIndexer
 
-    with patch("footprinter.ingest.chat_indexer._chat_vectorization_enabled", return_value=False):
-        indexer._vectorize_message(1, 1, msg, conv_data)
-        indexer._vectorize_chat_info(1, conv_data)
-
-    # Neither method should have called the vector store
-    mock_store.upsert_chat_message.assert_not_called()
-    mock_store.index_chat_info.assert_not_called()
+    assert not hasattr(ChatIndexer, "_vectorize_chat_info")
