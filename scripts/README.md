@@ -42,7 +42,7 @@ wheel); that coverage lives in `verify-upgrade` (local wheel) and `smoke` (snaps
 
 ### Resolved limitations
 
-- **`--with-pytest` collection errors (FPR-1630):** v1.0.1 post-release
+- **`--with-pytest` collection errors:** v1.0.1 post-release
   verification hit 3 pytest collection errors when running tests against the
   installed package. Fixed by copying the full `tests/` tree to a neutral
   directory and setting `PYTHONPATH` so `from tests.conftest import` resolves.
