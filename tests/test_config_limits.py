@@ -144,3 +144,40 @@ class TestChunkSize:
             return_value={"vectorization": {"chunk_size": 800}},
         ):
             assert _get_chunk_size() == 800
+
+
+# ---------------------------------------------------------------------------
+# vectorize_statuses  (default ["listed"])
+# ---------------------------------------------------------------------------
+
+class TestVectorizeStatuses:
+
+    def test_override(self):
+        from footprinter.ingest.processing import _get_vectorize_statuses
+
+        config = {"semantic": {"vectorize_statuses": ["listed", "unlisted"]}}
+        with patch("footprinter.source_registry.get_config", return_value=config):
+            assert _get_vectorize_statuses() == ["listed", "unlisted"]
+
+    def test_fallback(self):
+        from footprinter.ingest.processing import _get_vectorize_statuses
+
+        with patch(
+            "footprinter.source_registry.get_config",
+            side_effect=ConfigError("no config"),
+        ):
+            assert _get_vectorize_statuses() == ["listed"]
+
+    def test_empty_list_falls_back(self):
+        from footprinter.ingest.processing import _get_vectorize_statuses
+
+        config = {"semantic": {"vectorize_statuses": []}}
+        with patch("footprinter.source_registry.get_config", return_value=config):
+            assert _get_vectorize_statuses() == ["listed"]
+
+    def test_non_list_falls_back(self):
+        from footprinter.ingest.processing import _get_vectorize_statuses
+
+        config = {"semantic": {"vectorize_statuses": "listed"}}
+        with patch("footprinter.source_registry.get_config", return_value=config):
+            assert _get_vectorize_statuses() == ["listed"]

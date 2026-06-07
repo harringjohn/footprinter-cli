@@ -88,6 +88,10 @@ indexing:
 semantic:
   file_vectorization: false
   chat_vectorization: false
+  # File statuses eligible for vectorization. Default: [listed].
+  # Add 'unlisted' to also embed hidden/dot-files.
+  # vectorize_statuses:
+  #   - listed
 
 # Vectorization — controls what gets embedded for semantic search
 # Requires semantic.file_vectorization: true to take effect for files
