@@ -562,6 +562,153 @@ class TestScopedVectorization:
         assert mock_store.upsert_file.call_count == 2
 
 
+class TestChatVectorization:
+    """run_vectorization delegates to vector_ops helpers for messages + chat_info."""
+
+    def test_vectorizes_messages_when_chat_enabled(self, tmp_path):
+        """When chat vectorization is enabled, run_vectorization calls _vectorize_messages."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_messages",
+                return_value={"done": 2, "interrupted": False},
+            ) as mock_msgs,
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_chat_info",
+                return_value={"done": 0, "interrupted": False},
+            ),
+        ):
+            result = run_vectorization(db)
+
+        mock_msgs.assert_called_once()
+        assert result.data["vectorized_messages_new"] == 2
+
+    def test_vectorizes_chat_info_when_chat_enabled(self, tmp_path):
+        """When chat vectorization is enabled, run_vectorization calls _vectorize_chat_info."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_messages",
+                return_value={"done": 0, "interrupted": False},
+            ),
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_chat_info",
+                return_value={"done": 3, "interrupted": False},
+            ) as mock_chat,
+        ):
+            result = run_vectorization(db)
+
+        mock_chat.assert_called_once()
+        assert result.data["vectorized_chat_info_new"] == 3
+
+    def test_skips_chat_phases_when_disabled(self, tmp_path):
+        """When chat vectorization is disabled, message/chat helpers are not called."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=False),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch("footprinter.ingest.vector_ops._vectorize_messages") as mock_msgs,
+            patch("footprinter.ingest.vector_ops._vectorize_chat_info") as mock_chat,
+        ):
+            result = run_vectorization(db)
+
+        mock_msgs.assert_not_called()
+        mock_chat.assert_not_called()
+        assert result.data.get("vectorized_messages_new", 0) == 0
+        assert result.data.get("vectorized_chat_info_new", 0) == 0
+
+    def test_chat_only_when_file_vectorization_disabled(self, tmp_path):
+        """When only chat vectorization is enabled, files are skipped but messages/chats run."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        _insert_file(db, file_path=str(tmp_path / "f.txt"))
+
+        mock_store = MagicMock()
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=False),
+            patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_messages",
+                return_value={"done": 5, "interrupted": False},
+            ) as mock_msgs,
+            patch(
+                "footprinter.ingest.vector_ops._vectorize_chat_info",
+                return_value={"done": 1, "interrupted": False},
+            ) as mock_chat,
+        ):
+            result = run_vectorization(db)
+
+        # File vectorization did not run
+        mock_store.upsert_file.assert_not_called()
+        # Chat phases ran
+        mock_msgs.assert_called_once()
+        mock_chat.assert_called_once()
+        # Result is completed, not skipped
+        assert result.status.value == "completed"
+        assert result.data["vectorized_messages_new"] == 5
+        assert result.data["vectorized_chat_info_new"] == 1
+
+    def test_shutdown_stops_chat_phases(self, tmp_path):
+        """When _shutdown is set during file phase, chat phases are skipped."""
+        import footprinter.ingest.processing as processing
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "f.txt").write_text("content")
+        _insert_file(db, file_path=str(tmp_path / "f.txt"))
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        def trigger_shutdown(count):
+            processing._shutdown = True
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+            patch("footprinter.ingest.vector_ops._vectorize_messages") as mock_msgs,
+            patch("footprinter.ingest.vector_ops._vectorize_chat_info") as mock_chat,
+        ):
+            result = run_vectorization(db, on_progress=trigger_shutdown)
+
+        processing._shutdown = False
+
+        mock_msgs.assert_not_called()
+        mock_chat.assert_not_called()
+        assert result.data.get("interrupted") is True
+
+
 class TestVectorizationInterruptSafety:
     """Periodic commits and graceful shutdown in run_vectorization."""
 

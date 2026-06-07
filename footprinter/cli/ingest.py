@@ -418,7 +418,7 @@ def _ingest_pipeline(args) -> None:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
 
-    if pipes is None or "local_files" in pipes:
+    if pipes is None or "local_files" in pipes or "chat" in pipes:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
         file_ids = _extract_touched_file_ids(results)
@@ -463,7 +463,7 @@ def _ingest_refresh(args) -> None:
         console.print("[dim]Interrupted.[/dim]")
         sys.exit(130)
 
-    if "local_files" in stages:
+    if "local_files" in stages or "chat" in stages:
         from footprinter.cli._vectorize_stage import run_vectorization_stage
 
         file_ids = _extract_touched_file_ids(results)

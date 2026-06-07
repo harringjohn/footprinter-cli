@@ -126,7 +126,9 @@ _shutdown = False
 def _handle_shutdown(signum: int, frame: Any) -> None:
     global _shutdown
     _shutdown = True
-    logger.warning("Received %s — finishing current file...", signal.Signals(signum).name)
+    import footprinter.ingest.vector_ops as _vo
+    _vo._shutdown = True
+    logger.warning("Received %s — finishing current item...", signal.Signals(signum).name)
 
 
 def run_vectorization(
@@ -135,69 +137,50 @@ def run_vectorization(
     on_progress: Optional[Callable[[int], None]] = None,
     file_ids: Optional[List[int]] = None,
 ) -> PipeResult:
-    """Embed files that haven't been vectorized yet.
+    """Embed files, messages, and chat info that haven't been vectorized yet.
 
-    Split off from inline file ingest so the index is usable before
-    embedding completes. Queries the files manifest, extracts chunks,
-    upserts to the vector store, and stamps ``vectorized_at`` on each
-    successfully embedded row.
+    Split off from inline ingest so the index is usable before embedding
+    completes. Handles all vectorization types: files (via local extraction),
+    messages and chat_info (via shared helpers in vector_ops).
 
     Args:
         db: Database instance.
         full_mode: When True, re-embed every listed file
             by dropping the ``vectorized_at IS NULL`` clause.
-        on_progress: Optional callback fired with cumulative file count
-            after each file is processed.
-        file_ids: When provided, scope vectorization to only these file IDs.
-            Empty list means no-op. None means broad (existing behavior).
+        on_progress: Optional callback fired with cumulative count
+            after each item is processed.
+        file_ids: When provided, scope file vectorization to only these IDs.
+            Empty list means no-op for files. None means broad (existing behavior).
+            Message/chat_info phases always select their own unvectorized rows.
 
     Returns:
-        PipeResult — ``skipped`` when ``file_vectorization`` is disabled,
+        PipeResult — ``skipped`` when all vectorization is disabled,
         otherwise ``completed`` (or ``completed_with_errors``) with
-        per-row counts in data.
+        per-type counts in data.
     """
-    from footprinter.semantic.vector_store import VectorStore, _file_vectorization_enabled
+    from footprinter.semantic.vector_store import (
+        VectorStore,
+        _chat_vectorization_enabled,
+        _file_vectorization_enabled,
+    )
 
-    if not _file_vectorization_enabled():
-        return PipeResult.skipped("vectorization", "file_vectorization disabled")
+    files_enabled = _file_vectorization_enabled()
+    chats_enabled = _chat_vectorization_enabled()
 
-    counts = {
+    if not files_enabled and not chats_enabled:
+        return PipeResult.skipped("vectorization", "vectorization disabled")
+
+    counts: Dict[str, Any] = {
         "vectorized_new": 0,
         "vectorized_failed": 0,
         "vectorized_skipped_missing": 0,
         "vectorized_skipped_large": 0,
+        "vectorized_messages_new": 0,
+        "vectorized_chat_info_new": 0,
     }
     skipped_large_files: List[Dict[str, Any]] = []
 
-    if file_ids is not None and len(file_ids) == 0:
-        return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
-
-    statuses = _get_vectorize_statuses()
-    status_ph = ",".join("?" * len(statuses))
-
-    if file_ids is not None:
-        where = f"status IN ({status_ph}) AND vectorize = 1"
-        if not full_mode:
-            where += " AND vectorized_at IS NULL"
-        if len(file_ids) <= 500:
-            placeholders = ",".join("?" * len(file_ids))
-            where += f" AND id IN ({placeholders})"
-            rows = db.conn.execute(
-                f"SELECT id, path FROM files WHERE {where}", statuses + file_ids
-            ).fetchall()
-        else:
-            db.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _vec_scope (file_id INTEGER PRIMARY KEY)")
-            db.conn.execute("DELETE FROM _vec_scope")
-            db.conn.executemany("INSERT INTO _vec_scope (file_id) VALUES (?)", [(fid,) for fid in file_ids])
-            where += " AND id IN (SELECT file_id FROM _vec_scope)"
-            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", statuses).fetchall()
-    else:
-        where = f"status IN ({status_ph}) AND vectorize = 1"
-        if not full_mode:
-            where += " AND vectorized_at IS NULL"
-        rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", statuses).fetchall()
-
-    if not rows:
+    if file_ids is not None and len(file_ids) == 0 and not chats_enabled:
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 
     try:
@@ -206,16 +189,10 @@ def run_vectorization(
         logger.warning("Vectorization stage: vector store unavailable: %s", e)
         return PipeResult.make_error("vectorization", f"vector store unavailable: {e}", ErrorType.RUNTIME)
 
-    from pathlib import Path
-
-    from footprinter.ingest.full_content_extractor import FullContentExtractor
-    from footprinter.source_registry import get_config
-
-    extractor = FullContentExtractor.from_config(get_config())
-    vectorize_cap = getattr(extractor, "max_vectorize_size_bytes", 0)
-
     global _shutdown
     _shutdown = False
+    import footprinter.ingest.vector_ops as _vo
+    _vo._shutdown = False
     old_sigint = signal.getsignal(signal.SIGINT)
     old_sigterm = signal.getsignal(signal.SIGTERM)
     signal.signal(signal.SIGINT, _handle_shutdown)
@@ -225,74 +202,142 @@ def run_vectorization(
     failures: List[str] = []
     interrupted = False
     try:
-        for row in rows:
-            if _shutdown:
-                db.conn.commit()
-                interrupted = True
-                break
+        # --- File vectorization phase ---
+        if files_enabled:
+            if file_ids is not None and len(file_ids) == 0:
+                pass  # no-op for empty file_ids
+            else:
+                statuses = _get_vectorize_statuses()
+                status_ph = ",".join("?" * len(statuses))
 
-            file_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
-            file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
-            processed += 1
-            try:
-                path = Path(file_path) if file_path else None
-                if path is None or not path.exists():
-                    counts["vectorized_skipped_missing"] += 1
-                    continue
-                # Size-cap check before extraction so we can record the skip with size.
-                if vectorize_cap > 0:
-                    try:
-                        file_size = path.stat().st_size
-                    except OSError as stat_err:
-                        logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
-                        file_size = None
-                    if file_size is not None and file_size > vectorize_cap:
-                        logger.info(
-                            f"Skipping vectorization of {path.name}: {file_size} bytes "
-                            f"exceeds cap of {vectorize_cap} bytes"
-                        )
-                        counts["vectorized_skipped_large"] += 1
-                        skipped_large_files.append({"path": str(path), "size_bytes": file_size})
-                        # Drop any prior vectors for this file_id so stale embeddings
-                        # don't linger when a previously-small file grows past the cap.
-                        try:
-                            store.delete_file(file_id)
-                        except Exception as e:  # Intentional broad catch: cleanup is best-effort
-                            logger.debug(f"delete_file failed for {file_id}: {e}")
-                        # Stamp vectorized_at with chunks=0 so the row is not re-evaluated
-                        # every incremental run. Upstream ingest clears vectorized_at on
-                        # file modification, so a shrunk file will be re-considered.
+                if file_ids is not None:
+                    where = f"status IN ({status_ph}) AND vectorize = 1"
+                    if not full_mode:
+                        where += " AND vectorized_at IS NULL"
+                    if len(file_ids) <= 500:
+                        placeholders = ",".join("?" * len(file_ids))
+                        where += f" AND id IN ({placeholders})"
+                        rows = db.conn.execute(
+                            f"SELECT id, path FROM files WHERE {where}", statuses + file_ids
+                        ).fetchall()
+                    else:
                         db.conn.execute(
-                            "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = 0 WHERE id = ?",
-                            (file_id,),
+                            "CREATE TEMP TABLE IF NOT EXISTS _vec_scope (file_id INTEGER PRIMARY KEY)"
                         )
-                        continue
-                chunks = extractor.extract_with_chunking(path)
-                if not chunks:
-                    counts["vectorized_skipped_missing"] += 1
-                    continue
-                metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
-                store.upsert_file(file_id, str(path), chunks, metadata)
-                db.conn.execute(
-                    "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
-                    (len(chunks), file_id),
-                )
-                counts["vectorized_new"] += 1
-            except Exception as e:  # Intentional broad catch: per-row failure must not abort the stage
-                counts["vectorized_failed"] += 1
-                failures.append(f"id={file_id}: {e}")
-                logger.debug("Vectorization failed for file_id=%s path=%s: %s", file_id, file_path, e)
-            finally:
-                if on_progress is not None:
-                    on_progress(processed)
-                if processed % _COMMIT_INTERVAL == 0:
-                    db.conn.commit()
+                        db.conn.execute("DELETE FROM _vec_scope")
+                        db.conn.executemany(
+                            "INSERT INTO _vec_scope (file_id) VALUES (?)",
+                            [(fid,) for fid in file_ids],
+                        )
+                        where += " AND id IN (SELECT file_id FROM _vec_scope)"
+                        rows = db.conn.execute(
+                            f"SELECT id, path FROM files WHERE {where}", statuses
+                        ).fetchall()
+                else:
+                    where = f"status IN ({status_ph}) AND vectorize = 1"
+                    if not full_mode:
+                        where += " AND vectorized_at IS NULL"
+                    rows = db.conn.execute(
+                        f"SELECT id, path FROM files WHERE {where}", statuses
+                    ).fetchall()
 
-        if not interrupted:
-            db.conn.commit()
+                from pathlib import Path
+
+                from footprinter.ingest.full_content_extractor import FullContentExtractor
+                from footprinter.source_registry import get_config
+
+                extractor = FullContentExtractor.from_config(get_config())
+                vectorize_cap = getattr(extractor, "max_vectorize_size_bytes", 0)
+
+                for row in rows:
+                    if _shutdown:
+                        db.conn.commit()
+                        interrupted = True
+                        break
+
+                    file_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+                    file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
+                    processed += 1
+                    try:
+                        path = Path(file_path) if file_path else None
+                        if path is None or not path.exists():
+                            counts["vectorized_skipped_missing"] += 1
+                            continue
+                        if vectorize_cap > 0:
+                            try:
+                                file_size = path.stat().st_size
+                            except OSError as stat_err:
+                                logger.warning(
+                                    f"stat() failed for {path}; skipping size-cap check: {stat_err}"
+                                )
+                                file_size = None
+                            if file_size is not None and file_size > vectorize_cap:
+                                logger.info(
+                                    f"Skipping vectorization of {path.name}: {file_size} bytes "
+                                    f"exceeds cap of {vectorize_cap} bytes"
+                                )
+                                counts["vectorized_skipped_large"] += 1
+                                skipped_large_files.append({"path": str(path), "size_bytes": file_size})
+                                try:
+                                    store.delete_file(file_id)
+                                except Exception as e:  # Intentional broad catch: cleanup is best-effort
+                                    logger.debug(f"delete_file failed for {file_id}: {e}")
+                                db.conn.execute(
+                                    "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
+                                    " vectorized_chunks = 0 WHERE id = ?",
+                                    (file_id,),
+                                )
+                                continue
+                        chunks = extractor.extract_with_chunking(path)
+                        if not chunks:
+                            counts["vectorized_skipped_missing"] += 1
+                            continue
+                        metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
+                        store.upsert_file(file_id, str(path), chunks, metadata)
+                        db.conn.execute(
+                            "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
+                            " vectorized_chunks = ? WHERE id = ?",
+                            (len(chunks), file_id),
+                        )
+                        counts["vectorized_new"] += 1
+                    except Exception as e:  # Intentional broad catch: per-row failure must not abort
+                        counts["vectorized_failed"] += 1
+                        failures.append(f"id={file_id}: {e}")
+                        logger.debug(
+                            "Vectorization failed for file_id=%s path=%s: %s", file_id, file_path, e
+                        )
+                    finally:
+                        if on_progress is not None:
+                            on_progress(processed)
+                        if processed % _COMMIT_INTERVAL == 0:
+                            db.conn.commit()
+
+                if not interrupted:
+                    db.conn.commit()
+                if _shutdown and not interrupted:
+                    interrupted = True
+
+        # --- Message + chat_info vectorization phases ---
+        if not _shutdown and chats_enabled:
+            msg_result = _vo._vectorize_messages(
+                db.conn, db.conn.cursor(), store, console=None, mode="incremental"
+            )
+            counts["vectorized_messages_new"] = msg_result.get("done", 0)
+            if msg_result.get("interrupted"):
+                interrupted = True
+
+        if not _shutdown and chats_enabled:
+            chat_result = _vo._vectorize_chat_info(
+                db.conn, db.conn.cursor(), store, console=None, mode="incremental"
+            )
+            counts["vectorized_chat_info_new"] = chat_result.get("done", 0)
+            if chat_result.get("interrupted"):
+                interrupted = True
     finally:
         signal.signal(signal.SIGINT, old_sigint)
         signal.signal(signal.SIGTERM, old_sigterm)
+        _shutdown = False
+        _vo._shutdown = False
 
     if interrupted:
         return PipeResult.completed(
