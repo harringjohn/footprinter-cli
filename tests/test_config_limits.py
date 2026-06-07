@@ -1,7 +1,9 @@
 """Override and fallback tests for config-driven limit accessors.
 
-Each accessor under ``footprinter/`` reads ``limits.<key>`` from config with a
-hardcoded default.  These tests verify:
+Each accessor under ``footprinter/`` reads a config key with a hardcoded default.
+Most read from ``limits.<key>``; ``chunk_size`` reads from
+``vectorization.chunk_size`` (co-located with ``chunk_overlap``).  These tests
+verify:
 
 1. A custom config value is respected (override).
 2. A ``ConfigError`` falls back to the hardcoded default (fallback).
