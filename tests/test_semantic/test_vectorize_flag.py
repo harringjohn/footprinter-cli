@@ -9,7 +9,7 @@ when file vectorization was split into its own follow-up stage.
 
 import json
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F401 (used in with-statements below)
 
 # ---------------------------------------------------------------------------
 # Helpers
