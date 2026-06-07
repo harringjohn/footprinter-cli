@@ -1964,7 +1964,7 @@ class TestSetCsvApply:
         csv_path = _write_csv("id,visibility\n10,hidden\n42,opaque\n")
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
-            mock_recalc.assert_called_once_with(conn, "source:emails")
+            mock_recalc.assert_called_once_with(conn, "source:emails", commit=False)
         finally:
             os.unlink(csv_path)
 
@@ -2106,6 +2106,28 @@ class TestSetCsvTransactionAtomicity:
             by_scope = {r["scope"]: r["setting"] for r in rows}
             assert by_scope["email:1"] == "hidden"
             assert by_scope["email:2"] == "opaque"
+        finally:
+            os.unlink(csv_path)
+
+    @patch("footprinter.cli.permission_cmd.recalculate_with_progress",
+           side_effect=RuntimeError("recalc boom"))
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_recalc_failure_rolls_back_policies(self, mock_db, mock_recalc, policy_db):
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+
+        csv_path = _write_csv("id,visibility\n1,hidden\n2,opaque\n")
+        try:
+            with pytest.raises(RuntimeError, match="recalc boom"):
+                _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            rows = verify.execute("SELECT * FROM visibility_policies").fetchall()
+            verify.close()
+            assert len(rows) == 0, f"Expected rollback to undo writes, found {len(rows)}"
         finally:
             os.unlink(csv_path)
 
