@@ -1,10 +1,9 @@
 """Tests for per-record vectorization control via metadata flag.
 
-Validates that metadata.vectorize=0 causes records to be skipped across
-the chat vectorization paths: rebuild (cli.py) and ingest-time
-(chat_indexer.py). File-ingest coverage moved to
-tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero
-when file vectorization was split into its own follow-up stage.
+Validates that metadata.vectorize=0 causes records to be skipped in the
+shared vectorization helpers (_vectorize_messages, _vectorize_chat_info).
+File-ingest coverage is in
+tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero.
 """
 
 import json
@@ -175,121 +174,3 @@ class TestRebuildChatInfoRespectsFlag:
         conn.close()
 
 
-# ---------------------------------------------------------------------------
-# ChatIndexer._vectorize_message() respects metadata.vectorize flag
-#
-# (The FileIndexer equivalent was removed when vectorization moved out of
-# file ingest. Coverage is now in
-# tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero.)
-# ---------------------------------------------------------------------------
-
-
-class TestChatIndexerRespectsFlag:
-    """ChatIndexer._vectorize_message() should skip messages with metadata.vectorize=0."""
-
-    def test_flagged_message_skipped(self, tmp_path):
-        from footprinter.ingest.database import Database
-
-        db = Database(str(tmp_path / "test.db"))
-        db.conn.execute(
-            "INSERT OR IGNORE INTO sources (name, source_type, adapter, label, icon, enabled) "
-            "VALUES ('local', 'file', 'local_fs', 'Local', 'folder', 1)"
-        )
-        # Insert a chat and flagged message
-        db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, message_count) "
-            "VALUES (1, 'chat-1', 'test', 'Test Chat', 1)"
-        )
-        db.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, metadata, vectorize)"
-            " VALUES (1, 1, 'user', 'Exclude this', ?, 0)",
-            (json.dumps({"vectorize": 0}),),
-        )
-        db.conn.commit()
-
-        mock_store = MagicMock()
-
-        with patch("footprinter.ingest.chat_indexer._chat_vectorization_enabled", return_value=True):
-            from footprinter.ingest.chat_indexer import ChatIndexer
-
-            indexer = ChatIndexer(db)
-            indexer._vector_store = mock_store
-
-            msg = {"content": "Exclude this", "role": "user", "created_at": "2026-01-01"}
-            conv_data = {"source": "test", "title": "Test Chat"}
-            indexer._vectorize_message(1, 1, msg, conv_data)
-
-        mock_store.upsert_chat_message.assert_not_called()
-
-        db.close()
-
-    def test_unflagged_message_vectorized(self, tmp_path):
-        """Messages without the flag should be vectorized normally."""
-        from footprinter.ingest.database import Database
-
-        db = Database(str(tmp_path / "test.db"))
-        db.conn.execute(
-            "INSERT OR IGNORE INTO sources (name, source_type, adapter, label, icon, enabled) "
-            "VALUES ('local', 'file', 'local_fs', 'Local', 'folder', 1)"
-        )
-        db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, message_count) "
-            "VALUES (1, 'chat-1', 'test', 'Test Chat', 1)"
-        )
-        db.conn.execute("INSERT INTO messages (id, chat_id, role, content) VALUES (1, 1, 'user', 'Include this')")
-        db.conn.commit()
-
-        mock_store = MagicMock()
-
-        with patch("footprinter.ingest.chat_indexer._chat_vectorization_enabled", return_value=True):
-            from footprinter.ingest.chat_indexer import ChatIndexer
-
-            indexer = ChatIndexer(db)
-            indexer._vector_store = mock_store
-
-            msg = {"content": "Include this", "role": "user", "created_at": "2026-01-01"}
-            conv_data = {"source": "test", "title": "Test Chat"}
-            indexer._vectorize_message(1, 1, msg, conv_data)
-
-        mock_store.upsert_chat_message.assert_called_once()
-
-        db.close()
-
-
-class TestChatIndexerChatInfoRespectsFlag:
-    """ChatIndexer._vectorize_chat_info() should skip chats with metadata.vectorize=0."""
-
-    def test_flagged_chat_info_skipped(self, tmp_path):
-        from footprinter.ingest.database import Database
-
-        db = Database(str(tmp_path / "test.db"))
-        db.conn.execute(
-            "INSERT OR IGNORE INTO sources (name, source_type, adapter, label, icon, enabled) "
-            "VALUES ('local', 'file', 'local_fs', 'Local', 'folder', 1)"
-        )
-        db.conn.execute(
-            "INSERT INTO chats (id, external_id, account, title, message_count, metadata, vectorize) "
-            "VALUES (1, 'chat-1', 'test', 'Flagged Chat', 5, ?, 0)",
-            (json.dumps({"vectorize": 0}),),
-        )
-        db.conn.commit()
-
-        mock_store = MagicMock()
-
-        with patch("footprinter.ingest.chat_indexer._chat_vectorization_enabled", return_value=True):
-            from footprinter.ingest.chat_indexer import ChatIndexer
-
-            indexer = ChatIndexer(db)
-            indexer._vector_store = mock_store
-
-            conv_data = {
-                "source": "test",
-                "title": "Flagged Chat",
-                "created_at": "2026-01-01",
-                "message_count": 5,
-            }
-            indexer._vectorize_chat_info(1, conv_data)
-
-        mock_store.index_chat_info.assert_not_called()
-
-        db.close()
