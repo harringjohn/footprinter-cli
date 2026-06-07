@@ -40,6 +40,7 @@ def _build_search_summary(
     sources: list[str],
     was_capped: bool = False,
     counts: dict | None = None,
+    folder: str | None = None,
 ) -> str:
     """Build a human-readable summary of search results."""
     found_parts = []
@@ -80,12 +81,17 @@ def _build_search_summary(
             summary += f" No {' or '.join(empty_parts)} matched."
     else:
         query_part = f" for '{query}'" if query and query.strip() else ""
-        summary = (
-            f"No results{query_part}. "
-            f"Tips: try single keywords, use footprinter_semantic "
-            f"for semantic matching, or browse recent items with date_from/date_to "
-            f"and no query."
+        tips = (
+            "Tips: try single keywords, use footprinter_semantic "
+            "for semantic matching, or browse recent items with date_from/date_to "
+            "and no query."
         )
+        if folder and "files" in sources:
+            tips += (
+                " Keyword search matches name tokens, not path segments"
+                " — to look up a directory by path, use footprinter_folder."
+            )
+        summary = f"No results{query_part}. {tips}"
 
     if total_suppressed > 0:
         item_word = "item" if total_suppressed == 1 else "items"
@@ -133,6 +139,8 @@ def footprinter_search(
     - Avoid long natural-language phrases — they produce too many AND terms and return nothing.
     - Good: "salesforce proposal" — Bad: "nonprofit technology consulting Salesforce partner"
     - To search by time period, leave query empty and use date_from/date_to.
+    - Keyword search tokenizes and matches name/title tokens, not path segments.
+      To resolve or inspect a directory path, use footprinter_folder instead.
 
     WHEN TO USE THIS vs footprinter_semantic:
     - Use THIS tool for keyword/metadata lookups: finding files by name, emails by subject,
@@ -209,6 +217,7 @@ def footprinter_search(
             f["path"] = _shorten_path(f["path"])
 
     results["summary"] = _build_search_summary(
-        results, query, sources, was_capped=was_capped, counts=results.get("counts")
+        results, query, sources, was_capped=was_capped, counts=results.get("counts"),
+        folder=folder,
     )
     return results
