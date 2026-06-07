@@ -333,6 +333,93 @@ class TestResolveBatch:
 # ── Ancestor Walk Tests ───────────────────────────────────────────────
 
 
+# ── Folder FK Regression Tests (FPR-1762 critical) ────────────────────
+
+
+class TestFolderFKRegression:
+    """Verify file visibility resolution includes the folder_id FK hierarchy step.
+
+    This is the regression most likely to slip through the refactor — the
+    assessment explicitly warned about it.
+    """
+
+    def test_file_visibility_folder_fk_participates_in_resolution(self, resolver_db):
+        """Folder FK policy should contribute to file visibility resolution.
+
+        Permissions do NOT include folder FK in the file chain, but visibility DOES.
+        """
+        cursor = resolver_db.cursor()
+        cursor.execute("UPDATE files SET folder_id = 1 WHERE id = 1")
+        cursor.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'hidden')"
+        )
+        resolver_db.commit()
+
+        from footprinter.permissions import can_read
+        from footprinter.visibility import get_visibility
+
+        vis = get_visibility(resolver_db, "file", 1)
+        assert vis == "hidden", "folder FK should propagate hidden to file visibility"
+
+        perm = can_read(resolver_db, "file", 1)
+        assert perm is True, "permission resolution should NOT include folder FK"
+
+    def test_file_visibility_folder_fk_most_restrictive_wins(self, resolver_db):
+        """When folder FK returns opaque but folder prefix returns full,
+        most-restrictive-wins should pick opaque."""
+        cursor = resolver_db.cursor()
+        cursor.execute("UPDATE files SET folder_id = 1 WHERE id = 1")
+        cursor.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'opaque')"
+        )
+        cursor.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:/test/', 'full')"
+        )
+        resolver_db.commit()
+
+        from footprinter.visibility import resolve_visibility_with_source
+
+        state, source = resolve_visibility_with_source(resolver_db, "file", 1)
+        assert state == "opaque"
+        assert "folder:1" in source
+
+    def test_batch_file_visibility_folder_fk_matches_single(self, resolver_db):
+        """Batch and single-item resolution must produce identical results
+        for files with folder_id set."""
+        cursor = resolver_db.cursor()
+        cursor.execute("UPDATE files SET folder_id = 1 WHERE id = 1")
+        cursor.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'hidden')"
+        )
+        resolver_db.commit()
+
+        from footprinter.visibility import (
+            batch_resolve_visibility,
+            resolve_visibility_with_source,
+        )
+
+        single_result = resolve_visibility_with_source(resolver_db, "file", 1)
+        batch_results = batch_resolve_visibility(resolver_db, "file", [1])
+
+        assert batch_results[1] == single_result
+
+    def test_file_without_folder_id_unaffected(self, resolver_db):
+        """Files without folder_id should not be affected by folder policies."""
+        cursor = resolver_db.cursor()
+        cursor.execute(
+            "INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'hidden')"
+        )
+        resolver_db.commit()
+
+        from footprinter.visibility import get_visibility
+
+        vis = get_visibility(resolver_db, "file", 1)
+        assert vis != "hidden", "file without folder_id should not pick up folder:1 policy"
+
+
+# ── Ancestor Walk Tests ───────────────────────────────────────────────
+
+
 class TestAncestorWalk:
 
     def test_finds_nearest_ancestor(self, resolver_db):
