@@ -355,12 +355,10 @@ print(json.dumps(snapshot))
 if [ -z "$POST_SNAPSHOT" ]; then
     fail "could not capture post-upgrade entity counts (Python error)"
 else
-    COUNTS_OK=$(printf '{"pre": %s, "post": %s}' "$PRE_SNAPSHOT" "$POST_SNAPSHOT" \
-        | "$VENV_PY" -c "
-import json, sys
-payload = json.loads(sys.stdin.read())
-pre = payload['pre']
-post = payload['post']
+    COUNTS_OK=$(PRE_SNAPSHOT="$PRE_SNAPSHOT" POST_SNAPSHOT="$POST_SNAPSHOT" "$VENV_PY" -c "
+import json, os, sys
+pre = json.loads(os.environ['PRE_SNAPSHOT'])
+post = json.loads(os.environ['POST_SNAPSHOT'])
 ok = True
 for entity in pre:
     pre_total = pre[entity]['total']
