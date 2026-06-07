@@ -25,6 +25,8 @@ from footprinter.cli._policy_helpers import (
     confirm_recalculation,
     get_policy_db,
     recalculate_with_progress,
+    resolve_file_id,
+    resolve_folder_id,
 )
 from footprinter.db.policies import (
     PERMISSION_SETTINGS,
@@ -580,29 +582,15 @@ def _check(args) -> int:
         elif scope_type == "client":
             return check_client(conn, int(scope_value), json_output, verbose)
         elif scope_type == "file_id":
-            file_id = int(scope_value)
-            row = conn.execute(
-                "SELECT path, status FROM files WHERE id = ?", (file_id,),
-            ).fetchone()
-            if not row:
-                console.print(f"[red]File not found:[/red] id={file_id}")
+            path = resolve_file_id(conn, int(scope_value))
+            if path is None:
                 return 1
-            if row["status"] != "listed":
-                console.print(
-                    f"[red]File id={file_id} has status '{row['status']}'.[/red]\n"
-                    "  Only listed files are checked."
-                )
-                return 1
-            return check_file_path(conn, row["path"], json_output, verbose)
+            return check_file_path(conn, path, json_output, verbose)
         elif scope_type == "folder_id":
-            folder_id = int(scope_value)
-            row = conn.execute(
-                "SELECT path FROM folders WHERE id = ?", (folder_id,),
-            ).fetchone()
-            if not row:
-                console.print(f"[red]Folder not found:[/red] id={folder_id}")
+            path = resolve_folder_id(conn, int(scope_value))
+            if path is None:
                 return 1
-            return check_folder(conn, row["path"], json_output, verbose)
+            return check_folder(conn, path, json_output, verbose)
         elif scope_type in ("email", "chat", "visit"):
             return check_entity(conn, scope_type, int(scope_value), json_output, verbose)
         return 0
