@@ -50,6 +50,19 @@ sees, the CLI shows ground truth.
 - `footprinter://context/guidance` — this document.
 """
 
+SERVER_INSTRUCTIONS = """\
+Footprinter indexes local files, emails, chats, and browser history.
+
+Tools:
+- footprinter_status — index counts and freshness; run first to orient.
+- footprinter_search — keyword/metadata lookup. Matches name tokens, not path segments.
+- footprinter_folder — inspect or resolve a path; list a folder's contents.
+- footprinter_semantic — meaning-based content search (use when keywords miss).
+- footprinter_read — fetch full content for a file, email, or chat by ID.
+
+To find a file by path, use footprinter_folder, not footprinter_search.\
+"""
+
 
 @handle_db_errors
 def context_summary() -> dict:

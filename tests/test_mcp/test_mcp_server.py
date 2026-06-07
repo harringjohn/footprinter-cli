@@ -64,6 +64,51 @@ class TestServerBuild:
 
 
 # ---------------------------------------------------------------------------
+# TestServerInstructions — 4 tests
+# ---------------------------------------------------------------------------
+class TestServerInstructions:
+    """Tests that the server registers a concise instructions string for tool discovery."""
+
+    def _get_instructions(self):
+        from footprinter.mcp.server import _build_server
+
+        server = _build_server()
+        assert server is not None
+        return server.instructions
+
+    def test_server_has_instructions(self):
+        """Server must register a non-None instructions string."""
+        instructions = self._get_instructions()
+        assert instructions is not None, "Server has no instructions string"
+        assert isinstance(instructions, str)
+
+    def test_instructions_names_core_tools(self):
+        """Instructions must name all 5 core tools."""
+        instructions = self._get_instructions()
+        for tool in (
+            "footprinter_status",
+            "footprinter_search",
+            "footprinter_folder",
+            "footprinter_semantic",
+            "footprinter_read",
+        ):
+            assert tool in instructions, f"Instructions missing {tool}"
+
+    def test_instructions_search_vs_folder_disambiguation(self):
+        """Instructions must clarify that search matches name tokens, not paths."""
+        instructions = self._get_instructions()
+        assert "name" in instructions.lower(), "Should mention name-token matching"
+        assert "path" in instructions.lower(), "Should mention path resolution"
+
+    def test_instructions_conciseness(self):
+        """Instructions should be 200-800 chars — concise enough for system prompts."""
+        instructions = self._get_instructions()
+        length = len(instructions)
+        assert length >= 200, f"Instructions too short ({length} chars)"
+        assert length <= 800, f"Instructions too long ({length} chars)"
+
+
+# ---------------------------------------------------------------------------
 # TestToolRegistration — 3 tests
 # ---------------------------------------------------------------------------
 class TestToolRegistration:
