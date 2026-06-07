@@ -15,8 +15,8 @@ from typing import Optional, Union
 from rich.console import Console
 
 from footprinter.db.clients import VALID_STATUSES as VALID_CLIENT_STATUSES
-from footprinter.db_base import get_connection
 from footprinter.db.projects import VALID_STATUSES as VALID_PROJECT_STATUSES
+from footprinter.db_base import get_connection
 from footprinter.services import access_service as _access
 from footprinter.services.access_service import (
     resolve_inherit_permission,

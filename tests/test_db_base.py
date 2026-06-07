@@ -1,7 +1,6 @@
 """Tests for footprinter.db_base — shared connection setup for MCP and API."""
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
