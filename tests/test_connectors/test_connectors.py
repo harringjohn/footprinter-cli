@@ -1067,9 +1067,9 @@ class TestSourceHealthConnectorRows:
     def test_health_includes_connector_rows_key(self):
         from unittest.mock import patch
 
-        from footprinter.cli.status import get_source_health
+        from footprinter.services.status_service import get_source_health
 
-        with patch("footprinter.cli.status.discover_connectors", return_value={}):
+        with patch("footprinter.services.status_service.discover_connectors", return_value={}):
             health = get_source_health({})
 
         assert "connector_rows" in health
@@ -1078,9 +1078,9 @@ class TestSourceHealthConnectorRows:
     def test_health_includes_remote_enabled_flag(self):
         from unittest.mock import patch
 
-        from footprinter.cli.status import get_source_health
+        from footprinter.services.status_service import get_source_health
 
-        with patch("footprinter.cli.status.discover_connectors", return_value={}):
+        with patch("footprinter.services.status_service.discover_connectors", return_value={}):
             health = get_source_health({})
 
         assert health["remote_enabled"] is False

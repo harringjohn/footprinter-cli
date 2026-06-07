@@ -267,7 +267,7 @@ class TestStatusTotals:
 
     def test_visible_totals_excludes_remote_when_disabled(self):
         """visible_totals must match when remote is disabled."""
-        from footprinter.cli.status import visible_totals
+        from footprinter.services.status_service import visible_totals
 
         counts = {
             "files": self._FILES,
@@ -354,7 +354,7 @@ class TestStatusTotals:
 
     def test_visible_totals_includes_remote_when_enabled(self):
         """visible_totals must include all sources when remote enabled."""
-        from footprinter.cli.status import visible_totals
+        from footprinter.services.status_service import visible_totals
 
         counts = {
             "files": self._FILES,

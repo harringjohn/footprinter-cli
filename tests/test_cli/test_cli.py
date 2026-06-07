@@ -112,11 +112,17 @@ class TestStatusNoRetentionDisplay:
 
     def test_no_classification_keys(self, temp_db):
         """get_data_counts should not have 'classifications' or 'classifications_v2' keys."""
-        from pathlib import Path
+        import sqlite3
 
-        from footprinter.cli.status import get_data_counts
+        from footprinter.services.status_service import get_data_counts
 
-        counts = get_data_counts(Path(temp_db))
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            counts = get_data_counts(conn)
+        finally:
+            conn.close()
         assert "classifications" not in counts, "get_data_counts still returns 'classifications'"
         assert "classifications_v2" not in counts, "get_data_counts still returns 'classifications_v2'"
 
