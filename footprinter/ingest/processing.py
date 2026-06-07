@@ -176,9 +176,7 @@ def run_vectorization(
         "vectorized_skipped_missing": 0,
         "vectorized_skipped_large": 0,
         "vectorized_messages_new": 0,
-        "vectorized_messages_failed": 0,
         "vectorized_chat_info_new": 0,
-        "vectorized_chat_info_failed": 0,
     }
     skipped_large_files: List[Dict[str, Any]] = []
 
@@ -338,6 +336,7 @@ def run_vectorization(
     finally:
         signal.signal(signal.SIGINT, old_sigint)
         signal.signal(signal.SIGTERM, old_sigterm)
+        _shutdown = False
         _vo._shutdown = False
 
     if interrupted:

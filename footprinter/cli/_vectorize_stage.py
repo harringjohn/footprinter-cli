@@ -106,13 +106,16 @@ def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int
         messages_new = data.get("vectorized_messages_new", 0)
         chat_info_new = data.get("vectorized_chat_info_new", 0)
         if status == "completed_with_errors" or failed:
-            parts = [f"{new} files"]
+            parts = []
+            if new:
+                parts.append(f"{new} files")
             if messages_new:
                 parts.append(f"{messages_new} messages")
             if chat_info_new:
                 parts.append(f"{chat_info_new} chats")
+            embedded_str = ", ".join(parts) if parts else "0"
             console.print(
-                f"  [yellow]⚠[/yellow] Deep Read: {', '.join(parts)} embedded, {failed} failed, "
+                f"  [yellow]⚠[/yellow] Deep Read: {embedded_str} embedded, {failed} failed, "
                 f"{skipped_missing} skipped"
                 + (f", {skipped_large} too large" if skipped_large else "")
             )
