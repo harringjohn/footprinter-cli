@@ -4,13 +4,19 @@ Merged from test_file_scanner.py and test_folder_indexer_config.py.
 File analyzer tests removed when file_analyzer.py was archived.
 """
 
+from __future__ import annotations
+
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+if TYPE_CHECKING:
+    from footprinter.ingest.file_scanner import FileScanner
 
 # ═══════════════════════════════════════════════════════════════════════
 # §1 — File scanner (from test_file_scanner.py)
