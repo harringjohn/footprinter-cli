@@ -33,7 +33,7 @@ exclusions:
     - ".*/\\.venv/.*"            # Python virtualenvs (hidden)
     - ".*/site-packages/.*"      # Python packages
     - ".*\\.pyc$"                # Python compiled files
-    - ".*/\\.vscode/extensions/.*"  # VS Code extensions (reinstallable)
+    - ".*/\\.vscode/.*"             # VS Code config and extensions
     - ".*/\\.npm/.*"             # npm cache
     - ".*/\\.nvm/.*"             # Node version manager
     - ".*/\\.cache/.*"           # Generic caches
@@ -44,6 +44,13 @@ exclusions:
     - ".*/\\.browser_state/.*"   # Playwright/Puppeteer browser state
     - ".*/\\.context/.*"         # IDE/agent context directories
     - ".*/\\.ai-dev/.*"          # AI dev tool scratch dirs
+    # Build output and tool config dot-folders (no archival value)
+    - ".*/\\.next/.*"             # Next.js build output
+    - ".*/\\.husky/.*"            # Git hooks manager
+    - ".*/\\.astro/.*"            # Astro build cache
+    - ".*/\\.githooks/.*"         # Custom git hooks
+    - ".*/\\.aesthetic/.*"        # Aesthetic tool config
+    - ".*/\\.users/.*"            # IDE user preferences
     # Home-level Claude dirs only (keep .claude within Work/Personal)
     - "^~/\\.claude/.*"           # Home-level .claude (includes session-env snapshots)
     - "^~/\\.claude-worktrees/.*" # Home-level .claude-worktrees

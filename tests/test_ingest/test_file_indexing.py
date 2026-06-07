@@ -194,6 +194,58 @@ class TestExclusionPatterns:
         assert scanner.should_exclude("/any/path/node_modules/lodash/index.js") is True
 
 
+class TestDotFolderExclusionPatterns:
+    """Dot-folders that should never enter the DB (FPR-1797).
+
+    Tests load the real bundled config to verify shipped patterns.
+    """
+
+    @pytest.fixture()
+    def bundled_scanner(self):
+        from footprinter.ingest.file_scanner import FileScanner
+
+        bundled_config = Path(__file__).parent.parent.parent / "footprinter" / "bundled" / "config.example.yaml"
+        with open(bundled_config) as f:
+            config = yaml.safe_load(f)
+
+        with patch("os.path.expanduser", side_effect=lambda p: p.replace("~", "/Users/testuser", 1)):
+            scanner = FileScanner(config=config)
+        return scanner
+
+    @pytest.mark.parametrize(
+        "dot_folder,subpath",
+        [
+            (".next", "server/pages/index.js"),
+            (".vscode", "settings.json"),
+            (".vscode", "extensions/ms-python/package.json"),
+            (".husky", "pre-commit"),
+            (".astro", "content-cache.json"),
+            (".githooks", "pre-push"),
+            (".aesthetic", "cache.json"),
+            (".users", "admin.json"),
+        ],
+    )
+    def test_dot_folder_excluded_by_bundled_config(self, bundled_scanner, dot_folder, subpath):
+        """Files under noise dot-folders are rejected by should_exclude()."""
+        path = f"/Users/testuser/Work/project/{dot_folder}/{subpath}"
+        assert bundled_scanner.should_exclude(path) is True
+
+    def test_vscode_root_files_excluded(self, bundled_scanner):
+        """Broader .vscode pattern excludes settings.json, not just extensions/."""
+        path = "/Users/testuser/Work/project/.vscode/settings.json"
+        assert bundled_scanner.should_exclude(path) is True
+
+    def test_claude_dir_not_excluded_by_scanner(self, bundled_scanner):
+        """Project-level .claude/ must NOT be excluded (gets listed status instead)."""
+        path = "/Users/testuser/Work/project/.claude/CLAUDE.md"
+        assert bundled_scanner.should_exclude(path) is False
+
+    def test_normal_files_unaffected(self, bundled_scanner):
+        """Regular project files must not be caught by dot-folder patterns."""
+        path = "/Users/testuser/Work/project/src/main.py"
+        assert bundled_scanner.should_exclude(path) is False
+
+
 class TestConfiguredDirectoryOverridesExclusions:
     """Explicitly configured directories override default `always` exclusion patterns.
 
