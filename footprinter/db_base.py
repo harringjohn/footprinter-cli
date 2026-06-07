@@ -2,11 +2,27 @@
 
 import sqlite3
 from contextlib import contextmanager
-from typing import Generator
+from pathlib import Path
+from typing import Generator, Union
 
 from footprinter.paths import get_db_path
 from footprinter.services.access_service import load_globals
 from footprinter.utils.exceptions import DatabaseNotInitializedError
+
+
+def get_connection(db_path: Union[str, Path], *, read_only: bool = False) -> sqlite3.Connection:
+    """Create a SQLite connection with standard PRAGMAs.
+
+    Single source of truth for per-connection configuration: row_factory,
+    busy_timeout, foreign_keys, and optionally query_only.
+    """
+    conn = sqlite3.connect(str(db_path), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
+    if read_only:
+        conn.execute("PRAGMA query_only = ON")
+    return conn
 
 
 def _check_db_initialized(conn: sqlite3.Connection) -> None:
@@ -28,12 +44,7 @@ def open_checked_connection(*, read_only: bool = False) -> Generator[sqlite3.Con
     as their base connection setup. Interface-specific wrappers in
     ``mcp/db.py`` and ``api/db.py`` add their own error handling on top.
     """
-    conn = sqlite3.connect(str(get_db_path()), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    if read_only:
-        conn.execute("PRAGMA query_only = ON")
+    conn = get_connection(get_db_path(), read_only=read_only)
     try:
         _check_db_initialized(conn)
         load_globals(conn)
