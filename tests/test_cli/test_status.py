@@ -7,11 +7,11 @@ import sqlite3
 import pytest
 from rich.console import Console
 
-from footprinter.cli.status import (
+from footprinter.cli.status import print_status
+from footprinter.services.status_service import (
     _query_all_counts,
     get_data_counts,
     get_source_health,
-    print_status,
 )
 
 
@@ -37,13 +37,13 @@ class TestGetDataCountsEmpty:
     """Verify all counts return safely on an empty database."""
 
     def test_no_crashes(self, status_db):
-        _, db_path = status_db
-        counts = get_data_counts(db_path)
+        conn, _ = status_db
+        counts = get_data_counts(conn)
         assert isinstance(counts, dict)
 
     def test_new_keys_present(self, status_db):
-        _, db_path = status_db
-        counts = get_data_counts(db_path)
+        conn, _ = status_db
+        counts = get_data_counts(conn)
         assert counts["top_chats"] == []
         assert counts["chat_date_range"] == {"earliest": None, "latest": None}
         assert counts["recent_uploads"] == []
@@ -51,8 +51,8 @@ class TestGetDataCountsEmpty:
         # classifications_v2 removed — retention is app-scope
 
     def test_existing_keys_still_present(self, status_db):
-        _, db_path = status_db
-        counts = get_data_counts(db_path)
+        conn, _ = status_db
+        counts = get_data_counts(conn)
         assert "files" in counts
         assert "visits" in counts
         assert "emails" in counts
@@ -75,7 +75,7 @@ class TestFolderStatusFilter:
             "VALUES ('/tmp/b', 'b', 'b', 'local', 'removed')"
         )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert counts["folders"]["local"] == 1
 
     def test_removed_drive_folders_excluded(self, status_db):
@@ -85,7 +85,7 @@ class TestFolderStatusFilter:
             "VALUES ('/drive/x', 'x', 'x', 'drive_personal', 'removed')"
         )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert "drive_personal" not in counts["folders"]
 
 
@@ -121,7 +121,7 @@ class TestChatStats:
     def test_top_chats_ordered_by_message_count(self, status_db):
         conn, db_path = status_db
         self._populate(conn)
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         top = counts["top_chats"]
         assert len(top) == 3
         # Highest message_count first
@@ -140,13 +140,13 @@ class TestChatStats:
                 (f"c{i}", f"Conv {i}", i * 10),
             )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert len(counts["top_chats"]) == 5
 
     def test_chat_date_range(self, status_db):
         conn, db_path = status_db
         self._populate(conn)
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         dr = counts["chat_date_range"]
         assert dr["earliest"] == "2025-05-20"
         assert dr["latest"] == "2025-07-10"
@@ -176,14 +176,14 @@ class TestRecentUploads:
     def test_recent_uploads_populated(self, status_db):
         conn, db_path = status_db
         self._populate(conn)
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         uploads = counts["recent_uploads"]
         assert len(uploads) == 3
 
     def test_recent_uploads_ordered_by_date(self, status_db):
         conn, db_path = status_db
         self._populate(conn)
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         uploads = counts["recent_uploads"]
         # Most recent first
         assert uploads[0]["filename"] == "export3.json"
@@ -199,13 +199,13 @@ class TestRecentUploads:
                 (f"export{i}.json", f"h{i}", i * 10),
             )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert len(counts["recent_uploads"]) == 5
 
     def test_recent_uploads_has_expected_keys(self, status_db):
         conn, db_path = status_db
         self._populate(conn)
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         upload = counts["recent_uploads"][0]
         assert "filename" in upload
         assert "type" in upload
@@ -231,7 +231,7 @@ class TestLastRunFromIngests:
             "'completed', 'incremental', 42, 1, 300.0)"
         )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         last_run = counts["last_run"]
         assert last_run is not None
         assert last_run["mode"] == "incremental"
@@ -240,8 +240,8 @@ class TestLastRunFromIngests:
 
     def test_last_run_none_when_no_ingests(self, status_db):
         """Empty ingests table → last_run is None (no MAX(indexed_at) fallback)."""
-        _, db_path = status_db
-        counts = get_data_counts(db_path)
+        conn, _ = status_db
+        counts = get_data_counts(conn)
         assert counts["last_run"] is None
 
 
@@ -274,7 +274,7 @@ class TestLastRunPrefersAggregate:
         )
         conn.commit()
 
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         last_run = counts["last_run"]
         assert last_run is not None
         assert last_run["pipe"] == "all"
@@ -287,7 +287,7 @@ class TestLastRunPrefersAggregate:
         self._seed_per_pipe(conn)
         conn.commit()
 
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         last_run = counts["last_run"]
         assert last_run is not None
         # No aggregate row exists, so legacy query selects most recent per-pipe row
@@ -514,7 +514,7 @@ class TestRecentlyModifiedFiles:
             "VALUES ('test.py', '/tmp/test.py', 'local', 'listed', 100, '2025-07-01')"
         )
         conn.commit()
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert "recent_files" in counts
         assert len(counts["recent_files"]) == 1
         assert counts["recent_files"][0]["name"] == "test.py"
@@ -640,7 +640,7 @@ class TestSourceHealthSemantic:
         mock_path.exists.return_value = False
         with (
             patch("footprinter.semantic.vector_store._semantic_available", return_value=True),
-            patch("footprinter.cli.status.get_chroma_path", return_value=mock_path),
+            patch("footprinter.services.status_service.get_chroma_path", return_value=mock_path),
         ):
             health = get_source_health(config)
         assert health["semantic"]["enabled"] is True
@@ -660,7 +660,7 @@ class TestSourceHealthSemantic:
         mock_path.exists.return_value = True
         with (
             patch("footprinter.semantic.vector_store._semantic_available", return_value=True),
-            patch("footprinter.cli.status.get_chroma_path", return_value=mock_path),
+            patch("footprinter.services.status_service.get_chroma_path", return_value=mock_path),
             patch(
                 "footprinter.semantic.vector_store.VectorStore.get_instance",
                 return_value=mock_vs,
@@ -1050,9 +1050,9 @@ class TestDynamicConnectorHealth:
         )
 
         with (
-            patch("footprinter.cli.status.discover_connectors", return_value={"fake": spec}),
-            patch("footprinter.cli.status.is_installed", return_value=True),
-            patch("footprinter.cli.status.resolve_hook") as mock_resolve,
+            patch("footprinter.services.status_service.discover_connectors", return_value={"fake": spec}),
+            patch("footprinter.services.status_service.is_installed", return_value=True),
+            patch("footprinter.services.status_service.resolve_hook") as mock_resolve,
         ):
             mock_resolve.return_value = lambda config: fake_rows
             health = get_source_health({"semantic": {}})
@@ -1064,7 +1064,7 @@ class TestDynamicConnectorHealth:
     def test_no_connectors_gives_empty_rows(self):
         """With no connectors, connector_rows is empty."""
         with __import__("unittest.mock", fromlist=["patch"]).patch(
-            "footprinter.cli.status.discover_connectors", return_value={}
+            "footprinter.services.status_service.discover_connectors", return_value={}
         ):
             health = get_source_health({})
 
@@ -1098,7 +1098,7 @@ class TestAccessResolution:
         )
         conn.commit()
 
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         ar = counts["access_resolution"]
         assert ar["files"] == {"stamped": 1, "total": 2}
         assert ar["emails"] == {"stamped": 1, "total": 2}
@@ -1116,14 +1116,14 @@ class TestAccessResolution:
         )
         conn.commit()
 
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         ar = counts["access_resolution"]
         assert ar["files"]["stamped"] == 1
         assert ar["files"]["total"] == 1
 
     def test_access_resolution_empty_db(self, status_db):
-        _, db_path = status_db
-        counts = get_data_counts(db_path)
+        conn, _ = status_db
+        counts = get_data_counts(conn)
         ar = counts["access_resolution"]
         assert ar["files"] == {"stamped": 0, "total": 0}
         assert ar["emails"] == {"stamped": 0, "total": 0}
@@ -1137,7 +1137,7 @@ class TestAccessResolution:
         )
         conn.commit()
 
-        counts = get_data_counts(db_path)
+        counts = get_data_counts(conn)
         assert "access_resolution" in counts
         assert "files" in counts["access_resolution"]
         assert "stamped" in counts["access_resolution"]["files"]
