@@ -365,8 +365,9 @@ def stamp_entities(
     pipeline path in ``processing.run_access_resolution``.  The batched variant
     (``recalculate_access_batched``) uses its own loop for per-chunk commits.
 
-    Commits before returning by default.  When *commit* is False the caller is
-    responsible for committing the transaction.
+    Commits before returning by default, even when *ids_by_type* is empty.
+    When *commit* is False the caller is responsible for committing the
+    transaction.
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
@@ -436,8 +437,10 @@ def recalculate_access_batched(
         scope: Policy scope string (e.g. "global", "folder:~/Work/")
         batch_size: Number of entity IDs per chunk (default 5000)
         on_batch: Optional callback receiving the count processed per chunk
-        commit: If False, skip per-batch commits — caller manages the
-            transaction.
+        commit: If False, skip per-batch commits — all batches accumulate
+            in the caller's transaction.  This trades incremental commit
+            boundaries for atomicity; the caller is responsible for the
+            final commit.
 
     Returns:
         Dict mapping entity type to total count of rows updated.

@@ -58,11 +58,12 @@ def recalculate_with_progress(
     """Recalculate access with a Rich progress bar for large scopes.
 
     If total affected entities <= CONFIRM_THRESHOLD, runs the fast unbatched
-    path and prints a one-line summary. Otherwise shows a Rich progress bar
-    with per-batch updates.
+    path.  Otherwise shows a Rich progress bar with per-batch progress
+    updates.
 
-    When *commit* is False, no commits are issued — the caller manages the
-    transaction boundary.
+    When *commit* is False, no commits are issued (including per-batch
+    commits in the batched path) — the caller manages the transaction
+    boundary.
     """
     counts = count_affected_entities(conn, scope)
     total = sum(counts.values())

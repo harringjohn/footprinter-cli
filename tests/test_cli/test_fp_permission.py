@@ -2131,6 +2131,45 @@ class TestSetCsvTransactionAtomicity:
         finally:
             os.unlink(csv_path)
 
+    @patch("footprinter.cli.permission_cmd.get_policy_db")
+    def test_recalc_failure_rolls_back_entity_stamps(self, mock_db, policy_db):
+        """Entity-table writes made during recalculation are also rolled back."""
+        from footprinter.cli.permission_cmd import _set
+
+        conn, db_path = policy_db
+        mock_db.return_value = conn
+
+        original_vis = {
+            r["id"]: r["visibility"]
+            for r in conn.execute("SELECT id, visibility FROM emails").fetchall()
+        }
+
+        def recalc_writes_then_explodes(conn, scope, *, commit=True):
+            conn.execute("UPDATE emails SET visibility = 'hidden' WHERE id = 1")
+            raise RuntimeError("recalc mid-flight failure")
+
+        csv_path = _write_csv("id,visibility\n1,hidden\n2,opaque\n")
+        try:
+            with patch(
+                "footprinter.cli.permission_cmd.recalculate_with_progress",
+                side_effect=recalc_writes_then_explodes,
+            ):
+                with pytest.raises(RuntimeError, match="recalc mid-flight failure"):
+                    _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
+
+            verify = sqlite3.connect(str(db_path))
+            verify.row_factory = sqlite3.Row
+            policy_rows = verify.execute("SELECT * FROM visibility_policies").fetchall()
+            entity_rows = {
+                r["id"]: r["visibility"]
+                for r in verify.execute("SELECT id, visibility FROM emails").fetchall()
+            }
+            verify.close()
+            assert len(policy_rows) == 0, f"Policy writes should be rolled back, found {len(policy_rows)}"
+            assert entity_rows == original_vis, "Entity-table stamps should be rolled back"
+        finally:
+            os.unlink(csv_path)
+
 
 # ---------------------------------------------------------------------------
 # Set CSV: export round-trip
