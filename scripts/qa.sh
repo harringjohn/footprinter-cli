@@ -14,8 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Argument-free tiers that `all` runs. Add new tiers here and to the
-# case dispatcher below — `all` and `--list` derive from this array.
+# Prevents drift: `all` loops over this array instead of hard-coding tiers.
 ARG_FREE_TIERS=(pytest smoke)
 
 case "${1:-}" in
@@ -60,25 +59,23 @@ case "${1:-}" in
         ;;
     all)
         overall=0
-        declare -A results
+        summary=""
         tier_num=0
 
         for tier in "${ARG_FREE_TIERS[@]}"; do
             tier_num=$((tier_num + 1))
             echo "=== Tier $tier_num: $tier ==="
             if bash "${BASH_SOURCE[0]}" "$tier"; then
-                results[$tier]=PASS
+                summary+="$(printf "  %-10s %s\n" "$tier:" "PASS")"$'\n'
             else
-                results[$tier]=FAIL
+                summary+="$(printf "  %-10s %s\n" "$tier:" "FAIL")"$'\n'
                 overall=1
             fi
             echo ""
         done
 
         echo "--- QA Summary ---"
-        for tier in "${ARG_FREE_TIERS[@]}"; do
-            printf "  %-10s %s\n" "$tier:" "${results[$tier]}"
-        done
+        printf "%s" "$summary"
         echo ""
 
         if [[ $overall -eq 0 ]]; then
