@@ -68,15 +68,17 @@ def execute_search(
     out = output or console
     effective_mode = _resolve_mode(mode, out, quiet=json_output)
 
-    if db_path is None:
-        from footprinter.paths import get_db_path
-
-        db_path = str(get_db_path())
-
     # Dispatch by mode via service layer
     try:
-        with open_db(db_path) as conn:
-            merged = mode_search(conn, query, mode=effective_mode, limit=limit, type_filter=type_filter)
+        if effective_mode == "semantic":
+            merged = mode_search(query, mode=effective_mode, limit=limit, type_filter=type_filter)
+        else:
+            if db_path is None:
+                from footprinter.paths import get_db_path
+
+                db_path = str(get_db_path())
+            with open_db(db_path) as conn:
+                merged = mode_search(query, mode=effective_mode, limit=limit, type_filter=type_filter, conn=conn)
     except Exception as exc:
         if not json_output:
             out.print(f"[red]Search failed:[/red] {exc}")

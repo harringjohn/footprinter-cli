@@ -259,13 +259,12 @@ def keyword_search(
 
 
 def semantic_search(
-    conn: sqlite3.Connection,
     query: str,
     *,
     limit: int = 10,
     type_filter: str | None = None,
 ) -> list[dict]:
-    """Vector-only search via VectorStore singleton."""
+    """Vector-only search via VectorStore singleton (no DB connection needed)."""
     from footprinter.semantic.vector_store import VectorStore
 
     store = VectorStore.get_instance()
@@ -323,7 +322,7 @@ def hybrid_search(
     for r in file_data["results"]:
         keyword_file_results.append(_fts_file_to_result(r))
 
-    semantic_results = semantic_search(conn, query, limit=limit, type_filter=type_filter)
+    semantic_results = semantic_search(query, limit=limit, type_filter=type_filter)
     semantic_file_results = [r for r in semantic_results if r["source_type"] == "file"]
     semantic_chat_results = [r for r in semantic_results if r["source_type"] == "chat"]
 
@@ -401,22 +400,22 @@ def hybrid_search(
 
 
 def mode_search(
-    conn: sqlite3.Connection,
     query: str,
     *,
     mode: str = "hybrid",
     limit: int = 10,
     type_filter: str | None = None,
-    role: Role = Role.ADMIN,
+    conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Dispatch to keyword/semantic/hybrid search by mode.
 
-    The CLI path calls with role=ADMIN (no filtering).
-    VIEWER-level filtering for mode search is a follow-up concern.
+    ``conn`` is required for keyword and hybrid modes (FTS5 queries).
+    Semantic mode uses only VectorStore and does not need a connection.
     """
+    if mode == "semantic":
+        return semantic_search(query, limit=limit, type_filter=type_filter)
+    if conn is None:
+        raise ValueError(f"mode={mode!r} requires a database connection")
     if mode == "keyword":
         return keyword_search(conn, query, limit=limit, type_filter=type_filter)
-    elif mode == "semantic":
-        return semantic_search(conn, query, limit=limit, type_filter=type_filter)
-    else:
-        return hybrid_search(conn, query, limit=limit, type_filter=type_filter)
+    return hybrid_search(conn, query, limit=limit, type_filter=type_filter)

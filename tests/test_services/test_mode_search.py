@@ -133,7 +133,7 @@ class TestKeywordModeSearch:
 
         from footprinter.services.search_service import mode_search
 
-        results = mode_search(conn, "database", mode="keyword")
+        results = mode_search("database", mode="keyword", conn=conn)
         conn.close()
 
         source_types = {r["source_type"] for r in results}
@@ -146,7 +146,7 @@ class TestKeywordModeSearch:
 
         from footprinter.services.search_service import mode_search
 
-        results = mode_search(conn, "database", mode="keyword", type_filter=".sql")
+        results = mode_search("database", mode="keyword", type_filter=".sql", conn=conn)
         conn.close()
 
         assert all(r["source_type"] == "file" for r in results)
@@ -160,7 +160,7 @@ class TestKeywordModeSearch:
 
         from footprinter.services.search_service import mode_search
 
-        results = mode_search(conn, "database", mode="keyword", limit=1)
+        results = mode_search("database", mode="keyword", limit=1, conn=conn)
         conn.close()
 
         assert len(results) <= 1
@@ -186,8 +186,7 @@ class TestSemanticModeSearch:
             MockVS.get_instance.return_value = mock_store
             from footprinter.services.search_service import mode_search
 
-            conn = MagicMock()
-            results = mode_search(conn, "test query", mode="semantic")
+            results = mode_search("test query", mode="semantic")
 
         mock_store.search_files.assert_called_once()
         assert len(results) >= 1
@@ -231,7 +230,7 @@ class TestHybridModeSearch:
             MockVS.get_instance.return_value = mock_store
             from footprinter.services.search_service import mode_search
 
-            results = mode_search(conn, "database", mode="hybrid")
+            results = mode_search("database", mode="hybrid", conn=conn)
 
         conn.close()
 
@@ -248,7 +247,7 @@ class TestModeSearchResultShape:
 
         from footprinter.services.search_service import mode_search
 
-        results = mode_search(conn, "database", mode="keyword")
+        results = mode_search("database", mode="keyword", conn=conn)
         conn.close()
 
         for r in results:
