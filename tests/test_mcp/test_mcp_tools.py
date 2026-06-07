@@ -1067,6 +1067,7 @@ class TestContexterSearch:
                 "nonexistent_xyz", sources=["files"], folder="/some/path"
             )
 
+        assert result["files"] == [], "Precondition: query must return zero results"
         assert "No results" in result["summary"]
         assert "footprinter_folder" in result["summary"]
 
@@ -4902,6 +4903,15 @@ class TestSearchSummary:
         assert "No results" in summary
         assert "footprinter_folder" not in summary
 
+    def test_summary_empty_with_folder_non_file_source_no_hint(self):
+        """Folder hint should not appear when searching non-file sources."""
+        results = {"emails": []}
+        summary = self._summary()(
+            results, "swll-coord", ["emails"], folder="/some/path"
+        )
+        assert "No results" in summary
+        assert "footprinter_folder" not in summary
+
     def test_summary_empty_with_folder_no_awareness_leak(self):
         """Folder hint must not reference hidden or unlisted content."""
         results = {"files": []}
@@ -4912,11 +4922,11 @@ class TestSearchSummary:
         assert "exist" not in lower
 
     def test_summary_backward_compat_no_folder_param(self):
-        """_build_search_summary still works without folder param."""
-        results = {"files": [{"id": 1}]}
-        counts = {"files": {"returned": 1, "has_more": False}}
-        summary = self._summary()(results, "test", ["files"], counts=counts)
-        assert "Found 1 file" in summary
+        """_build_search_summary zero-result path still works without folder param."""
+        results = {"files": []}
+        summary = self._summary()(results, "test", ["files"])
+        assert "No results" in summary
+        assert "footprinter_folder" not in summary
 
 
 # ---------------------------------------------------------------------------

@@ -86,7 +86,7 @@ def _build_search_summary(
             "for semantic matching, or browse recent items with date_from/date_to "
             "and no query."
         )
-        if folder:
+        if folder and "files" in sources:
             tips += (
                 " Keyword search matches name tokens, not path segments"
                 " — to look up a directory by path, use footprinter_folder."
