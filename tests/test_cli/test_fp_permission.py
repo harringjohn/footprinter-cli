@@ -2180,17 +2180,17 @@ class TestSetCsvTransactionAtomicity:
 
 
 @contextmanager
-def _open_db_stub(conn):
-    """Mimic open_db()'s context-manager contract over a pre-built connection."""
+def _open_db_stub(conn: sqlite3.Connection):
+    """Yield *conn* as a context manager without closing it on exit."""
     try:
         yield conn
     finally:
         pass
 
 
-def _export_email_csv(conn):
+def _export_email_csv(conn: sqlite3.Connection) -> str:
     """Call the real export path and return CSV stdout."""
-    with patch("footprinter.cli.view.open_db", return_value=_open_db_stub(conn)):
+    with patch("footprinter.cli.view.open_db", side_effect=lambda: _open_db_stub(conn)):
         stdout, _, code = run_fp("view", "emails", "--csv", "--all")
     assert code == 0, f"Export failed with code {code}"
     return stdout
