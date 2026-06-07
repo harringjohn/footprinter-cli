@@ -212,7 +212,7 @@ def _mcp_command_matches(
     canonical_args: list[str],
 ) -> bool:
     """Check whether the configured MCP command matches the canonical one."""
-    if _is_module_invocation(configured_args) or _is_module_invocation(canonical_args):
+    if _is_module_invocation(configured_args):
         return True
 
     resolved_configured = _resolve_command(configured_cmd)
