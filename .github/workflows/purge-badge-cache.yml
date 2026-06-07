@@ -38,7 +38,7 @@ jobs:
             echo "Attempt $i/$MAX_ATTEMPTS: shields.io shows '$SHIELDS_VERSION', waiting for '$EXPECTED_VERSION'"
             [ "$i" -lt "$MAX_ATTEMPTS" ] && sleep $DELAY
           done
-          echo "::warning::shields.io still does not reflect '$EXPECTED_VERSION' — purging anyway"
+          echo "::warning::shields.io still does not reflect '$EXPECTED_VERSION' — purging anyway (badge will self-heal on next scheduled run)"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Purge GitHub Camo cache
