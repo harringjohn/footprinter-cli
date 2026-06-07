@@ -13,7 +13,7 @@ This module provides the parameterized resolver that both domains delegate to.
 
 import os
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from footprinter.db.policies import is_folder_path_scope

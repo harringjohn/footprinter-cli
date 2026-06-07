@@ -1,7 +1,5 @@
 """Tests for the shared policy resolver engine."""
 
-import sqlite3
-
 import pytest
 
 from footprinter.policy_resolver import (
