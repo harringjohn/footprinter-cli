@@ -1,11 +1,11 @@
 """Database schema initialization."""
 
 from footprinter.ingest.db.ddl import (
+    _INGESTS_DDL,
     ACCESS_CONTROL_TABLES,
     DDLMixin,
-    _INGESTS_DDL,
 )
-from footprinter.ingest.db.fts import FTSMixin, _FTS_DEFINITIONS
+from footprinter.ingest.db.fts import _FTS_DEFINITIONS, FTSMixin
 
 
 class SchemaMixin(DDLMixin, FTSMixin):

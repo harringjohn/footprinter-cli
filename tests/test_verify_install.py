@@ -116,7 +116,7 @@ def _run_verify(
 
 class TestVerifyInstall:
     def test_missing_bundled_config_fails_loudly(self, verify_harness):
-        """When bundled config path doesn't exist on disk, the script logs FAIL and exits non-zero after all phases complete."""
+        """Missing bundled config path logs FAIL and exits non-zero after all phases."""
         result = _run_verify(
             verify_harness, with_pytest=True, env_overrides={"STUB_CONFIG_MISSING": "1"}
         )
