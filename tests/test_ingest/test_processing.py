@@ -300,6 +300,39 @@ class TestRunVectorization:
         ).fetchone()
         assert row["vectorized_at"] is None
 
+    def test_unlisted_included_when_config_allows(self, tmp_path):
+        """When vectorize_statuses includes 'unlisted', those files are embedded."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "listed.txt").write_text("listed content")
+        (tmp_path / "unlisted.txt").write_text("unlisted content")
+        _insert_file(db, file_path=str(tmp_path / "listed.txt"), status="listed")
+        _insert_file(db, file_path=str(tmp_path / "unlisted.txt"), status="unlisted")
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+            patch(
+                "footprinter.ingest.processing._get_vectorize_statuses",
+                return_value=["listed", "unlisted"],
+            ),
+        ):
+            run_vectorization(db)
+
+        assert mock_store.upsert_file.call_count == 2
+
 
 class TestScopedVectorization:
     """run_vectorization with file_ids scopes to specific files."""
@@ -494,6 +527,39 @@ class TestScopedVectorization:
 
         assert mock_store.upsert_file.call_count == 2
         assert result.data.get("vectorized_new") == 2
+
+    def test_scoped_respects_config_statuses(self, tmp_path):
+        """Scoped path includes unlisted files when config allows."""
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "listed.txt").write_text("listed content")
+        (tmp_path / "unlisted.txt").write_text("unlisted content")
+        listed_id = _insert_file(db, file_path=str(tmp_path / "listed.txt"), status="listed")
+        unlisted_id = _insert_file(db, file_path=str(tmp_path / "unlisted.txt"), status="unlisted")
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+            patch(
+                "footprinter.ingest.processing._get_vectorize_statuses",
+                return_value=["listed", "unlisted"],
+            ),
+        ):
+            run_vectorization(db, file_ids=[listed_id, unlisted_id])
+
+        assert mock_store.upsert_file.call_count == 2
 
 
 class TestVectorizationInterruptSafety:

@@ -22,6 +22,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_VECTORIZE_STATUSES = ["listed"]
+
+
+def _get_vectorize_statuses() -> List[str]:
+    try:
+        from footprinter.source_registry import get_config
+
+        val = get_config().get("semantic", {}).get(
+            "vectorize_statuses", _DEFAULT_VECTORIZE_STATUSES
+        )
+        if isinstance(val, list) and len(val) > 0:
+            return val
+        logger.warning(
+            "semantic.vectorize_statuses: expected non-empty list, using default %s",
+            _DEFAULT_VECTORIZE_STATUSES,
+        )
+        return list(_DEFAULT_VECTORIZE_STATUSES)
+    except Exception as e:
+        logger.debug("Config unavailable for vectorize_statuses: %s", e)
+        return list(_DEFAULT_VECTORIZE_STATUSES)
+
 
 # ---------------------------------------------------------------------------
 # Last-run helpers (backed by ingests table)
@@ -151,25 +172,30 @@ def run_vectorization(
     if file_ids is not None and len(file_ids) == 0:
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
 
+    statuses = _get_vectorize_statuses()
+    status_ph = ",".join("?" * len(statuses))
+
     if file_ids is not None:
-        where = "status = 'listed' AND vectorize = 1"
+        where = f"status IN ({status_ph}) AND vectorize = 1"
         if not full_mode:
             where += " AND vectorized_at IS NULL"
         if len(file_ids) <= 500:
             placeholders = ",".join("?" * len(file_ids))
             where += f" AND id IN ({placeholders})"
-            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", file_ids).fetchall()
+            rows = db.conn.execute(
+                f"SELECT id, path FROM files WHERE {where}", statuses + file_ids
+            ).fetchall()
         else:
             db.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _vec_scope (file_id INTEGER PRIMARY KEY)")
             db.conn.execute("DELETE FROM _vec_scope")
             db.conn.executemany("INSERT INTO _vec_scope (file_id) VALUES (?)", [(fid,) for fid in file_ids])
             where += " AND id IN (SELECT file_id FROM _vec_scope)"
-            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
+            rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", statuses).fetchall()
     else:
-        where = "status = 'listed' AND vectorize = 1"
+        where = f"status IN ({status_ph}) AND vectorize = 1"
         if not full_mode:
             where += " AND vectorized_at IS NULL"
-        rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}").fetchall()
+        rows = db.conn.execute(f"SELECT id, path FROM files WHERE {where}", statuses).fetchall()
 
     if not rows:
         return PipeResult.completed("vectorization", skipped_large_files=skipped_large_files, **counts)
