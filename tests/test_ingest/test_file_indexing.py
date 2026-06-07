@@ -4,13 +4,19 @@ Merged from test_file_scanner.py and test_folder_indexer_config.py.
 File analyzer tests removed when file_analyzer.py was archived.
 """
 
+from __future__ import annotations
+
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+if TYPE_CHECKING:
+    from footprinter.ingest.file_scanner import FileScanner
 
 # ═══════════════════════════════════════════════════════════════════════
 # §1 — File scanner (from test_file_scanner.py)
@@ -192,6 +198,53 @@ class TestExclusionPatterns:
             scanner = FileScanner(config=config)
 
         assert scanner.should_exclude("/any/path/node_modules/lodash/index.js") is True
+
+
+class TestDotFolderExclusionPatterns:
+    """Dot-folders that should never enter the DB.
+
+    Tests load the real bundled config to verify shipped patterns.
+    """
+
+    @pytest.fixture(params=["/Users/testuser", "/home/testuser"])
+    def bundled_scanner(self, request) -> "FileScanner":
+        from footprinter.ingest.file_scanner import FileScanner
+
+        bundled_config = Path(__file__).parent.parent.parent / "footprinter" / "bundled" / "config.example.yaml"
+        config = yaml.safe_load(bundled_config.read_text())
+
+        with patch("os.path.expanduser", side_effect=lambda p: p.replace("~", request.param, 1)):
+            scanner = FileScanner(config=config)
+            scanner._test_home = request.param
+            yield scanner
+
+    @pytest.mark.parametrize(
+        "dot_folder,subpath",
+        [
+            (".next", "server/pages/index.js"),
+            (".vscode", "settings.json"),
+            (".vscode", "extensions/ms-python/package.json"),
+            (".husky", "pre-commit"),
+            (".astro", "content-cache.json"),
+            (".githooks", "pre-push"),
+            (".aesthetic", "cache.json"),
+            (".users", "admin.json"),
+        ],
+    )
+    def test_dot_folder_excluded_by_bundled_config(self, bundled_scanner, dot_folder, subpath):
+        """Files under noise dot-folders are rejected by should_exclude()."""
+        path = f"{bundled_scanner._test_home}/Work/project/{dot_folder}/{subpath}"
+        assert bundled_scanner.should_exclude(path) is True
+
+    def test_claude_dir_not_excluded_by_scanner(self, bundled_scanner):
+        """Project-level .claude/ must NOT be excluded (gets listed status instead)."""
+        path = f"{bundled_scanner._test_home}/Work/project/.claude/CLAUDE.md"
+        assert bundled_scanner.should_exclude(path) is False
+
+    def test_normal_files_unaffected(self, bundled_scanner):
+        """Regular project files must not be caught by dot-folder patterns."""
+        path = f"{bundled_scanner._test_home}/Work/project/src/main.py"
+        assert bundled_scanner.should_exclude(path) is False
 
 
 class TestConfiguredDirectoryOverridesExclusions:

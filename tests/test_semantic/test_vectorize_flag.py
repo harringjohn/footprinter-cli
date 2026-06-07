@@ -8,7 +8,7 @@ tests/test_ingest/test_processing.py::test_skips_metadata_vectorize_zero.
 
 import json
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F401 (used in with-statements below)
 
 # ---------------------------------------------------------------------------
 # Helpers
