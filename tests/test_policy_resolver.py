@@ -333,7 +333,7 @@ class TestResolveBatch:
 # ── Ancestor Walk Tests ───────────────────────────────────────────────
 
 
-# ── Folder FK Regression Tests (FPR-1762 critical) ────────────────────
+# ── Folder FK Regression Tests ────────────────────────────────────────
 
 
 class TestFolderFKRegression:
