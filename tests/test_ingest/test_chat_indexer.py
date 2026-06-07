@@ -1,4 +1,4 @@
-"""Tests for ChatIndexer — inline vectorization removed (FPR-1760).
+"""Tests for ChatIndexer — inline vectorization removed.
 
 Chat vectorization is now handled by the post-ingest follow-up stage
 (run_vectorization), not inline during import. These tests verify
