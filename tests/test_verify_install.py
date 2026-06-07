@@ -1,5 +1,6 @@
-"""Tests for scripts/release/verify_install.sh — missing-config fail path."""
+"""Tests for scripts/release/verify_install.sh — bundled-config fail and pass paths."""
 
+import os
 import shutil
 import stat
 import subprocess
@@ -43,7 +44,11 @@ elif [[ "$1" == "-c" ]]; then
         exit 1
     fi
     if [[ "$code" == *"importlib.resources"* ]]; then
-        echo ""
+        if [[ -n "${STUB_CONFIG_MISSING:-}" ]]; then
+            echo "/nonexistent/config.example.yaml"
+        else
+            echo "${STUB_CONFIG_PATH}"
+        fi
         exit 0
     fi
     exit 0
@@ -86,6 +91,11 @@ def verify_harness(tmp_path):
     (tmp_path / "tests").mkdir()
     (tmp_path / "pyproject.toml").write_text("")
 
+    # Bundled config file for happy-path tests (STUB_CONFIG_PATH points here)
+    installed_dir = tmp_path / "installed_config"
+    installed_dir.mkdir()
+    (installed_dir / "config.example.yaml").write_text("# bundled config stub")
+
     return tmp_path
 
 
@@ -93,16 +103,34 @@ def _run_verify(
     harness_dir: Path,
     version: str = "9.9.9",
     with_pytest: bool = False,
+    env_overrides: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = ["bash", str(harness_dir / "scripts" / "release" / "verify_install.sh"), version]
     if with_pytest:
         cmd.append("--with-pytest")
-    return subprocess.run(cmd, capture_output=True, text=True, cwd=harness_dir)
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=harness_dir, env=env)
 
 
 class TestVerifyInstall:
     def test_missing_bundled_config_fails_loudly(self, verify_harness):
-        """When bundled config can't be located, the script emits FAIL and exits non-zero."""
-        result = _run_verify(verify_harness, with_pytest=True)
+        """When bundled config path doesn't exist on disk, the script logs FAIL and exits non-zero after all phases complete."""
+        result = _run_verify(
+            verify_harness, with_pytest=True, env_overrides={"STUB_CONFIG_MISSING": "1"}
+        )
         assert result.returncode != 0
         assert "FAIL: could not locate bundled config.example.yaml" in result.stderr
+
+    def test_bundled_config_present_passes(self, verify_harness):
+        """Script exits zero when bundled config is found and copied into the workspace."""
+        config_path = verify_harness / "installed_config" / "config.example.yaml"
+        result = _run_verify(
+            verify_harness,
+            with_pytest=True,
+            env_overrides={"STUB_CONFIG_PATH": str(config_path)},
+        )
+        assert result.returncode == 0
+        assert "FAIL" not in result.stderr
+        assert "OK: bundled config.example.yaml in place for conftest" in result.stdout
