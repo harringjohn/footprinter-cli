@@ -12,6 +12,7 @@ Validates:
 import os
 import sqlite3
 import tempfile
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from conftest import run_fp
@@ -27,6 +28,12 @@ def _make_mock_store(file_results=None, chat_results=None):
     mock_store.search_files.return_value = file_results or []
     mock_store.search_chats.return_value = chat_results or []
     return mock_store
+
+
+@contextmanager
+def _dummy_open_db(_path=None):
+    """Yield a MagicMock connection for tests that don't need a real database."""
+    yield MagicMock()
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +65,10 @@ class TestSearchRequiresQuery:
 class TestSearchExecution:
     """fp search --mode semantic <query> with mocked VectorStore."""
 
-    @patch("footprinter.cli.search._HAS_ML", True)
-    @patch("footprinter.cli.search.VectorStore")
-    def test_search_runs_with_mock_store(self, MockVS):
+    @patch("footprinter.cli.search.open_db", side_effect=_dummy_open_db)
+    @patch("footprinter.cli.search.ml_available", return_value=True)
+    @patch("footprinter.semantic.vector_store.VectorStore")
+    def test_search_runs_with_mock_store(self, MockVS, _mock_ml, _mock_db):
         mock_store = _make_mock_store(
             file_results=[
                 {
@@ -87,9 +95,10 @@ class TestSearchExecution:
         mock_store.search_files.assert_called_once()
         mock_store.search_chats.assert_called_once()
 
-    @patch("footprinter.cli.search._HAS_ML", True)
-    @patch("footprinter.cli.search.VectorStore")
-    def test_search_limit_flag(self, MockVS):
+    @patch("footprinter.cli.search.open_db", side_effect=_dummy_open_db)
+    @patch("footprinter.cli.search.ml_available", return_value=True)
+    @patch("footprinter.semantic.vector_store.VectorStore")
+    def test_search_limit_flag(self, MockVS, _mock_ml, _mock_db):
         mock_store = _make_mock_store()
         MockVS.get_instance.return_value = mock_store
 
@@ -103,9 +112,10 @@ class TestSearchExecution:
             or (len(call_kwargs[1]) > 0 and call_kwargs[1].get("n_results") == 5)
         )
 
-    @patch("footprinter.cli.search._HAS_ML", True)
-    @patch("footprinter.cli.search.VectorStore")
-    def test_search_type_filter(self, MockVS):
+    @patch("footprinter.cli.search.open_db", side_effect=_dummy_open_db)
+    @patch("footprinter.cli.search.ml_available", return_value=True)
+    @patch("footprinter.semantic.vector_store.VectorStore")
+    def test_search_type_filter(self, MockVS, _mock_ml, _mock_db):
         mock_store = _make_mock_store()
         MockVS.get_instance.return_value = mock_store
 
@@ -115,9 +125,10 @@ class TestSearchExecution:
         # filter_metadata should include file_type
         assert call_kwargs[1].get("filter_metadata") == {"file_type": ".py"}
 
-    @patch("footprinter.cli.search._HAS_ML", True)
-    @patch("footprinter.cli.search.VectorStore")
-    def test_type_filter_excludes_chats(self, MockVS):
+    @patch("footprinter.cli.search.open_db", side_effect=_dummy_open_db)
+    @patch("footprinter.cli.search.ml_available", return_value=True)
+    @patch("footprinter.semantic.vector_store.VectorStore")
+    def test_type_filter_excludes_chats(self, MockVS, _mock_ml, _mock_db):
         """--type flag should skip chat search entirely."""
         mock_store = _make_mock_store()
         MockVS.get_instance.return_value = mock_store
@@ -149,14 +160,15 @@ class TestSearchNoML:
                 "CREATE TABLE chats (id INTEGER PRIMARY KEY,"
                 " external_id TEXT, title TEXT,"
                 " account TEXT, created_at TEXT, modified_at TEXT,"
-                " message_count INTEGER)"
+                " message_count INTEGER,"
+                " status TEXT DEFAULT 'listed')"
             )
             conn.execute("CREATE VIRTUAL TABLE chats_fts USING fts5(title, content=chats, content_rowid=id)")
             conn.commit()
             conn.close()
 
             with (
-                patch("footprinter.cli.search._HAS_ML", False),
+                patch("footprinter.cli.search.ml_available", return_value=False),
                 patch("footprinter.paths.get_db_path", return_value=db_path),
             ):
                 stdout, stderr, code = run_fp("search", "test")
