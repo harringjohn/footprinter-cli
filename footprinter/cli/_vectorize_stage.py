@@ -22,18 +22,29 @@ def _file_vectorization_in_config() -> bool:
         return False
 
 
+def _chat_vectorization_in_config() -> bool:
+    """Check config without touching the vector store."""
+    try:
+        from footprinter.source_registry import get_config
+
+        return bool(get_config().get("semantic", {}).get("chat_vectorization", False))
+    except Exception:
+        return False
+
+
 def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int]]" = None) -> None:
     """Run vectorization as a follow-up stage after the main pipeline.
 
-    No-op when ``semantic.file_vectorization`` is disabled. On failure
-    the wizard/ingest run continues — vectorization is best-effort.
+    No-op when all vectorization is disabled. On failure the wizard/ingest
+    run continues — vectorization is best-effort.
 
     Args:
         quiet: Suppress Rich output.
-        file_ids: When provided, scope vectorization to these file IDs only.
-            None means broad (all unvectorized files).
+        file_ids: When provided, scope file vectorization to these IDs only.
+            None means broad (all unvectorized). Message/chat_info phases
+            always select their own unvectorized rows.
     """
-    if not _file_vectorization_in_config():
+    if not _file_vectorization_in_config() and not _chat_vectorization_in_config():
         return
 
     from footprinter.ingest.orchestrator import DataPipelineOrchestrator
@@ -69,7 +80,7 @@ def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int
                 transient=True,
             )
             progress.start()
-            task_id = progress.add_task("[cyan]Vectorizing files[/cyan]", total=None)
+            task_id = progress.add_task("[cyan]Deep Read (semantic indexing)[/cyan]", total=None)
 
         def on_progress(count: int) -> None:
             if progress is not None and task_id is not None:
@@ -92,19 +103,34 @@ def run_vectorization_stage(*, quiet: bool = False, file_ids: "Optional[list[int
         skipped_missing = data.get("vectorized_skipped_missing", 0)
         skipped_large = data.get("vectorized_skipped_large", 0)
         skipped_large_files = data.get("skipped_large_files") or []
+        messages_new = data.get("vectorized_messages_new", 0)
+        chat_info_new = data.get("vectorized_chat_info_new", 0)
         if status == "completed_with_errors" or failed:
+            parts = [f"{new} files"]
+            if messages_new:
+                parts.append(f"{messages_new} messages")
+            if chat_info_new:
+                parts.append(f"{chat_info_new} chats")
             console.print(
-                f"  [yellow]⚠[/yellow] Deep Read: {new} embedded, {failed} failed, "
+                f"  [yellow]⚠[/yellow] Deep Read: {', '.join(parts)} embedded, {failed} failed, "
                 f"{skipped_missing} skipped"
                 + (f", {skipped_large} too large" if skipped_large else "")
             )
         else:
+            parts = []
+            if new:
+                parts.append(f"{new} files")
+            if messages_new:
+                parts.append(f"{messages_new} messages")
+            if chat_info_new:
+                parts.append(f"{chat_info_new} chats")
+            embedded_str = ", ".join(parts) if parts else "0"
             trail = ""
             if skipped_missing:
                 trail += f", {skipped_missing} skipped"
             if skipped_large:
                 trail += f", {skipped_large} too large"
-            console.print(f"  [green]✓[/green] Deep Read complete: {new} embedded" + trail)
+            console.print(f"  [green]✓[/green] Deep Read complete: {embedded_str} embedded" + trail)
         if skipped_large_files:
             from footprinter.utils.paths import abbreviate_home
 

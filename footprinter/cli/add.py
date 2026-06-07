@@ -651,6 +651,10 @@ def _handle_chat_import(args) -> None:
                 )
                 if errs:
                     console.print(f"[yellow]Warning:[/yellow] {errs} chats failed to import")
+
+        from footprinter.cli._vectorize_stage import run_vectorization_stage
+
+        run_vectorization_stage(quiet=quiet)
     except Exception as e:
         if not quiet:
             console.print(f"[red]Import failed:[/red] {e}")
