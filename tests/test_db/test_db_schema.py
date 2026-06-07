@@ -2164,13 +2164,13 @@ class TestIngestsDDLConstant:
         assert "ingests" in _INGESTS_DDL
 
     def test_ingests_ddl_not_duplicated_in_source(self):
-        """The ingests CREATE TABLE SQL should appear only once in schema.py source."""
+        """The ingests CREATE TABLE SQL should appear only once in ddl.py source."""
         import inspect
         import re
 
-        import footprinter.ingest.db.schema as schema_module
+        import footprinter.ingest.db.ddl as ddl_module
 
-        source = inspect.getsource(schema_module)
+        source = inspect.getsource(ddl_module)
         # Count occurrences of inline CREATE TABLE ... ingests DDL.
         # The constant definition is one occurrence; there should be no others.
         pattern = r"CREATE TABLE IF NOT EXISTS ingests\s*\("
@@ -2424,12 +2424,12 @@ class TestSchemaDocumentation:
     """Verify that schema.py documents the standard entity column set."""
 
     def test_schema_header_documents_standard_columns(self):
-        """schema.py should contain a comment block listing the standard entity columns."""
+        """ddl.py should contain a comment block listing the standard entity columns."""
         import inspect
 
-        import footprinter.ingest.db.schema as schema_module
+        import footprinter.ingest.db.ddl as ddl_module
 
-        source = inspect.getsource(schema_module)
+        source = inspect.getsource(ddl_module)
         assert "Standard Entity Column Set" in source
         for keyword in ("status", "created_at", "display_name", "access", "visibility"):
             assert keyword in source, f"Schema header should document '{keyword}'"
@@ -2612,3 +2612,83 @@ class TestDatabaseOperations:
                 ("local", "file.txt", "/test/file.txt", "txt", 200, datetime.now().isoformat()),
             )
         db.close()
+
+
+# ========================================
+# Schema module split tests
+# ========================================
+
+
+class TestSchemaModuleSplit:
+    """Verify DDL/FTS split into separate modules."""
+
+    def test_fts_module_exists(self):
+        import footprinter.ingest.db.fts  # noqa: F401
+
+    def test_ddl_module_exists(self):
+        import footprinter.ingest.db.ddl  # noqa: F401
+
+    def test_fts_definitions_lives_in_fts_module(self):
+        from footprinter.ingest.db.fts import _FTS_DEFINITIONS
+
+        assert isinstance(_FTS_DEFINITIONS, dict)
+        assert "files_fts" in _FTS_DEFINITIONS
+
+    def test_fts_definitions_reexported_from_schema(self):
+        from footprinter.ingest.db.schema import _FTS_DEFINITIONS
+
+        assert isinstance(_FTS_DEFINITIONS, dict)
+
+    def test_ingests_ddl_lives_in_ddl_module(self):
+        from footprinter.ingest.db.ddl import _INGESTS_DDL
+
+        assert "CREATE TABLE" in _INGESTS_DDL
+
+    def test_ingests_ddl_reexported_from_schema(self):
+        from footprinter.ingest.db.schema import _INGESTS_DDL
+
+        assert "CREATE TABLE" in _INGESTS_DDL
+
+    def test_access_control_tables_lives_in_ddl(self):
+        from footprinter.ingest.db.ddl import ACCESS_CONTROL_TABLES
+
+        assert "files" in ACCESS_CONTROL_TABLES
+
+    def test_access_control_tables_reexported_from_schema(self):
+        from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
+
+        assert "files" in ACCESS_CONTROL_TABLES
+
+    def test_schemamixin_composes_both_mixins(self):
+        from footprinter.ingest.db.ddl import DDLMixin
+        from footprinter.ingest.db.fts import FTSMixin
+        from footprinter.ingest.db.schema import SchemaMixin
+
+        assert issubclass(SchemaMixin, DDLMixin)
+        assert issubclass(SchemaMixin, FTSMixin)
+
+    def test_fts_trigger_sql_references_ftsmixin(self):
+        import inspect
+
+        from footprinter.ingest.db.fts import FTSMixin
+
+        source = inspect.getsource(FTSMixin._fts_trigger_sql)
+        assert "FTSMixin._fts_col_expr" in source
+        assert "SchemaMixin._fts_col_expr" not in source
+
+    def test_fts_does_not_import_ddl(self):
+        import inspect
+
+        import footprinter.ingest.db.fts as fts_module
+
+        source = inspect.getsource(fts_module)
+        assert "from footprinter.ingest.db.ddl" not in source
+        assert "import ddl" not in source
+
+    def test_ddl_does_not_import_schema(self):
+        import inspect
+
+        import footprinter.ingest.db.ddl as ddl_module
+
+        source = inspect.getsource(ddl_module)
+        assert "from footprinter.ingest.db.schema" not in source
