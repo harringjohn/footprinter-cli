@@ -15,9 +15,6 @@ from footprinter.policy_resolver import (
 )
 
 
-# ── Winner Function Tests ─────────────────────────────────────────────
-
-
 class TestDenyWins:
 
     def test_empty_returns_fallback(self):
@@ -72,9 +69,6 @@ class TestMostRestrictiveWins:
     def test_none_values_skipped(self):
         policies = [(None, "file:1"), ("full", "source:files")]
         assert most_restrictive_wins(policies, ("opaque", "baseline")) == ("full", "source:files")
-
-
-# ── Helper Tests ──────────────────────────────────────────────────────
 
 
 def _perm_resolve(value):
@@ -149,9 +143,6 @@ class TestPolicyResolverHelpers:
         r = PolicyResolver("visibility_policies", _vis_resolve, most_restrictive_wins, "opaque")
         cursor = resolver_db.cursor()
         assert r.get_global_baseline(cursor) == ("opaque", "baseline")
-
-
-# ── Single-Item Resolution Tests ──────────────────────────────────────
 
 
 _CLIENT_SPEC = ItemSpec(
@@ -275,9 +266,6 @@ class TestResolveSingle:
         assert result == ("hidden", "source:clients")
 
 
-# ── Batch Resolution Tests ────────────────────────────────────────────
-
-
 class TestResolveBatch:
 
     def test_batch_empty_ids(self, resolver_db):
@@ -328,12 +316,6 @@ class TestResolveBatch:
         result = resolve_batch(r, resolver_db, _PROJECT_SPEC, [1], batch_fn)
         assert result[1][0] is False
         assert result[1][1] == "client:1"
-
-
-# ── Ancestor Walk Tests ───────────────────────────────────────────────
-
-
-# ── Folder FK Regression Tests ────────────────────────────────────────
 
 
 class TestFolderFKRegression:
@@ -415,9 +397,6 @@ class TestFolderFKRegression:
 
         vis = get_visibility(resolver_db, "file", 1)
         assert vis != "hidden", "file without folder_id should not pick up folder:1 policy"
-
-
-# ── Ancestor Walk Tests ───────────────────────────────────────────────
 
 
 class TestAncestorWalk:

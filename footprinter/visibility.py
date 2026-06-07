@@ -30,7 +30,7 @@ If an item is hidden or opaque, it cannot be read regardless of permission polic
 """
 
 import sqlite3
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 from footprinter.db.sql_utils import chunked_query as _chunked_query
 from footprinter.policy_resolver import (
@@ -47,17 +47,12 @@ VisibilityState = Literal["hidden", "opaque", "full"]
 BASELINE_VISIBILITY: VisibilityState = "opaque"
 
 
-# ── Value parser ──────────────────────────────────────────────────────
-
-
 def _resolve(value: Optional[str]) -> Optional[VisibilityState]:
     """Convert a visibility value to state or None (no policy)."""
     if value in ("hidden", "opaque", "full"):
         return value
     return None
 
-
-# ── Resolver instance ─────────────────────────────────────────────────
 
 _RESOLVER = PolicyResolver(
     policy_table="visibility_policies",
@@ -66,8 +61,6 @@ _RESOLVER = PolicyResolver(
     baseline=BASELINE_VISIBILITY,
 )
 
-
-# ── Item-type specs ───────────────────────────────────────────────────
 
 _PARENT_PROJECT_CLIENT = (
     ("project", "project_id", True),
@@ -194,9 +187,6 @@ _SPECS = {
 }
 
 
-# ── Public API ────────────────────────────────────────────────────────
-
-
 def get_visibility(
     conn: sqlite3.Connection, item_type: str, item_id: int
 ) -> VisibilityState:
@@ -235,9 +225,6 @@ def batch_resolve_visibility(
     return {id_: (BASELINE_VISIBILITY, "baseline") for id_ in item_ids}
 
 
-# ── Visibility-only extras ────────────────────────────────────────────
-
-
 def get_source_visibility(
     conn: sqlite3.Connection, scope: str
 ) -> VisibilityState:
@@ -257,9 +244,6 @@ def is_readable(visibility: VisibilityState) -> bool:
     Hidden and opaque items are blocked at the visibility layer.
     """
     return visibility == "full"
-
-
-# ── Browser (no hierarchy — kept as special case) ─────────────────────
 
 
 def _resolve_browser_visibility_with_source(
@@ -317,9 +301,6 @@ def _batch_resolve_browser_visibility(
     return results
 
 
-# ── Backward-compatible private helpers (used by tests) ───────────────
-
-
 def _get_policy(
     cursor: sqlite3.Cursor, scope: str
 ) -> Optional[VisibilityState]:
@@ -340,5 +321,10 @@ def _resolve_parent_with_source(
     )
 
 
-def _walk_ancestor_policies(cursor, folder_id, parent_folder_id, lookup_policy):
+def _walk_ancestor_policies(
+    cursor: sqlite3.Cursor,
+    folder_id: int,
+    parent_folder_id: Optional[int],
+    lookup_policy: Callable[[str], Optional[VisibilityState]],
+) -> Optional[Tuple[VisibilityState, str]]:
     return walk_ancestor_policies(cursor, folder_id, parent_folder_id, lookup_policy)

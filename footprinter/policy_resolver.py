@@ -20,9 +20,6 @@ from footprinter.db.policies import is_folder_path_scope
 from footprinter.db.sql_utils import chunked_query as _chunked_query
 
 
-# ── Winner Functions ──────────────────────────────────────────────────
-
-
 def deny_wins(
     policies: List[Tuple[Optional[bool], str]],
     fallback: Tuple[bool, str],
@@ -52,9 +49,6 @@ def most_restrictive_wins(
     return fallback
 
 
-# ── Configuration ─────────────────────────────────────────────────────
-
-
 @dataclass(frozen=True)
 class ItemSpec:
     entity_name: str
@@ -77,7 +71,7 @@ class PolicyResolver:
         self,
         policy_table: str,
         parse_value: Callable[[Optional[str]], Any],
-        pick_winner: Callable,
+        pick_winner: Callable[..., Tuple[Any, str]],
         baseline: Any,
     ):
         self.policy_table = policy_table
@@ -158,9 +152,6 @@ class PolicyResolver:
         return (value, source)
 
 
-# ── Ancestor Walk ─────────────────────────────────────────────────────
-
-
 def walk_ancestor_policies(
     cursor: sqlite3.Cursor,
     folder_id: int,
@@ -180,9 +171,6 @@ def walk_ancestor_policies(
         ).fetchone()
         parent_id = parent_row["parent_folder_id"] if parent_row else None
     return None
-
-
-# ── Generic Single-Item Resolution ────────────────────────────────────
 
 
 def resolve_single(
@@ -259,9 +247,6 @@ def resolve_single(
         policies.append((source_policy, spec.source_scope))
 
     return resolver.pick_winner(policies, resolver.get_global_baseline(cursor))
-
-
-# ── Generic Batch Resolution ─────────────────────────────────────────
 
 
 def resolve_batch(

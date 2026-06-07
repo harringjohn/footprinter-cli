@@ -35,9 +35,6 @@ from footprinter.policy_resolver import (
 BASELINE_PERMISSION = True
 
 
-# ── Value parser ──────────────────────────────────────────────────────
-
-
 def _resolve(value: Optional[str]) -> Optional[bool]:
     """Convert a permission value to bool or None (no policy)."""
     if value == "allow":
@@ -47,8 +44,6 @@ def _resolve(value: Optional[str]) -> Optional[bool]:
     return None
 
 
-# ── Resolver instance ─────────────────────────────────────────────────
-
 _RESOLVER = PolicyResolver(
     policy_table="permission_policies",
     parse_value=_resolve,
@@ -57,20 +52,10 @@ _RESOLVER = PolicyResolver(
 )
 
 
-# ── Item-type specs ───────────────────────────────────────────────────
-
 _PARENT_PROJECT_CLIENT = (
     ("project", "project_id", True),
     ("client", "client_id", True),
 )
-
-_LEAF_SQL = """
-    SELECT {alias}.{extra_cols}project_id,
-           COALESCE({alias}.client_id, project.client_id) AS client_id
-    FROM {table} {alias}
-    LEFT JOIN projects project ON {alias}.project_id = project.id
-    WHERE {alias}.id = ?
-"""
 
 _FILE_SPEC = ItemSpec(
     entity_name="file",
@@ -192,9 +177,6 @@ _SPECS = {
 _CAN_READ_TYPES = {"file", "email", "chat"}
 
 
-# ── Public API ────────────────────────────────────────────────────────
-
-
 def can_read(conn: sqlite3.Connection, item_type: str, item_id: int) -> bool:
     """Resolve whether the MCP client can read this item."""
     if item_type == "visit":
@@ -237,9 +219,6 @@ def batch_resolve_permissions(
             _RESOLVER, conn, spec, item_ids, batch_resolve_permissions
         )
     return {id_: (False, "baseline") for id_ in item_ids}
-
-
-# ── Browser (no hierarchy — kept as special case) ─────────────────────
 
 
 def _resolve_browser_with_source(
@@ -295,9 +274,6 @@ def _batch_resolve_browser(
             results[item_id] = global_baseline
 
     return results
-
-
-# ── Backward-compatible private helpers (used by tests) ───────────────
 
 
 def _get_policy(cursor: sqlite3.Cursor, scope: str) -> Optional[bool]:
