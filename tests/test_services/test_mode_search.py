@@ -3,8 +3,6 @@
 import sqlite3
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _make_fts_db(tmp_path):
     """Create a temp DB with files and chats FTS5 tables populated with test data."""

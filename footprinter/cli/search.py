@@ -10,7 +10,7 @@ import sys
 from rich.console import Console
 
 from footprinter.cli._common import FORMATTER, add_json_flag, open_db, output_json
-from footprinter.services.search_service import (
+from footprinter.services.search_service import (  # noqa: F401
     _fts_file_to_result,
     ml_available,
     mode_search,
