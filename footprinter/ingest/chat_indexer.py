@@ -298,7 +298,7 @@ class ChatIndexer:
                 internal_id = chats_db.get_chat_id_by_uuid(self.db.conn, conv_data["external_id"])
 
                 for msg in conv_data["messages"]:
-                    msg_id = chats_db.insert_message(
+                    chats_db.insert_message(
                         self.db.conn,
                         {
                             "chat_id": internal_id,
