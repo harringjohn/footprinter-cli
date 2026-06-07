@@ -355,12 +355,11 @@ def _set_csv(args) -> None:
                     set_visibility_policy(conn, record_scope, vis, commit=False)
                 if acc:
                     set_permission_policy(conn, record_scope, acc, commit=False)
+            stats = recalculate_with_progress(conn, scope, commit=False)
             conn.commit()
         except Exception:
             conn.rollback()
             raise
-
-        stats = recalculate_with_progress(conn, scope)
 
         console.print(
             f"\nApplied [bold]{len(validated)}[/bold] record "

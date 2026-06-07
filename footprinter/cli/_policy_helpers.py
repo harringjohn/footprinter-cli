@@ -52,18 +52,24 @@ def confirm_recalculation(conn: sqlite3.Connection, scope: str, *, yes: bool = F
 # ---------------------------------------------------------------------------
 
 
-def recalculate_with_progress(conn: sqlite3.Connection, scope: str) -> dict[str, int]:
+def recalculate_with_progress(
+    conn: sqlite3.Connection, scope: str, *, commit: bool = True,
+) -> dict[str, int]:
     """Recalculate access with a Rich progress bar for large scopes.
 
     If total affected entities <= CONFIRM_THRESHOLD, runs the fast unbatched
-    path and prints a one-line summary. Otherwise shows a Rich progress bar
-    with per-batch updates.
+    path.  Otherwise shows a Rich progress bar with per-batch progress
+    updates.
+
+    When *commit* is False, no commits are issued (including per-batch
+    commits in the batched path) — the caller manages the transaction
+    boundary.
     """
     counts = count_affected_entities(conn, scope)
     total = sum(counts.values())
 
     if total <= CONFIRM_THRESHOLD:
-        return recalculate_access(conn, scope)
+        return recalculate_access(conn, scope, commit=commit)
 
     from rich.progress import Progress
 
@@ -73,6 +79,7 @@ def recalculate_with_progress(conn: sqlite3.Connection, scope: str) -> dict[str,
             conn,
             scope,
             on_batch=lambda n: progress.advance(task, advance=n),
+            commit=commit,
         )
     return stats
 

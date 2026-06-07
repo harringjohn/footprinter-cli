@@ -353,18 +353,26 @@ def count_affected_entities(conn: sqlite3.Connection, scope: str) -> dict[str, i
     return {etype: len(ids) for etype, ids in _get_ids_for_scope(conn, scope).items() if ids}
 
 
-def stamp_entities(conn: sqlite3.Connection, ids_by_type: dict[str, list[int]]) -> dict[str, int]:
+def stamp_entities(
+    conn: sqlite3.Connection,
+    ids_by_type: dict[str, list[int]],
+    *,
+    commit: bool = True,
+) -> dict[str, int]:
     """Resolve and write visibility + permissions for the given entity IDs.
 
     Used by ``recalculate_access`` (full scope resolution) and the incremental
     pipeline path in ``processing.run_access_resolution``.  The batched variant
     (``recalculate_access_batched``) uses its own loop for per-chunk commits.
 
-    Always commits before returning, even when *ids_by_type* is empty.
+    Commits before returning by default, even when *ids_by_type* is empty.
+    When *commit* is False the caller is responsible for committing the
+    transaction.
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
         ids_by_type: Mapping of entity type to list of row IDs to stamp.
+        commit: If False, skip the final ``conn.commit()``.
 
     Returns:
         Dict mapping entity type to count of rows stamped.
@@ -387,22 +395,26 @@ def stamp_entities(conn: sqlite3.Connection, ids_by_type: dict[str, list[int]]) 
 
         stats[entity_type] = len(ids)
 
-    conn.commit()
+    if commit:
+        conn.commit()
     return stats
 
 
-def recalculate_access(conn: sqlite3.Connection, scope: str) -> dict[str, int]:
+def recalculate_access(
+    conn: sqlite3.Connection, scope: str, *, commit: bool = True,
+) -> dict[str, int]:
     """Recalculate visibility and permissions for all entities affected by *scope*.
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
         scope: Policy scope string (e.g. "global", "project:3", "folder:~/Work/")
+        commit: If False, skip committing — caller manages the transaction.
 
     Returns:
         Dict mapping entity type to count of rows updated.
     """
     ids_by_type = _get_ids_for_scope(conn, scope)
-    return stamp_entities(conn, ids_by_type)
+    return stamp_entities(conn, ids_by_type, commit=commit)
 
 
 def recalculate_access_batched(
@@ -411,18 +423,24 @@ def recalculate_access_batched(
     *,
     batch_size: int = 5000,
     on_batch: Callable[[int], None] | None = None,
+    commit: bool = True,
 ) -> dict[str, int]:
     """Recalculate visibility and permissions in batches with progress callback.
 
     Same semantics as ``recalculate_access()`` but commits after each batch
-    and calls *on_batch* with the count of entities processed per chunk.
-    Designed for large scopes where a progress bar is needed.
+    (when *commit* is True) and calls *on_batch* with the count of entities
+    processed per chunk.  Designed for large scopes where a progress bar is
+    needed.
 
     Args:
         conn: SQLite connection with row_factory = sqlite3.Row
         scope: Policy scope string (e.g. "global", "folder:~/Work/")
         batch_size: Number of entity IDs per chunk (default 5000)
         on_batch: Optional callback receiving the count processed per chunk
+        commit: If False, skip per-batch commits — all batches accumulate
+            in the caller's transaction.  This trades incremental commit
+            boundaries for atomicity; the caller is responsible for the
+            final commit.
 
     Returns:
         Dict mapping entity type to total count of rows updated.
@@ -446,7 +464,8 @@ def recalculate_access_batched(
                 perm_results = batch_resolve_permissions(conn, entity_type, chunk)
                 _write_back_permissions(conn, entity_type, perm_results)
 
-            conn.commit()
+            if commit:
+                conn.commit()
 
             if on_batch is not None:
                 on_batch(len(chunk))
