@@ -1,8 +1,9 @@
 """Tests for bundled YAML files shipped inside the footprinter package.
 
 `footprinter/bundled/` is the single source of truth for bundled data the
-shipped CLI consumes: `config.example.yaml` and the six pattern YAMLs under
-`patterns/`. No parallel copies under `config/` are permitted.
+shipped CLI consumes: `config.example.yaml`. No parallel copies under
+`config/` are permitted. Pattern YAMLs were moved to fpr-dev (they
+are not consumed by fpr-cli).
 """
 
 from pathlib import Path
@@ -15,21 +16,6 @@ BUNDLED_DIR = REPO_ROOT / "footprinter" / "bundled"
 
 BUNDLED_YAMLS = [
     "config.example.yaml",
-    "patterns/context_patterns.yaml",
-    "patterns/extensions.yaml",
-    "patterns/filename_patterns.yaml",
-    "patterns/mime_mappings.yaml",
-    "patterns/salesforce_rules.yaml",
-    "patterns/security_patterns.yaml",
-]
-
-PATTERN_FILENAMES = [
-    "context_patterns.yaml",
-    "extensions.yaml",
-    "filename_patterns.yaml",
-    "mime_mappings.yaml",
-    "salesforce_rules.yaml",
-    "security_patterns.yaml",
 ]
 
 
@@ -60,12 +46,12 @@ class TestBundledFilesLoadable:
         path = get_bundled_path("config.example.yaml")
         assert Path(path).is_file()
 
-    def test_get_bundled_patterns_dir_resolves(self):
-        from footprinter.paths import get_bundled_patterns_dir
+    def test_get_bundled_patterns_dir_removed(self):
+        import footprinter.paths as paths_mod
 
-        patterns_dir = Path(get_bundled_patterns_dir())
-        for name in PATTERN_FILENAMES:
-            assert (patterns_dir / name).is_file(), f"Missing: {patterns_dir}/{name}"
+        assert not hasattr(paths_mod, "get_bundled_patterns_dir"), (
+            "get_bundled_patterns_dir should not exist — patterns belong in fpr-dev"
+        )
 
 
 class TestPyprojectPackageData:
@@ -88,10 +74,12 @@ class TestPyprojectPackageData:
         globs = pd.get("footprinter.bundled", [])
         assert "*.yaml" in globs, "Missing *.yaml in package-data"
 
-    def test_package_data_covers_patterns(self, pyproject):
+    def test_package_data_excludes_patterns(self, pyproject):
         pd = pyproject["tool"]["setuptools"]["package-data"]
         globs = pd.get("footprinter.bundled", [])
-        assert "patterns/*.yaml" in globs, "Missing patterns/*.yaml in package-data"
+        assert "patterns/*.yaml" not in globs, (
+            "patterns/*.yaml should not be in package-data — patterns belong in fpr-dev"
+        )
 
 
 class TestSingleSourceOfTruth:
@@ -99,7 +87,12 @@ class TestSingleSourceOfTruth:
 
     def test_config_patterns_dir_absent(self):
         assert not (REPO_ROOT / "config" / "patterns").exists(), (
-            "config/patterns/ must not exist — patterns live at footprinter/bundled/patterns/"
+            "config/patterns/ must not exist — patterns belong in fpr-dev, not fpr-cli"
+        )
+
+    def test_bundled_patterns_dir_absent(self):
+        assert not (BUNDLED_DIR / "patterns").exists(), (
+            "bundled/patterns/ must not exist — patterns belong in fpr-dev"
         )
 
     def test_config_example_yaml_absent(self):

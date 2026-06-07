@@ -139,8 +139,3 @@ class TestBundledPaths:
         result = get_bundled_path("foo.yaml")
         assert str(result).endswith("foo.yaml")
 
-    def test_get_bundled_patterns_dir(self):
-        from footprinter.paths import get_bundled_patterns_dir
-
-        result = get_bundled_patterns_dir()
-        assert str(result).endswith("patterns")

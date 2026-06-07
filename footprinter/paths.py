@@ -86,6 +86,3 @@ def get_bundled_path(name: str) -> Path:
     return importlib.resources.files("footprinter.bundled") / name
 
 
-def get_bundled_patterns_dir() -> Path:
-    """Return path to the bundled patterns directory."""
-    return importlib.resources.files("footprinter.bundled") / "patterns"

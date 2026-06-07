@@ -78,7 +78,7 @@ include = ["footprinter*"]
 exclude = ["footprinter.fixture*", "footprinter.bundled.fixture*"]
 
 [tool.setuptools.package-data]
-"footprinter.bundled" = ["*.yaml", "patterns/*.yaml"]
+"footprinter.bundled" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
