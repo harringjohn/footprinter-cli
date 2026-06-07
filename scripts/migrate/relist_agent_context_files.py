@@ -157,8 +157,7 @@ def restamp_local_config_reason(
         cursor.execute(
             f"""
             UPDATE files
-            SET status_reason = 'local_config',
-                status_changed_at = CURRENT_TIMESTAMP
+            SET status_reason = 'local_config'
             WHERE id IN ({placeholders})
             """,
             batch,
