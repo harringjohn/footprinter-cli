@@ -2,7 +2,8 @@
 
 Each accessor under ``footprinter/`` reads a config key with a hardcoded default.
 Most read from ``limits.<key>``; ``chunk_size`` reads from
-``vectorization.chunk_size`` (co-located with ``chunk_overlap``).  These tests
+``vectorization.chunk_size`` (co-located with ``chunk_overlap``), and
+``vectorize_statuses`` reads from ``semantic.vectorize_statuses``.  These tests
 verify:
 
 1. A custom config value is respected (override).
