@@ -91,6 +91,8 @@ jobs:
       contents: read
       actions: write
     steps:
+      - uses: actions/checkout@v6
+
       - name: Wait for shields.io to reflect new version
         id: poll-shields
         env:
@@ -119,26 +121,10 @@ jobs:
       # purging here before shields updates would re-cache the stale image.
       - name: Purge GitHub Camo cache
         if: steps.poll-shields.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Anonymous Camo PURGE returns 200 but only clears the Fastly POP
-          # that handled the request, so we repeat across multiple requests.
-          CAMO_URL=$(gh api "repos/$REPO/readme" \
-            -H "Accept: application/vnd.github.html" \
-            | grep -o 'https://camo.githubusercontent.com[^"]*68747470733a2f2f696d672e736869656c64732e696f[^"]*' | head -1)
-          if [ -z "$CAMO_URL" ]; then
-            echo "::warning::Could not resolve Camo URL for shields.io badge from README"
-            exit 0
-          fi
-          echo "Camo URL: $CAMO_URL"
-          for i in $(seq 1 5); do
-            STATUS=$(curl -s -X PURGE "$CAMO_URL" -o /dev/null -w "%{http_code}")
-            echo "PURGE attempt $i: HTTP $STATUS"
-            sleep 2
-          done
-          echo "Camo purge complete — badge should update shortly"
+        uses: ./.github/actions/purge-camo-badge
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
 
       - name: Dispatch delayed retry
         if: steps.poll-shields.outputs.dispatch == 'true'
@@ -147,5 +133,5 @@ jobs:
           RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: |
           VERSION="${RELEASE_VERSION#v}"
-          echo "Dispatching purge-badge-cache workflow with 120-minute delay..."
-          gh workflow run purge-badge-cache.yml -f delay_minutes=120 -f version="$VERSION"
+          echo "Dispatching purge-badge-cache workflow..."
+          gh workflow run purge-badge-cache.yml -f version="$VERSION"
