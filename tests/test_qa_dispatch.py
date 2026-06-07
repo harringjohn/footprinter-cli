@@ -99,3 +99,40 @@ class TestQaAll:
         summary = result.stdout.split("QA Summary")[1]
         assert "pytest:" in summary and "PASS" in summary
         assert "smoke:" in summary
+
+    def test_all_picks_up_new_arg_free_tier(self, qa_harness):
+        """A tier added to ARG_FREE_TIERS is automatically run by `all`."""
+        lint_stub = qa_harness / "scripts" / "lint.sh"
+        lint_stub.write_text("#!/usr/bin/env bash\necho 'STUBBED lint PASS'; exit 0\n")
+        lint_stub.chmod(lint_stub.stat().st_mode | stat.S_IEXEC)
+
+        qa_script = qa_harness / "scripts" / "qa.sh"
+        text = qa_script.read_text()
+        text = text.replace(
+            "ARG_FREE_TIERS=(pytest smoke)",
+            "ARG_FREE_TIERS=(pytest smoke lint)",
+        )
+        text = text.replace(
+            "    *)\n",
+            "    lint)\n        exec bash \"$SCRIPT_DIR/lint.sh\"\n        ;;\n    *)\n",
+            1,
+        )
+        qa_script.write_text(text)
+
+        result = _run_qa_all(qa_harness)
+        assert result.returncode == 0
+        assert "=== Tier 3: lint ===" in result.stdout
+        summary = result.stdout.split("QA Summary")[1]
+        assert "lint:" in summary and "PASS" in summary
+
+    def test_list_shows_all_tiers(self, qa_harness):
+        """--list output mentions every tier known to the dispatcher."""
+        result = subprocess.run(
+            ["bash", str(qa_harness / "scripts" / "qa.sh"), "--list"],
+            capture_output=True,
+            text=True,
+            cwd=qa_harness,
+        )
+        assert result.returncode == 0
+        for tier in ("pytest", "smoke", "cli-verify", "verify-upgrade", "verify-install"):
+            assert tier in result.stdout, f"--list missing tier: {tier}"

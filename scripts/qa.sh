@@ -14,6 +14,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Argument-free tiers that `all` runs. Add new tiers here and to the
+# case dispatcher below — `all` and `--list` derive from this array.
+ARG_FREE_TIERS=(pytest smoke)
+
 case "${1:-}" in
     --list)
         echo "QA Tiers:"
@@ -56,28 +60,25 @@ case "${1:-}" in
         ;;
     all)
         overall=0
+        declare -A results
+        tier_num=0
 
-        echo "=== Tier 1: pytest ==="
-        if "$SCRIPT_DIR/../venv/bin/python3" -m pytest; then
-            result_pytest=PASS
-        else
-            result_pytest=FAIL
-            overall=1
-        fi
-        echo ""
-
-        echo "=== Tier 2: smoke ==="
-        if bash "$SCRIPT_DIR/snapshot-qa/smoke.sh"; then
-            result_smoke=PASS
-        else
-            result_smoke=FAIL
-            overall=1
-        fi
-        echo ""
+        for tier in "${ARG_FREE_TIERS[@]}"; do
+            tier_num=$((tier_num + 1))
+            echo "=== Tier $tier_num: $tier ==="
+            if bash "${BASH_SOURCE[0]}" "$tier"; then
+                results[$tier]=PASS
+            else
+                results[$tier]=FAIL
+                overall=1
+            fi
+            echo ""
+        done
 
         echo "--- QA Summary ---"
-        printf "  %-10s %s\n" "pytest:" "$result_pytest"
-        printf "  %-10s %s\n" "smoke:" "$result_smoke"
+        for tier in "${ARG_FREE_TIERS[@]}"; do
+            printf "  %-10s %s\n" "$tier:" "${results[$tier]}"
+        done
         echo ""
 
         if [[ $overall -eq 0 ]]; then
