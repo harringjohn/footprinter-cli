@@ -9,10 +9,13 @@ Covers:
   - Check: resolve target with required argument
 """
 
+import csv
+import io
 import os
 import sqlite3
 import tempfile
 from argparse import Namespace
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2176,8 +2179,34 @@ class TestSetCsvTransactionAtomicity:
 # ---------------------------------------------------------------------------
 
 
+@contextmanager
+def _open_db_stub(conn: sqlite3.Connection):
+    """Yield *conn* as a context manager without closing it on exit."""
+    try:
+        yield conn
+    finally:
+        pass
+
+
+def _export_email_csv(conn: sqlite3.Connection) -> str:
+    """Call the real export path and return CSV stdout."""
+    with patch("footprinter.cli.view.open_db", side_effect=lambda: _open_db_stub(conn)):
+        stdout, _, code = run_fp("view", "emails", "--csv", "--all")
+    assert code == 0, f"Export failed with code {code}"
+    return stdout
+
+
+def _rebuild_csv(fieldnames: list[str], rows: list[dict]) -> str:
+    """Write rows back to a CSV string with the given column order."""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return out.getvalue()
+
+
 class TestSetCsvExportRoundTrip:
-    """Verify that IDs from a real DB can round-trip through _set_csv."""
+    """Verify that real export CSV round-trips through _set_csv."""
 
     @patch("footprinter.cli.permission_cmd.recalculate_with_progress", return_value=MOCK_STATS)
     @patch("footprinter.cli.permission_cmd.get_policy_db")
@@ -2185,14 +2214,21 @@ class TestSetCsvExportRoundTrip:
         from footprinter.cli.permission_cmd import _set
 
         conn, db_path = policy_db
-        mock_db.return_value = conn
 
-        rows = conn.execute("SELECT id FROM emails ORDER BY id").fetchall()
-        csv_lines = ["id,visibility"]
+        csv_text = _export_email_csv(conn)
+        reader = csv.DictReader(io.StringIO(csv_text))
+        fieldnames = list(reader.fieldnames)
+        rows = list(reader)
+
+        assert "id" in fieldnames
+        assert "visibility" in fieldnames
+        assert len(rows) == 3
+
         for row in rows:
-            csv_lines.append(f"{row['id']},hidden")
+            row["visibility"] = "hidden"
 
-        csv_path = _write_csv("\n".join(csv_lines) + "\n")
+        mock_db.return_value = conn
+        csv_path = _write_csv(_rebuild_csv(fieldnames, rows))
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
 
@@ -2215,14 +2251,23 @@ class TestSetCsvExportRoundTrip:
         from footprinter.cli.permission_cmd import _set
 
         conn, db_path = policy_db
+
+        csv_text = _export_email_csv(conn)
+        reader = csv.DictReader(io.StringIO(csv_text))
+        fieldnames = list(reader.fieldnames)
+        rows = list(reader)
+
+        assert "id" in fieldnames
+        assert "visibility" in fieldnames
+        assert "access" in fieldnames
+
+        settings = {"1": "hidden", "2": "opaque", "3": "full"}
+        for row in rows:
+            row["visibility"] = settings[row["id"]]
+            row["access"] = "deny"
+
         mock_db.return_value = conn
-
-        settings = {1: "hidden", 2: "opaque", 3: "full"}
-        csv_lines = ["id,visibility,access"]
-        for eid, vis in settings.items():
-            csv_lines.append(f"{eid},{vis},deny")
-
-        csv_path = _write_csv("\n".join(csv_lines) + "\n")
+        csv_path = _write_csv(_rebuild_csv(fieldnames, rows))
         try:
             _set(Namespace(scope="source:emails", csv_file=csv_path, visibility=None, access=None))
 
