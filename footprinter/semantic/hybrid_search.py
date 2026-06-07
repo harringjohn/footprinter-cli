@@ -1,8 +1,9 @@
 """Hybrid search functions: FTS5 keyword search, snippet extraction, and RRF fusion."""
 
 import logging
-import sqlite3
 from typing import Dict, List, Optional, Tuple
+
+from footprinter.db_base import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -151,10 +152,7 @@ def keyword_search(
         List of chat matches with FTS5 rank scores.
         Uses 'source' key (not 'account') for consistency with semantic results.
     """
-    conn = sqlite3.connect(str(db_path), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = get_connection(db_path)
     cursor = conn.cursor()
 
     # Escape special FTS5 characters and build query

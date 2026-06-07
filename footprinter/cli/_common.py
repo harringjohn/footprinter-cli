@@ -16,6 +16,7 @@ from rich.console import Console
 
 from footprinter.db.clients import VALID_STATUSES as VALID_CLIENT_STATUSES
 from footprinter.db.projects import VALID_STATUSES as VALID_PROJECT_STATUSES
+from footprinter.db_base import get_connection
 from footprinter.services import access_service as _access
 from footprinter.services.access_service import (
     resolve_inherit_permission,
@@ -70,17 +71,13 @@ ALLOWED_COLUMNS = frozenset({"name"})
 def connect_db(db_path: Union[str, Path]) -> Optional[sqlite3.Connection]:
     """Open a read/write connection to the Footprinter database.
 
-    Returns None if the database file does not exist. Sets row_factory
-    and busy_timeout so callers don't need to repeat boilerplate.
+    Returns None if the database file does not exist. Delegates to
+    :func:`~footprinter.db_base.get_connection` for PRAGMA setup.
     """
     db_path = Path(db_path)
     if not db_path.exists():
         return None
-    conn = sqlite3.connect(str(db_path), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return get_connection(db_path)
 
 
 @contextmanager

@@ -638,9 +638,7 @@ class TestRebuildVectorsFileEnabled:
                 patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
             ):
                 with patch("footprinter.ingest.vector_ops.get_db_path", return_value=":memory:"):
-                    with patch("footprinter.ingest.vector_ops.sqlite3") as mock_sql:
-                        mock_sql.connect.return_value = conn
-                        mock_sql.Row = sqlite3.Row
+                    with patch("footprinter.ingest.vector_ops.get_connection", return_value=conn):
                         rebuild_vectors(quiet=quiet)
 
         return mock_store
