@@ -83,7 +83,7 @@ class TestPyprojectPackageData:
 
 
 class TestSingleSourceOfTruth:
-    """Guard: the old config/ duplicates are gone and do not reappear."""
+    """Guard: patterns do not reappear in config/ or bundled/."""
 
     def test_config_patterns_dir_absent(self):
         assert not (REPO_ROOT / "config" / "patterns").exists(), (
