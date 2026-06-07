@@ -2243,3 +2243,138 @@ class TestSetCsvExportRoundTrip:
                 assert perm_by_scope[f"email:{eid}"] == "deny"
         finally:
             os.unlink(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# _lookup_scope_policy helper
+# ---------------------------------------------------------------------------
+
+
+class TestLookupScopePolicy:
+    def _make_conn(self, perm_setting, vis_setting):
+        conn = _mock_conn()
+
+        def fake_execute(sql, params=None):
+            cursor = MagicMock()
+            if "permission_policies" in sql:
+                cursor.fetchone.return_value = (
+                    {"setting": perm_setting} if perm_setting is not None else None
+                )
+            elif "visibility_policies" in sql:
+                cursor.fetchone.return_value = (
+                    {"setting": vis_setting} if vis_setting is not None else None
+                )
+            else:
+                cursor.fetchone.return_value = None
+            return cursor
+
+        conn.execute = MagicMock(side_effect=fake_execute)
+        return conn
+
+    def test_returns_both_when_both_exist(self):
+        from footprinter.cli._policy_helpers import _lookup_scope_policy
+
+        conn = self._make_conn("allow", "full")
+        result = _lookup_scope_policy(conn, "project:3")
+
+        assert result == {"scope": "project:3", "permission": "allow", "visibility": "full"}
+
+    def test_returns_none_when_no_policies(self):
+        from footprinter.cli._policy_helpers import _lookup_scope_policy
+
+        conn = self._make_conn(None, None)
+        result = _lookup_scope_policy(conn, "project:99")
+
+        assert result == {"scope": "project:99", "permission": None, "visibility": None}
+
+    def test_returns_perm_only(self):
+        from footprinter.cli._policy_helpers import _lookup_scope_policy
+
+        conn = self._make_conn("deny", None)
+        result = _lookup_scope_policy(conn, "source:files")
+
+        assert result == {"scope": "source:files", "permission": "deny", "visibility": None}
+
+    def test_returns_vis_only(self):
+        from footprinter.cli._policy_helpers import _lookup_scope_policy
+
+        conn = self._make_conn(None, "metadata")
+        result = _lookup_scope_policy(conn, "global")
+
+        assert result == {"scope": "global", "permission": None, "visibility": "metadata"}
+
+
+# ---------------------------------------------------------------------------
+# resolve_file_id / resolve_folder_id helpers
+# ---------------------------------------------------------------------------
+
+
+class TestResolveFileId:
+    def test_returns_path_when_listed(self, capsys):
+        from footprinter.cli._policy_helpers import resolve_file_id
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = {"path": "/home/user/test.py", "status": "listed"}
+        conn.execute.return_value = cursor
+
+        result = resolve_file_id(conn, 42)
+
+        assert result == "/home/user/test.py"
+
+    def test_returns_none_when_not_found(self, capsys):
+        from footprinter.cli._policy_helpers import resolve_file_id
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+
+        result = resolve_file_id(conn, 99)
+
+        assert result is None
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()
+
+    def test_returns_none_when_not_listed(self, capsys):
+        from footprinter.cli._policy_helpers import resolve_file_id
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = {"path": "/home/user/deleted.py", "status": "unlisted"}
+        conn.execute.return_value = cursor
+
+        result = resolve_file_id(conn, 50)
+
+        assert result is None
+        output = capsys.readouterr().out
+        assert "status" in output.lower()
+        assert "unlisted" in output
+
+
+class TestResolveFolderId:
+    def test_returns_path_when_found(self):
+        from footprinter.cli._policy_helpers import resolve_folder_id
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = {"path": "/home/user/Work"}
+        conn.execute.return_value = cursor
+
+        result = resolve_folder_id(conn, 42)
+
+        assert result == "/home/user/Work"
+
+    def test_returns_none_when_not_found(self, capsys):
+        from footprinter.cli._policy_helpers import resolve_folder_id
+
+        conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn.execute.return_value = cursor
+
+        result = resolve_folder_id(conn, 99)
+
+        assert result is None
+        output = capsys.readouterr().out
+        assert "not found" in output.lower()

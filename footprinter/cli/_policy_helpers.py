@@ -110,6 +110,39 @@ def normalize_path(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Numeric ID resolution helpers
+# ---------------------------------------------------------------------------
+
+
+def resolve_file_id(conn: sqlite3.Connection, file_id: int) -> str | None:
+    """Resolve a numeric file ID to its path, or None on failure."""
+    row = conn.execute(
+        "SELECT path, status FROM files WHERE id = ?", (file_id,),
+    ).fetchone()
+    if not row:
+        console.print(f"[red]File not found:[/red] id={file_id}")
+        return None
+    if row["status"] != "listed":
+        console.print(
+            f"[red]File id={file_id} has status '{row['status']}'.[/red]\n"
+            "  Only listed files are checked."
+        )
+        return None
+    return row["path"]
+
+
+def resolve_folder_id(conn: sqlite3.Connection, folder_id: int) -> str | None:
+    """Resolve a numeric folder ID to its path, or None on failure."""
+    row = conn.execute(
+        "SELECT path FROM folders WHERE id = ?", (folder_id,),
+    ).fetchone()
+    if not row:
+        console.print(f"[red]Folder not found:[/red] id={folder_id}")
+        return None
+    return row["path"]
+
+
+# ---------------------------------------------------------------------------
 # Single-path check helpers
 # ---------------------------------------------------------------------------
 
@@ -578,6 +611,21 @@ def check_entity(
     return 0
 
 
+def _lookup_scope_policy(conn: sqlite3.Connection, scope: str) -> dict:
+    """Look up permission and visibility policy for a single scope string."""
+    perm = conn.execute(
+        "SELECT setting FROM permission_policies WHERE scope = ?", (scope,),
+    ).fetchone()
+    vis = conn.execute(
+        "SELECT setting FROM visibility_policies WHERE scope = ?", (scope,),
+    ).fetchone()
+    return {
+        "scope": scope,
+        "permission": perm["setting"] if perm else None,
+        "visibility": vis["setting"] if vis else None,
+    }
+
+
 def build_entity_policy_chain(
     conn: sqlite3.Connection,
     entity_type: str,
@@ -592,35 +640,22 @@ def build_entity_policy_chain(
 
     chain: list[dict] = []
 
-    def _policy_entry(scope: str) -> dict:
-        perm = conn.execute(
-            "SELECT setting FROM permission_policies WHERE scope = ?", (scope,),
-        ).fetchone()
-        vis = conn.execute(
-            "SELECT setting FROM visibility_policies WHERE scope = ?", (scope,),
-        ).fetchone()
-        return {
-            "scope": scope,
-            "permission": perm["setting"] if perm else None,
-            "visibility": vis["setting"] if vis else None,
-        }
-
     if entity_type != "visit":
-        chain.append(_policy_entry(f"{entity_type}:{entity_id}"))
+        chain.append(_lookup_scope_policy(conn, f"{entity_type}:{entity_id}"))
 
     if project_id is not None:
-        chain.append(_policy_entry(f"project:{project_id}"))
+        chain.append(_lookup_scope_policy(conn, f"project:{project_id}"))
 
     if client_id is not None:
-        chain.append(_policy_entry(f"client:{client_id}"))
+        chain.append(_lookup_scope_policy(conn, f"client:{client_id}"))
 
     if account is not None:
-        chain.append(_policy_entry(f"account:{account}"))
+        chain.append(_lookup_scope_policy(conn, f"account:{account}"))
 
     source_type = _SOURCE_TYPE[entity_type]
-    chain.append(_policy_entry(f"source:{source_type}"))
+    chain.append(_lookup_scope_policy(conn, f"source:{source_type}"))
 
-    chain.append(_policy_entry("global"))
+    chain.append(_lookup_scope_policy(conn, "global"))
 
     chain.append({
         "scope": "baseline",
@@ -651,21 +686,7 @@ def build_policy_chain(
 
     # 1. File-level
     if file_id is not None:
-        perm = conn.execute(
-            "SELECT setting FROM permission_policies WHERE scope = ?",
-            (f"file:{file_id}",),
-        ).fetchone()
-        vis = conn.execute(
-            "SELECT setting FROM visibility_policies WHERE scope = ?",
-            (f"file:{file_id}",),
-        ).fetchone()
-        chain.append(
-            {
-                "scope": f"file:{file_id}",
-                "permission": perm["setting"] if perm else None,
-                "visibility": vis["setting"] if vis else None,
-            }
-        )
+        chain.append(_lookup_scope_policy(conn, f"file:{file_id}"))
 
     # 2. Folder prefix policies (longest first)
     if path:
@@ -698,61 +719,17 @@ def build_policy_chain(
 
     # 3. Project-level
     if project_id is not None:
-        perm = conn.execute(
-            "SELECT setting FROM permission_policies WHERE scope = ?",
-            (f"project:{project_id}",),
-        ).fetchone()
-        vis = conn.execute(
-            "SELECT setting FROM visibility_policies WHERE scope = ?",
-            (f"project:{project_id}",),
-        ).fetchone()
-        chain.append(
-            {
-                "scope": f"project:{project_id}",
-                "permission": perm["setting"] if perm else None,
-                "visibility": vis["setting"] if vis else None,
-            }
-        )
+        chain.append(_lookup_scope_policy(conn, f"project:{project_id}"))
 
     # 4. Client-level
     if client_id is not None:
-        perm = conn.execute(
-            "SELECT setting FROM permission_policies WHERE scope = ?",
-            (f"client:{client_id}",),
-        ).fetchone()
-        vis = conn.execute(
-            "SELECT setting FROM visibility_policies WHERE scope = ?",
-            (f"client:{client_id}",),
-        ).fetchone()
-        chain.append(
-            {
-                "scope": f"client:{client_id}",
-                "permission": perm["setting"] if perm else None,
-                "visibility": vis["setting"] if vis else None,
-            }
-        )
+        chain.append(_lookup_scope_policy(conn, f"client:{client_id}"))
 
     # 5. Source: files
-    src_perm = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'source:files'").fetchone()
-    src_vis = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'source:files'").fetchone()
-    chain.append(
-        {
-            "scope": "source:files",
-            "permission": src_perm["setting"] if src_perm else None,
-            "visibility": src_vis["setting"] if src_vis else None,
-        }
-    )
+    chain.append(_lookup_scope_policy(conn, "source:files"))
 
     # 6. Global
-    global_perm = conn.execute("SELECT setting FROM permission_policies WHERE scope = 'global'").fetchone()
-    global_vis = conn.execute("SELECT setting FROM visibility_policies WHERE scope = 'global'").fetchone()
-    chain.append(
-        {
-            "scope": "global",
-            "permission": global_perm["setting"] if global_perm else None,
-            "visibility": global_vis["setting"] if global_vis else None,
-        }
-    )
+    chain.append(_lookup_scope_policy(conn, "global"))
 
     # 7. Baseline
     chain.append(
