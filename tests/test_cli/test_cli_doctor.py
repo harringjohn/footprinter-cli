@@ -1187,7 +1187,27 @@ class TestDoctorMcpConfig:
         )
 
         check = _check_mcp_config()
-        assert check.status == "OK"
+        assert check.status == "WARN"
+
+    def test_canonical_module_vs_unrelated_configured_warns(self, tmp_path, monkeypatch):
+        from footprinter.cli.doctor import _check_mcp_config
+
+        config_path = tmp_path / "claude_desktop_config.json"
+        unrelated_bin = tmp_path / "some-other-bin"
+        unrelated_bin.touch()
+        self._write_config(config_path, {
+            "footprinter": {"command": str(unrelated_bin)},
+        })
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.detect_config_path", lambda: config_path,
+        )
+        monkeypatch.setattr(
+            "footprinter.cli.mcp_setup.get_mcp_command",
+            lambda: (str(tmp_path / "python3"), ["-m", "footprinter.mcp"]),
+        )
+
+        check = _check_mcp_config()
+        assert check.status == "WARN"
 
 
 # ---------------------------------------------------------------------------
