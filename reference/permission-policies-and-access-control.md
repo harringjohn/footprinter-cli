@@ -203,6 +203,8 @@ Policies are keyed by scope — a string that identifies what the policy applies
 | `email:{id}` | A single email | `email:10` |
 | `chat:{id}` | A single chat | `chat:5` |
 
+**Note on visits (browser history):** There is no `visit:{id}` scope. Visits can be checked (`fp permission check visit:<id>`) but not individually set — they have no per-entity policy level. Visit access inherits from `source:browser → global → baseline`. To control visit access, set policy at the `source:browser` level.
+
 ### Folder Prefix Matching
 
 Folder scope rules use path prefix matching with tilde expansion:

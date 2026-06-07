@@ -311,6 +311,18 @@ class TestSetValidation:
 
         assert exc_info.value.code == 1
 
+    def test_set_visit_scope_gives_clarifying_hint(self, capsys):
+        from footprinter.cli.permission_cmd import _set
+
+        with pytest.raises(SystemExit) as exc_info:
+            _set(Namespace(scope="visit:1", visibility=None, access="allow", csv_file=None))
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr().out
+        assert "source:browser" in captured, (
+            "set visit:<id> should hint that visits inherit from source:browser"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Set subcommand: terminology translation

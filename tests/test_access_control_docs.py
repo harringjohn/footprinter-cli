@@ -65,3 +65,40 @@ class TestSecurityPostureSection:
         assert "fp permission set global --access deny" in security_posture_section, (
             "Section should contain 'fp permission set global --access deny' command"
         )
+
+
+class TestVisitScopeDocumentation:
+    """reference/permission-policies-and-access-control.md should document the visit-scope asymmetry."""
+
+    @pytest.fixture
+    def doc_content(self):
+        return ACCESS_CONTROL_DOC.read_text()
+
+    def test_visits_checkable_but_not_settable(self, doc_content):
+        """Doc should state that visits can be checked but not individually set."""
+        lines = doc_content.lower().split("\n")
+        has_asymmetry = any(
+            "visit" in line
+            and ("check" in line or "checkable" in line)
+            and ("not" in line or "no " in line or "cannot" in line)
+            for line in lines
+        )
+        assert has_asymmetry, (
+            "Doc should have a line stating visits are checkable but not "
+            "individually settable (e.g., 'visits can be checked but not set')"
+        )
+
+    def test_visit_inheritance_path(self, doc_content):
+        """Doc should name the visit inheritance path: source:browser -> global -> baseline."""
+        assert "source:browser" in doc_content, (
+            "Doc should reference source:browser in the visit inheritance path"
+        )
+        lines = doc_content.split("\n")
+        has_chain = any(
+            "source:browser" in line and "global" in line and "baseline" in line
+            for line in lines
+        )
+        assert has_chain, (
+            "Doc should name the full visit inheritance chain "
+            "(source:browser → global → baseline) on a single line or passage"
+        )

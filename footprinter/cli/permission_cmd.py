@@ -174,6 +174,14 @@ def _set(args) -> None:
     if csv_file is not None:
         return _set_csv(args)
 
+    if args.scope.startswith("visit:"):
+        console.print(
+            "[red]visit:<id> cannot be set directly[/red] — visits have no per-entity policy level.\n"
+            "  Visit access inherits from source:browser → global → baseline.\n"
+            "  Hint: [cyan]fp permission set source:browser --access deny[/cyan]"
+        )
+        raise SystemExit(1)
+
     visibility = getattr(args, "visibility", None)
     access = getattr(args, "access", None)
 
