@@ -263,6 +263,8 @@ class TestToolDescriptions:
         assert "WHEN TO USE" in doc, "Should have a WHEN TO USE section"
         assert "footprinter_semantic" in doc, "Should cross-reference semantic search"
         assert "summary" in doc, "Should document the summary return key"
+        assert "token" in doc.lower(), "Should explain token-based matching"
+        assert "footprinter_folder" in doc, "Should route path lookups to footprinter_folder"
 
     def test_footprinter_semantic_has_llm_guidance(self):
         """footprinter_semantic docstring has semantic info and cross-ref."""

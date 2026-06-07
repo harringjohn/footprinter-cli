@@ -1053,6 +1053,23 @@ class TestContexterSearch:
         assert "No results" in result["summary"]
         assert "tip" in result["summary"].lower()
 
+    def test_search_summary_empty_with_folder_filter(self, mcp_db):
+        """When folder= is set and search returns nothing, summary hints at footprinter_folder."""
+        self._set_visible(mcp_db, "source:files")
+
+        with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.search import footprinter_search
+
+            result = footprinter_search(
+                "nonexistent_xyz", sources=["files"], folder="/some/path"
+            )
+
+        assert "No results" in result["summary"]
+        assert "footprinter_folder" in result["summary"]
+
     def test_search_excludes_hidden_via_sql(self, mcp_db):
         """Hidden items (visibility='hidden') are excluded by SQL WHERE,
         never reaching the results at all."""
@@ -4869,6 +4886,37 @@ class TestSearchSummary:
             results, "test", ["files"], was_capped=True, counts=counts
         )
         assert "capped" in summary.lower()
+
+    def test_summary_empty_with_folder_includes_folder_hint(self):
+        """Zero results with folder= filter should suggest footprinter_folder."""
+        results = {"files": []}
+        summary = self._summary()(results, "swll-coord", ["files"], folder="/some/path")
+        assert "No results" in summary
+        assert "footprinter_folder" in summary
+        assert "token" in summary.lower()
+
+    def test_summary_empty_without_folder_no_folder_hint(self):
+        """Zero results without folder= filter should NOT mention footprinter_folder."""
+        results = {"files": []}
+        summary = self._summary()(results, "swll-coord", ["files"])
+        assert "No results" in summary
+        assert "footprinter_folder" not in summary
+
+    def test_summary_empty_with_folder_no_awareness_leak(self):
+        """Folder hint must not reference hidden or unlisted content."""
+        results = {"files": []}
+        summary = self._summary()(results, "swll-coord", ["files"], folder="/some/path")
+        lower = summary.lower()
+        assert "hidden" not in lower
+        assert "unlisted" not in lower
+        assert "exist" not in lower
+
+    def test_summary_backward_compat_no_folder_param(self):
+        """_build_search_summary still works without folder param."""
+        results = {"files": [{"id": 1}]}
+        counts = {"files": {"returned": 1, "has_more": False}}
+        summary = self._summary()(results, "test", ["files"], counts=counts)
+        assert "Found 1 file" in summary
 
 
 # ---------------------------------------------------------------------------
