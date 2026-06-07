@@ -76,6 +76,7 @@ class DDLMixin:
     def init_db(self):
         """Initialize database with schema."""
         self.conn = get_connection(self.db_path)
+        # WAL is file-level persistent, set once at creation — not in the per-connection factory.
         self.conn.execute("PRAGMA journal_mode=WAL")
 
         cursor = self.conn.cursor()
