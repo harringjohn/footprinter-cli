@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from footprinter.db_base import get_connection
 from footprinter.paths import get_db_path
 
 logger = logging.getLogger(__name__)
@@ -676,10 +677,7 @@ def rebuild_vectors(
     conn = None
     try:
         # Open DB connection — before any destructive action
-        conn = sqlite3.connect(str(get_db_path()), timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA foreign_keys=ON")
+        conn = get_connection(get_db_path())
         cursor = conn.cursor()
 
         # Pre-flight validation

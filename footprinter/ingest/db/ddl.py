@@ -3,6 +3,8 @@
 import logging
 import sqlite3
 
+from footprinter.db_base import get_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,14 +75,10 @@ class DDLMixin:
 
     def init_db(self):
         """Initialize database with schema."""
-        self.conn = sqlite3.connect(self.db_path, timeout=10)
-        self.conn.row_factory = sqlite3.Row
+        self.conn = get_connection(self.db_path)
         self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA busy_timeout=5000")
 
         cursor = self.conn.cursor()
-
-        self.conn.execute("PRAGMA foreign_keys=ON")
 
         self._migrate_access_columns()
         self._migrate_project_name_column()
