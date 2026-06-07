@@ -92,6 +92,12 @@ class TestModuleStructure:
         assert isinstance(GUIDANCE, str)
         assert len(GUIDANCE) >= 200
 
+    def test_server_instructions_constant_exists(self):
+        from footprinter.mcp.resources.context import SERVER_INSTRUCTIONS
+
+        assert isinstance(SERVER_INSTRUCTIONS, str)
+        assert len(SERVER_INSTRUCTIONS) >= 200
+
     def test_discoverability_module_importable(self):
         import footprinter.mcp.resources.discoverability  # noqa: F401
 

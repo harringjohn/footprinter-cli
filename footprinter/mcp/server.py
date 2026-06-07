@@ -2,7 +2,7 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from footprinter.mcp.resources.context import context_guidance, context_summary
+from footprinter.mcp.resources.context import SERVER_INSTRUCTIONS, context_guidance, context_summary
 from footprinter.mcp.resources.discoverability import access_policies, projects_list, system_status
 from footprinter.mcp.tools.navigation import footprinter_client, footprinter_folder, footprinter_project
 from footprinter.mcp.tools.read import footprinter_read
@@ -19,7 +19,7 @@ _server = None
 
 def _build_server():
     global _server
-    _server = FastMCP("footprinter")
+    _server = FastMCP("footprinter", instructions=SERVER_INSTRUCTIONS)
     _server.tool()(footprinter_status)
     _server.tool()(footprinter_search)
     _server.tool()(footprinter_project)
