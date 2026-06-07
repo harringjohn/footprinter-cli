@@ -10,6 +10,7 @@ _migrate_access_columns running in a background thread against a
 pre-migration database.
 """
 
+import logging
 import sqlite3
 import threading
 from unittest.mock import patch
@@ -18,6 +19,59 @@ import pytest
 
 from footprinter.mcp.tools.search import footprinter_search
 from footprinter.mcp.tools.status import footprinter_status
+
+
+class _RetryLogHandler(logging.Handler):
+    """Captures retry log messages from handle_db_errors and signals an event."""
+
+    def __init__(self, event: threading.Event) -> None:
+        super().__init__()
+        self.event = event
+        self.count = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if "Transient schema error" in record.getMessage():
+            self.count += 1
+            self.event.set()
+
+
+class _GatedConn:
+    """Wraps a sqlite3.Connection, gating commit() on threading events.
+
+    The migration thread sets *migration_ready* when it reaches commit, then
+    blocks until *release_gate* is set — either by a retry log (search) or
+    by a reader completing its first call (status).
+    """
+
+    def __init__(
+        self,
+        real_conn: sqlite3.Connection,
+        migration_ready: threading.Event,
+        release_gate: threading.Event,
+    ) -> None:
+        self._real = real_conn
+        self._migration_ready = migration_ready
+        self._release_gate = release_gate
+
+    def commit(self) -> None:
+        self._migration_ready.set()
+        self._release_gate.wait(timeout=5)
+        self._real.commit()
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+
+def _gate_migration(original, migration_ready: threading.Event, release_gate: threading.Event):
+    """Return a wrapper for _migrate_access_columns that gates its commit."""
+    def wrapper(self):
+        real_conn = self.conn
+        self.conn = _GatedConn(real_conn, migration_ready, release_gate)
+        try:
+            original(self)
+        finally:
+            self.conn = real_conn
+    return wrapper
 
 
 class TestSchemaMigrationResilience:
@@ -134,65 +188,89 @@ class TestConcurrentMigrationReads:
         conn.commit()
         conn.close()
 
-    def test_search_survives_concurrent_migration(self, tmp_path):
+    def _run_with_gated_migration(
+        self, tmp_path, tool_fn, tool_args=(), num_readers=1, reads_per_reader=5,
+        assert_retry=True,
+    ):
+        """Run tool_fn concurrently with a gated migration.
+
+        Holds the migration's commit until the release_gate fires, guaranteeing
+        that reads overlap the migration window.
+
+        When *assert_retry* is True (search), the gate releases on the first
+        retry log message — proving the retry decorator fired.  When False
+        (status), the gate releases after the first read completes — status
+        handles transient errors internally via _safe_query, so the retry
+        decorator is not involved.
+        """
         db_path = str(tmp_path / "concurrent.db")
         self._prepare_pre_migration_db(db_path)
 
         from footprinter.ingest.database import Database
+        from footprinter.ingest.db.ddl import DDLMixin
 
-        barrier = threading.Barrier(2, timeout=5)
+        migration_ready = threading.Event()
+        retry_detected = threading.Event()
+        reads_started = threading.Event()
+        handler = _RetryLogHandler(retry_detected)
+        release_gate = retry_detected if assert_retry else reads_started
+
+        db_logger = logging.getLogger("footprinter.mcp.db")
+        original_level = db_logger.level
+        db_logger.setLevel(logging.DEBUG)
+        db_logger.addHandler(handler)
+
         migration_errors: list[Exception] = []
+        all_results: list[list[dict]] = [[] for _ in range(num_readers)]
 
         def migrate():
             try:
-                barrier.wait()
                 Database(db_path).close()
             except Exception as exc:
                 migration_errors.append(exc)
 
-        t = threading.Thread(target=migrate)
-        t.start()
+        def read_loop(idx):
+            try:
+                migration_ready.wait(timeout=5)
+                for j in range(reads_per_reader):
+                    all_results[idx].append(tool_fn(*tool_args))
+                    if j == 0:
+                        reads_started.set()
+            except Exception as exc:
+                migration_errors.append(exc)
 
-        results: list[dict] = []
-        with patch("footprinter.db_base.get_db_path", return_value=tmp_path / "concurrent.db"):
-            barrier.wait()
-            for _ in range(20):
-                results.append(footprinter_search("file"))
+        try:
+            gated = _gate_migration(
+                DDLMixin._migrate_access_columns, migration_ready, release_gate,
+            )
+            with patch.object(DDLMixin, "_migrate_access_columns", gated), \
+                 patch("footprinter.db_base.get_db_path", return_value=tmp_path / "concurrent.db"):
+                threads = [threading.Thread(target=migrate)]
+                for i in range(num_readers):
+                    threads.append(threading.Thread(target=read_loop, args=(i,)))
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=15)
+        finally:
+            db_logger.removeHandler(handler)
+            db_logger.setLevel(original_level)
 
-        t.join(timeout=10)
         assert not migration_errors, f"Migration raised: {migration_errors}"
-        db_errors = [r for r in results if r.get("error_code") == "DATABASE_ERROR"]
-        assert not db_errors, f"{len(db_errors)}/{len(results)} reads returned DATABASE_ERROR"
+        flat = [r for batch in all_results for r in batch]
+        db_errors = [r for r in flat if r.get("error_code") == "DATABASE_ERROR"]
+        assert not db_errors, f"{len(db_errors)}/{len(flat)} reads returned DATABASE_ERROR"
+        if assert_retry:
+            assert handler.count >= 1, "Retry path never fired — migration window was not traversed"
+        return flat
+
+    def test_search_survives_concurrent_migration(self, tmp_path):
+        self._run_with_gated_migration(tmp_path, footprinter_search, tool_args=("file",))
 
     def test_status_survives_concurrent_migration(self, tmp_path):
-        db_path = str(tmp_path / "concurrent.db")
-        self._prepare_pre_migration_db(db_path)
-
-        from footprinter.ingest.database import Database
-
-        barrier = threading.Barrier(2, timeout=5)
-        migration_errors: list[Exception] = []
-
-        def migrate():
-            try:
-                barrier.wait()
-                Database(db_path).close()
-            except Exception as exc:
-                migration_errors.append(exc)
-
-        t = threading.Thread(target=migrate)
-        t.start()
-
-        results: list[dict] = []
-        with patch("footprinter.db_base.get_db_path", return_value=tmp_path / "concurrent.db"):
-            barrier.wait()
-            for _ in range(20):
-                results.append(footprinter_status())
-
-        t.join(timeout=10)
-        assert not migration_errors, f"Migration raised: {migration_errors}"
-        db_errors = [r for r in results if r.get("error_code") == "DATABASE_ERROR"]
-        assert not db_errors, f"{len(db_errors)}/{len(results)} reads returned DATABASE_ERROR"
+        # status uses _safe_query fallback (not the retry decorator) for
+        # transient column errors, so we gate on reads_started instead.
+        self._run_with_gated_migration(tmp_path, footprinter_status, assert_retry=False)
 
     def test_post_migration_reads_return_correct_data(self, tmp_path):
         db_path = str(tmp_path / "concurrent.db")
@@ -219,41 +297,6 @@ class TestConcurrentMigrationReads:
         assert integrity == "ok", f"Post-migration integrity check failed: {integrity}"
 
     def test_multiple_readers_during_migration(self, tmp_path):
-        db_path = str(tmp_path / "concurrent.db")
-        self._prepare_pre_migration_db(db_path)
-
-        from footprinter.ingest.database import Database
-
-        num_readers = 3
-        barrier = threading.Barrier(num_readers + 1, timeout=5)
-        migration_errors: list[Exception] = []
-        all_results: list[list[dict]] = [[] for _ in range(num_readers)]
-
-        def migrate():
-            try:
-                barrier.wait()
-                Database(db_path).close()
-            except Exception as exc:
-                migration_errors.append(exc)
-
-        def read_loop(idx):
-            try:
-                barrier.wait()
-                for _ in range(15):
-                    all_results[idx].append(footprinter_search("file"))
-            except Exception as exc:
-                migration_errors.append(exc)
-
-        with patch("footprinter.db_base.get_db_path", return_value=tmp_path / "concurrent.db"):
-            threads = [threading.Thread(target=migrate)]
-            for i in range(num_readers):
-                threads.append(threading.Thread(target=read_loop, args=(i,)))
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join(timeout=15)
-
-        assert not migration_errors, f"Errors: {migration_errors}"
-        flat = [r for batch in all_results for r in batch]
-        db_errors = [r for r in flat if r.get("error_code") == "DATABASE_ERROR"]
-        assert not db_errors, f"{len(db_errors)}/{len(flat)} reads returned DATABASE_ERROR"
+        self._run_with_gated_migration(
+            tmp_path, footprinter_search, tool_args=("file",), num_readers=3,
+        )

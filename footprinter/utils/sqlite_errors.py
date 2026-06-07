@@ -10,6 +10,7 @@ _SCHEMA_BUSY_PATTERNS = (
 _TRANSIENT_SCHEMA_PATTERNS = _SCHEMA_BUSY_PATTERNS + (
     "no such column",
     "no such table",
+    "vtable constructor failed",
 )
 
 
