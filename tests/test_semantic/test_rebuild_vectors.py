@@ -110,7 +110,7 @@ def _run_rebuild(
     mock_chroma_path.exists.return_value = chroma_exists
 
     with (
-        patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+        patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
         patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
         patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
         patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -118,8 +118,6 @@ def _run_rebuild(
         patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=chat_vec),
         patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
     ):
-        mock_sqlite.connect.return_value = mock_conn
-
         from footprinter.ingest.vector_ops import rebuild_vectors
 
         kwargs = dict(quiet=quiet, source=source, phase=phase)
@@ -228,7 +226,7 @@ class TestPhaseIsolation:
         mock_conn, _ = _make_mock_conn()
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -237,8 +235,6 @@ class TestPhaseIsolation:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("shutil.rmtree") as mock_rmtree,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=True, phase="files")
@@ -278,7 +274,7 @@ class TestSignalHandling:
         mock_inst.index_file.side_effect = index_and_shutdown
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -288,7 +284,6 @@ class TestSignalHandling:
             patch("pathlib.Path.exists", return_value=True),
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
-            mock_sqlite.connect.return_value = mock_conn
             mock_ext_inst = MagicMock()
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
@@ -360,7 +355,7 @@ class TestWriteDecoupling:
         mock_chroma_path.exists.return_value = False
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -368,8 +363,6 @@ class TestWriteDecoupling:
             patch("footprinter.semantic.vector_store._chat_vectorization_enabled", return_value=True),
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=True, source="chats", phase="messages")
@@ -433,7 +426,7 @@ class TestProgressOutput:
 
         _output = StringIO()  # noqa: F841
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -442,8 +435,6 @@ class TestProgressOutput:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("rich.console.Console.print") as mock_print,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=False, source="all")
@@ -471,17 +462,15 @@ class TestPreflightValidation:
         mock_chroma_path = MagicMock()
         mock_chroma_path.exists.return_value = True
 
-        original_connect = MagicMock(return_value=mock_conn)
-
         def track_connect(*args, **kwargs):
             call_order.append("db_connect")
-            return original_connect(*args, **kwargs)
+            return mock_conn
 
         def track_rmtree(*args, **kwargs):
             call_order.append("rmtree")
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", side_effect=track_connect),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -490,7 +479,6 @@ class TestPreflightValidation:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("shutil.rmtree", side_effect=track_rmtree),
         ):
-            mock_sqlite.connect.side_effect = track_connect
 
             from footprinter.ingest.vector_ops import rebuild_vectors
 
@@ -750,7 +738,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -760,7 +748,6 @@ class TestIncrementalMode:
             patch("pathlib.Path.exists", return_value=True),
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
-            mock_sqlite.connect.return_value = mock_conn
             mock_ext_inst = MagicMock()
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
@@ -784,7 +771,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -794,7 +781,6 @@ class TestIncrementalMode:
             patch("pathlib.Path.exists", return_value=True),
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
-            mock_sqlite.connect.return_value = mock_conn
             mock_ext_inst = MagicMock()
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
@@ -937,7 +923,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -946,8 +932,6 @@ class TestIncrementalMode:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("shutil.rmtree") as mock_rmtree,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=True, mode="full")
@@ -972,7 +956,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -981,8 +965,6 @@ class TestIncrementalMode:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("rich.console.Console.print") as mock_print,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=False, mode="sync")
@@ -1004,7 +986,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -1013,8 +995,6 @@ class TestIncrementalMode:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("shutil.rmtree") as mock_rmtree,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=True)
@@ -1073,7 +1053,7 @@ class TestIncrementalMode:
         mock_chroma_path.exists.return_value = True
 
         with (
-            patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+            patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
             patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
             patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
             patch("footprinter.paths.get_chroma_path", return_value=mock_chroma_path),
@@ -1082,8 +1062,6 @@ class TestIncrementalMode:
             patch("footprinter.semantic.vector_store.VectorStore", mock_vs_cls),
             patch("rich.console.Console.print") as mock_print,
         ):
-            mock_sqlite.connect.return_value = mock_conn
-
             from footprinter.ingest.vector_ops import rebuild_vectors
 
             rebuild_vectors(quiet=False, mode="incremental")
@@ -1547,7 +1525,7 @@ def _run_rebuild_with_real_path(
     chroma_path.mkdir(exist_ok=True)
 
     with (
-        patch("footprinter.ingest.vector_ops.sqlite3") as mock_sqlite,
+        patch("footprinter.ingest.vector_ops.get_connection", return_value=mock_conn),
         patch("footprinter.ingest.vector_ops.get_db_path", return_value="/tmp/test.db"),
         patch("footprinter.source_registry.get_config", return_value={"indexing": {"max_file_size_mb": 10}}),
         patch("footprinter.paths.get_chroma_path", return_value=chroma_path),
@@ -1556,8 +1534,6 @@ def _run_rebuild_with_real_path(
         patch("footprinter.semantic.vector_store.VectorStore", mock_cls),
         patch("shutil.rmtree"),
     ):
-        mock_sqlite.connect.return_value = mock_conn
-
         from footprinter.ingest.vector_ops import rebuild_vectors
 
         kwargs = dict(quiet=quiet, source="all", phase=phase, mode=mode)
