@@ -201,18 +201,40 @@ class TestRestampLocalConfigReason:
         )
         db.conn.commit()
 
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status_changed_at FROM files WHERE id = ?", (fid,))
+        ts_before = cursor.fetchone()["status_changed_at"]
+
         from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
 
         restamp_local_config_reason(db.conn, dry_run=False, limit=None)
 
-        cursor = db.conn.cursor()
         cursor.execute(
             "SELECT status, status_reason, status_changed_at FROM files WHERE id = ?", (fid,)
         )
         row = cursor.fetchone()
         assert row["status"] == "unlisted"
         assert row["status_reason"] == "local_config"
-        assert row["status_changed_at"] is not None
+        assert row["status_changed_at"] == ts_before
+        db.close()
+
+    def test_restamp_preserves_status_changed_at(self, temp_db):
+        db = Database(temp_db)
+        fid = _insert_unlisted_file(
+            db.conn, "/home/user/project/.claude/CLAUDE.local.md", "CLAUDE.local.md"
+        )
+        db.conn.execute(
+            "UPDATE files SET status_changed_at = '2025-01-01 00:00:00' WHERE id = ?", (fid,)
+        )
+        db.conn.commit()
+
+        from scripts.migrate.relist_agent_context_files import restamp_local_config_reason
+
+        restamp_local_config_reason(db.conn, dry_run=False, limit=None)
+
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status_changed_at FROM files WHERE id = ?", (fid,))
+        assert cursor.fetchone()["status_changed_at"] == "2025-01-01 00:00:00"
         db.close()
 
     def test_restamp_skips_non_local_files(self, temp_db):
