@@ -1,39 +1,35 @@
 """
 Command-line search interface — keyword, semantic, and hybrid modes.
+
+Thin CLI wrapper around ``footprinter.services.search_service.mode_search``.
 """
 
 import argparse
-import os
 import sys
 
 from rich.console import Console
 
 from footprinter.cli._common import FORMATTER, add_json_flag, open_db, output_json
-
-try:
-    from footprinter.semantic.vector_store import VectorStore, _semantic_available
-
-    _HAS_ML = _semantic_available()
-except ImportError:
-    _HAS_ML = False
+from footprinter.services.search_service import (
+    _fts_file_to_result,
+    ml_available,
+    mode_search,
+)
 
 console = Console()
 
 
-def _normalize_file_relevance(distance: float) -> float:
-    """Convert ChromaDB distance to 0-1 relevance score."""
-    return max(0.0, 1.0 - (distance / 2.0))
-
-
 def _resolve_mode(mode: str | None, out: Console, *, quiet: bool = False) -> str:
     """Resolve effective search mode based on request and ML availability."""
-    if mode == "semantic" and not _HAS_ML:
+    has_ml = ml_available()
+
+    if mode == "semantic" and not has_ml:
         if not quiet:
             out.print("Semantic search requires additional dependencies.")
             out.print("  Install with:  pip install footprinter-cli\\[semantic]")
         sys.exit(1)
 
-    if mode == "hybrid" and not _HAS_ML:
+    if mode == "hybrid" and not has_ml:
         if not quiet:
             out.print(
                 "[dim]Semantic search not available — using keyword search. "
@@ -45,7 +41,7 @@ def _resolve_mode(mode: str | None, out: Console, *, quiet: bool = False) -> str
         return mode
 
     # Auto-detect
-    if _HAS_ML:
+    if has_ml:
         return "hybrid"
 
     if not quiet:
@@ -54,228 +50,6 @@ def _resolve_mode(mode: str | None, out: Console, *, quiet: bool = False) -> str
             "Run: pip install footprinter-cli\\[semantic] for AI-powered results.[/dim]"
         )
     return "keyword"
-
-
-def _normalize_path(path: str) -> str:
-    """Normalize a file path for dedup comparison."""
-    if not path:
-        return ""
-    return os.path.normpath(os.path.expanduser(path))
-
-
-def _fts_file_to_result(row: dict) -> dict:
-    """Convert a search_files() result row into the merged result format."""
-    return {
-        "source_type": "file",
-        "relevance": row.get("fts_score", 0.5),
-        "data": {
-            "file_path": row["path"] or row["name"],
-            "chunk_index": 0,
-            "total_chunks": 1,
-            "content_snippet": f"{row['name']} ({row['content_type'] or 'file'})",
-            "name": row["name"],
-            "source": row["source"],
-            "modified_at": row.get("modified_at", ""),
-        },
-    }
-
-
-def _keyword_search(
-    query: str,
-    limit: int = 10,
-    type_filter: str | None = None,
-    db_path: str | None = None,
-) -> list[dict]:
-    """Run FTS5 keyword search across files and (optionally) chats."""
-    from footprinter.db.search import search_files
-    from footprinter.semantic.hybrid_search import fts5_fallback_search
-
-    if db_path is None:
-        from footprinter.paths import get_db_path
-
-        db_path = str(get_db_path())
-
-    merged = []
-
-    # File FTS5 search
-    with open_db(db_path) as conn:
-        file_data = search_files(conn, query, limit=limit, file_ext=type_filter)
-        for r in file_data["results"]:
-            merged.append(_fts_file_to_result(r))
-
-    # Chat FTS5 search (skip if type filter limits to files)
-    if not type_filter:
-        chat_results, _ = fts5_fallback_search(
-            query,
-            n_results=limit,
-            db_path=db_path,
-        )
-        for r in chat_results:
-            merged.append(
-                {
-                    "source_type": "chat",
-                    "relevance": r.get("relevance_score", 0.5),
-                    "data": {
-                        "chat_title": r.get("chat_title", "(untitled)"),
-                        "source": r.get("source", ""),
-                        "snippet": r.get("snippet", ""),
-                        "chat_id": r.get("chat_id"),
-                    },
-                }
-            )
-
-    merged.sort(key=lambda x: x["relevance"], reverse=True)
-    return merged[:limit]
-
-
-def _semantic_search(
-    query: str,
-    limit: int = 10,
-    type_filter: str | None = None,
-) -> list[dict]:
-    """Run vector-only search (original behavior)."""
-    store = VectorStore.get_instance()
-
-    filter_meta = None
-    if type_filter:
-        filter_meta = {"file_type": type_filter}
-
-    file_results = store.search_files(query, n_results=limit, filter_metadata=filter_meta)
-    if type_filter:
-        chat_results = []
-    else:
-        chat_results = store.search_chats(query, n_results=limit)
-
-    merged = []
-    for r in file_results:
-        distance = r.get("distance", 0.0)
-        merged.append(
-            {
-                "source_type": "file",
-                "relevance": _normalize_file_relevance(distance),
-                "data": r,
-            }
-        )
-
-    for r in chat_results:
-        merged.append(
-            {
-                "source_type": "chat",
-                "relevance": r.get("relevance_score", 0.0),
-                "data": r,
-            }
-        )
-
-    merged.sort(key=lambda x: x["relevance"], reverse=True)
-    return merged[:limit]
-
-
-def _hybrid_search(
-    query: str,
-    limit: int = 10,
-    type_filter: str | None = None,
-    db_path: str | None = None,
-) -> list[dict]:
-    """Run hybrid search: FTS5 + vectors merged via RRF for chats, dedup for files."""
-    from footprinter.semantic.hybrid_search import (
-        chat_snippet,
-        reciprocal_rank_fusion,
-    )
-    from footprinter.semantic.hybrid_search import (
-        keyword_search as chat_keyword_search,
-    )
-
-    if db_path is None:
-        from footprinter.paths import get_db_path
-
-        db_path = str(get_db_path())
-
-    # --- File merging: dedup by normalized path, boost overlaps ---
-    keyword_file_results = []
-    with open_db(db_path) as conn:
-        from footprinter.db.search import search_files
-
-        file_data = search_files(conn, query, limit=limit, file_ext=type_filter)
-        for r in file_data["results"]:
-            keyword_file_results.append(_fts_file_to_result(r))
-
-    semantic_results = _semantic_search(query, limit=limit, type_filter=type_filter)
-    semantic_file_results = [r for r in semantic_results if r["source_type"] == "file"]
-    semantic_chat_results = [r for r in semantic_results if r["source_type"] == "chat"]
-
-    # Merge files by normalized path
-    seen_files = {}
-    for item in semantic_file_results:
-        key = _normalize_path(item["data"].get("file_path", ""))
-        seen_files[key] = item
-
-    for item in keyword_file_results:
-        key = _normalize_path(item["data"].get("file_path", ""))
-        if key in seen_files:
-            seen_files[key]["relevance"] = min(1.0, seen_files[key]["relevance"] + 0.15)
-        else:
-            seen_files[key] = item
-
-    merged = list(seen_files.values())
-
-    # --- Chat merging: use RRF when both sources have results ---
-    if not type_filter:
-        raw_keyword_chats = chat_keyword_search(query, db_path=db_path, limit=limit)
-
-        if semantic_chat_results and raw_keyword_chats:
-            # Convert semantic chat results to the shape RRF expects
-            semantic_for_rrf = []
-            for item in semantic_chat_results:
-                d = item["data"]
-                semantic_for_rrf.append(
-                    {
-                        "chat_id": d.get("chat_id", d.get("chat_title", "")),
-                        "chat_title": d.get("chat_title", ""),
-                        "message_id": d.get("message_id"),
-                        "role": d.get("role", ""),
-                        "source": d.get("source", ""),
-                        "created_at": d.get("created_at", ""),
-                        "snippet": d.get("snippet", ""),
-                        "relevance_score": item["relevance"],
-                        "chunk_type": d.get("chunk_type", "message"),
-                        "chunk_index": d.get("chunk_index", 0),
-                        "total_chunks": d.get("total_chunks", 1),
-                    }
-                )
-
-            rrf_results = reciprocal_rank_fusion(semantic_for_rrf, raw_keyword_chats)
-            for r in rrf_results:
-                merged.append(
-                    {
-                        "source_type": "chat",
-                        "relevance": r.get("relevance_score", 0.0),
-                        "data": {
-                            "chat_title": r.get("chat_title", "(untitled)"),
-                            "source": r.get("source", ""),
-                            "snippet": r.get("snippet", ""),
-                            "chat_id": r.get("chat_id"),
-                        },
-                    }
-                )
-        elif semantic_chat_results:
-            merged.extend(semantic_chat_results)
-        elif raw_keyword_chats:
-            for r in raw_keyword_chats:
-                merged.append(
-                    {
-                        "source_type": "chat",
-                        "relevance": r.get("fts_score", 0.5),
-                        "data": {
-                            "chat_title": r.get("chat_title", "(untitled)"),
-                            "source": r.get("source", ""),
-                            "snippet": chat_snippet(r),
-                            "chat_id": r.get("chat_id"),
-                        },
-                    }
-                )
-
-    merged.sort(key=lambda x: x["relevance"], reverse=True)
-    return merged[:limit]
 
 
 def execute_search(
@@ -294,14 +68,15 @@ def execute_search(
     out = output or console
     effective_mode = _resolve_mode(mode, out, quiet=json_output)
 
-    # Dispatch by mode
+    if db_path is None:
+        from footprinter.paths import get_db_path
+
+        db_path = str(get_db_path())
+
+    # Dispatch by mode via service layer
     try:
-        if effective_mode == "keyword":
-            merged = _keyword_search(query, limit=limit, type_filter=type_filter, db_path=db_path)
-        elif effective_mode == "semantic":
-            merged = _semantic_search(query, limit=limit, type_filter=type_filter)
-        else:
-            merged = _hybrid_search(query, limit=limit, type_filter=type_filter, db_path=db_path)
+        with open_db(db_path) as conn:
+            merged = mode_search(conn, query, mode=effective_mode, limit=limit, type_filter=type_filter)
     except Exception as exc:
         if not json_output:
             out.print(f"[red]Search failed:[/red] {exc}")

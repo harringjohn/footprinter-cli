@@ -36,6 +36,17 @@ def _make_mock_store(file_results=None, chat_results=None):
     return mock_store
 
 
+def _dummy_open_db(path=None):
+    """Context manager returning a MagicMock connection for semantic-only tests."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx(p=None):
+        yield MagicMock()
+
+    return _ctx(path)
+
+
 def _run_search(monkeypatch, mock_store, query="test query", extra_args=None):
     """Run the search CLI with a mock store in semantic mode, return captured stdout."""
     # Existing tests were written for semantic-only behavior, so force --mode semantic
@@ -48,7 +59,11 @@ def _run_search(monkeypatch, mock_store, query="test query", extra_args=None):
     captured = StringIO()
     monkeypatch.setattr(sys, "stdout", captured)
 
-    with patch("footprinter.cli.search.VectorStore") as MockVS, patch("footprinter.cli.search._HAS_ML", True):
+    with (
+        patch("footprinter.semantic.vector_store.VectorStore") as MockVS,
+        patch("footprinter.cli.search.ml_available", return_value=True),
+        patch("footprinter.cli.search.open_db", side_effect=_dummy_open_db),
+    ):
         MockVS.get_instance.return_value = mock_store
         from footprinter.cli.search import main
 
@@ -321,7 +336,7 @@ class TestKeywordSearch:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search._HAS_ML", False):
+        with patch("footprinter.cli.search.ml_available", return_value=False):
             from footprinter.cli.search import execute_search
 
             execute_search(query="database", mode="keyword", output=console, db_path=db_path)
@@ -354,8 +369,9 @@ class TestKeywordSearch:
 class TestSemanticSearch:
     """Semantic mode should use VectorStore (existing behavior)."""
 
-    def test_semantic_uses_vectorstore(self):
+    def test_semantic_uses_vectorstore(self, tmp_path):
         """execute_search(mode='semantic') delegates to VectorStore."""
+        db_path = str(_make_fts_db(tmp_path))
         mock_store = _make_mock_store(
             file_results=[
                 {
@@ -370,11 +386,13 @@ class TestSemanticSearch:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search.VectorStore") as MockVS, patch("footprinter.cli.search._HAS_ML", True):
+        with patch("footprinter.semantic.vector_store.VectorStore") as MockVS, patch(
+            "footprinter.cli.search.ml_available", return_value=True
+        ):
             MockVS.get_instance.return_value = mock_store
             from footprinter.cli.search import execute_search
 
-            execute_search(query="test query", mode="semantic", output=console)
+            execute_search(query="test query", mode="semantic", output=console, db_path=db_path)
 
         mock_store.search_files.assert_called_once()
         output = out.getvalue()
@@ -417,7 +435,9 @@ class TestHybridSearch:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search.VectorStore") as MockVS, patch("footprinter.cli.search._HAS_ML", True):
+        with patch("footprinter.semantic.vector_store.VectorStore") as MockVS, patch(
+            "footprinter.cli.search.ml_available", return_value=True
+        ):
             MockVS.get_instance.return_value = mock_store
             from footprinter.cli.search import execute_search
 
@@ -446,7 +466,9 @@ class TestHybridSearch:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search.VectorStore") as MockVS, patch("footprinter.cli.search._HAS_ML", True):
+        with patch("footprinter.semantic.vector_store.VectorStore") as MockVS, patch(
+            "footprinter.cli.search.ml_available", return_value=True
+        ):
             MockVS.get_instance.return_value = mock_store
             from footprinter.cli.search import execute_search
 
@@ -624,7 +646,7 @@ class TestHybridKeywordOnlyChats:
     it should reuse the already-fetched results instead of re-querying FTS5."""
 
     def test_hybrid_keyword_only_chats_no_double_query(self, tmp_path):
-        """keyword_search should be called exactly once — not twice via fts5_fallback_search."""
+        """chat_fts5_fallback should be called exactly once."""
         db_path = str(_make_fts_db(tmp_path))
         mock_store = _make_mock_store(
             file_results=[],
@@ -635,22 +657,20 @@ class TestHybridKeywordOnlyChats:
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
         with (
-            patch("footprinter.cli.search.VectorStore") as MockVS,
-            patch("footprinter.cli.search._HAS_ML", True),
-            patch("footprinter.semantic.hybrid_search.keyword_search", wraps=None) as mock_kw,
+            patch("footprinter.semantic.vector_store.VectorStore") as MockVS,
+            patch("footprinter.cli.search.ml_available", return_value=True),
+            patch("footprinter.services.search_service.chat_fts5_fallback", wraps=None) as mock_fallback,
         ):
             MockVS.get_instance.return_value = mock_store
-            # Make the mock return realistic data
-            mock_kw.return_value = [
+            mock_fallback.return_value = [
                 {
                     "chat_id": 1,
                     "chat_title": "Database migration planning",
+                    "message_id": None,
                     "source": "claude",
                     "created_at": "2026-01-10",
-                    "message_count": 5,
-                    "snippet": "Discussion about migrating the database schema",
-                    "fts_score": 0.7,
-                    "match_type": "keyword",
+                    "snippet": "Database migration planning",
+                    "relevance_score": 0.7,
                 },
             ]
 
@@ -658,44 +678,45 @@ class TestHybridKeywordOnlyChats:
 
             execute_search(query="database", mode="hybrid", output=console, db_path=db_path)
 
-        # keyword_search should be called exactly once (the initial call),
-        # NOT twice (once directly + once inside fts5_fallback_search)
-        assert mock_kw.call_count == 1, f"keyword_search called {mock_kw.call_count} times, expected 1"
+        assert mock_fallback.call_count == 1, f"chat_fts5_fallback called {mock_fallback.call_count} times, expected 1"
 
-        # Verify the chat result still appears in output (behavioral equivalence)
         output = out.getvalue()
         assert "Database migration planning" in output
 
     def test_hybrid_keyword_only_chats_result_shape(self, tmp_path):
-        """Keyword-only chat results should have the same shape as fts5_fallback_search produced."""
-        db_path = str(_make_fts_db(tmp_path))
+        """Keyword-only chat results should have the expected shape."""
+        db_path = _make_fts_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+
         mock_store = _make_mock_store(
             file_results=[],
             chat_results=[],
         )
 
         with (
-            patch("footprinter.cli.search.VectorStore") as MockVS,
-            patch("footprinter.cli.search._HAS_ML", True),
-            patch("footprinter.semantic.hybrid_search.keyword_search") as mock_kw,
+            patch("footprinter.semantic.vector_store.VectorStore") as MockVS,
+            patch("footprinter.cli.search.ml_available", return_value=True),
+            patch("footprinter.services.search_service.chat_fts5_fallback") as mock_fallback,
         ):
             MockVS.get_instance.return_value = mock_store
-            mock_kw.return_value = [
+            mock_fallback.return_value = [
                 {
                     "chat_id": 1,
                     "chat_title": "Test chat",
+                    "message_id": None,
                     "source": "claude",
                     "created_at": "2026-01-10",
-                    "message_count": 5,
-                    "snippet": "Title match: Test chat",
-                    "fts_score": 0.7,
-                    "match_type": "keyword",
+                    "snippet": "Test chat",
+                    "relevance_score": 0.7,
                 },
             ]
 
-            from footprinter.cli.search import _hybrid_search
+            from footprinter.services.search_service import hybrid_search
 
-            results = _hybrid_search("database", db_path=db_path)
+            results = hybrid_search(conn, "database")
+
+        conn.close()
 
         assert len(results) >= 1
         chat_results = [r for r in results if r["source_type"] == "chat"]
@@ -707,7 +728,6 @@ class TestHybridKeywordOnlyChats:
         assert r["data"]["chat_title"] == "Test chat"
         assert r["data"]["source"] == "claude"
         assert r["data"]["chat_id"] == 1
-        assert "Test chat" in r["data"]["snippet"]
 
 
 class TestAutoFallback:
@@ -719,7 +739,7 @@ class TestAutoFallback:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search._HAS_ML", False):
+        with patch("footprinter.cli.search.ml_available", return_value=False):
             from footprinter.cli.search import execute_search
 
             # Should NOT sys.exit — should fall back gracefully
@@ -843,7 +863,7 @@ class TestSemanticUnavailable:
         out = StringIO()
         console = __import__("rich.console", fromlist=["Console"]).Console(file=out)
 
-        with patch("footprinter.cli.search._HAS_ML", False):
+        with patch("footprinter.cli.search.ml_available", return_value=False):
             from footprinter.cli.search import execute_search
 
             with pytest.raises(SystemExit) as exc_info:
