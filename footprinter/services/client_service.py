@@ -33,8 +33,9 @@ def _project_status_for_role(role: Role) -> Optional[str]:
 def _get_client_aggregates(client_name: str, conn: sqlite3.Connection, *, role: Role) -> dict:
     """Compute per-project file counts for a client, respecting visibility.
 
-    Derives aggregates from the visibility-filtered project list rather
-    than raw SQL, so hidden/opaque projects are excluded for non-admin roles.
+    Derives aggregates from the role-filtered project list rather than raw SQL,
+    so hidden/opaque projects are excluded for non-admin roles, and (via
+    ``_project_status_for_role``) unlisted projects are excluded for VIEWER.
     """
     from footprinter.services import project_service
 
@@ -155,7 +156,8 @@ def resolve_by_name(
     """Resolve a client by fuzzy name match, with navigation data.
 
     Returns full client dict with projects and aggregates for single match,
-    disambiguation dict for multiple ambiguous matches, or None.
+    disambiguation dict for multiple ambiguous matches, or None. For VIEWER the
+    projects list is listed-only and the dict carries ``unlisted_project_count``.
     """
     rows = db.find_by_name_fuzzy(conn, name)
     if not rows:
@@ -215,9 +217,10 @@ def _build_client_navigation(conn: sqlite3.Connection, row: dict, *, role: Role)
     if not role.sees_all:
         result["unlisted_project_count"] = db.count_unlisted_projects(conn, row["id"])
 
-    # Aggregate stats across all projects
+    # Aggregate stats across all projects. VIEWER counts listed-only folders so
+    # total_folders matches the listed-only folder list in project navigation.
     project_ids = [p["id"] for p in projects if "id" in p]
-    nav = db.get_client_navigation(conn, row["id"], project_ids)
+    nav = db.get_client_navigation(conn, row["id"], project_ids, listed_only=not role.sees_all)
     result.update(nav)
 
     return result
