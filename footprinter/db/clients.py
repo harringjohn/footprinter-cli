@@ -348,6 +348,23 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     }
 
 
+def count_unlisted_projects(conn: sqlite3.Connection, client_id: int) -> int:
+    """Count non-hidden unlisted projects for a client.
+
+    Aggregate for VIEWER client navigation: unlisted projects are collapsed to a
+    count rather than enumerated. Hidden projects are excluded (mirrors the
+    ``!= 'hidden'`` clause used throughout ``get_client_navigation``), so a
+    hidden project's existence is never revealed — not even as a number.
+    """
+    row = conn.execute(
+        """SELECT COUNT(*) FROM projects
+           WHERE client_id = ? AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        (client_id,),
+    ).fetchone()
+    return row[0]
+
+
 def find_client_id_by_name(conn: sqlite3.Connection, name: str) -> Optional[int]:
     """Return the client ID for the given name, or None if not found."""
     cursor = conn.cursor()

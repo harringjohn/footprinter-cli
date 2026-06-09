@@ -278,6 +278,76 @@ class TestClientService:
         assert agg["file_count"] == 1
         assert all(p["project_name"] != "Secret" for p in agg["per_project"])
 
+    def test_resolve_by_name_viewer_excludes_unlisted_projects(self, service_db):
+        """VIEWER client nav enumerates listed projects only; unlisted → a count."""
+        # Add an unlisted project under Acme (client 1, visible)
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (20, 'Archived', 'unlisted',
+                       1, 'full', 'allow')"""
+        )
+        service_db.commit()
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.VIEWER)
+        assert result is not None
+        names = [p.get("name") for p in result["projects"]]
+        assert "Alpha" in names  # listed project present
+        assert "Archived" not in names  # unlisted excluded
+        assert result["unlisted_project_count"] == 1
+
+    def test_resolve_by_name_admin_includes_unlisted_projects(self, service_db):
+        """ADMIN client nav still enumerates unlisted projects (no listing filter)."""
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (20, 'Archived', 'unlisted',
+                       1, 'full', 'allow')"""
+        )
+        service_db.commit()
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
+        assert result is not None
+        names = [p.get("name") for p in result["projects"]]
+        assert "Archived" in names
+
+    def test_resolve_by_name_viewer_unlisted_only_client(self, service_db):
+        """A client whose only project is unlisted shows zero projects + a count."""
+        service_db.execute(
+            """INSERT INTO clients (id, name, slug, client_type, status,
+                                    visibility, access)
+               VALUES (20, 'ArchiveCo', 'archiveco', 'external', 'listed',
+                       'full', 'allow')"""
+        )
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (21, 'OnlyArchive', 'unlisted',
+                       20, 'full', 'allow')"""
+        )
+        service_db.commit()
+
+        result = client_service.resolve_by_name(service_db, "ArchiveCo", role=Role.VIEWER)
+        assert result is not None
+        assert result["projects"] == []
+        assert result["unlisted_project_count"] == 1
+
+    def test_get_viewer_aggregates_excludes_unlisted(self, service_db):
+        """Aggregates must not count unlisted projects for VIEWER."""
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (20, 'Archived', 'unlisted',
+                       1, 'full', 'allow')"""
+        )
+        service_db.commit()
+
+        result = client_service.get(service_db, 1, role=Role.VIEWER, include=["aggregates"])
+        assert result is not None
+        agg = result["aggregates"]
+        assert agg["project_count"] == 1  # only listed Alpha
+        assert all(p["project_name"] != "Archived" for p in agg["per_project"])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Project service
