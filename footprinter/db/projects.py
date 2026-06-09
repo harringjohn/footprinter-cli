@@ -86,7 +86,7 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
     """Return navigation aggregates for an MCP project view.
 
     Includes file stats, content type breakdown, folders, and entity counts.
-    All results include visibility for service-layer filtering.
+    Folder rows include visibility and status for service-layer filtering.
     """
     _not_hidden = "AND COALESCE(visibility, 'inherit') != 'hidden'"
 
@@ -110,10 +110,10 @@ def get_project_navigation(conn: sqlite3.Connection, project_id: int) -> dict:
         (project_id,),
     ).fetchall()
 
-    # Folders (include all — service layer filters by visibility)
+    # Folders (include all — service layer filters by visibility and status)
     folders = conn.execute(
         """SELECT id, path, name, direct_file_count, total_size_bytes, source,
-                  visibility, access,
+                  status, visibility, access,
                   visibility_source, access_source
            FROM folders
            WHERE project_id = ?

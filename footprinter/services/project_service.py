@@ -114,17 +114,18 @@ def resolve_by_name(
     """Resolve a project by fuzzy name match, with navigation data.
 
     Returns:
-        Full navigation dict for single match.
+        Full navigation dict for single match (VIEWER: listed-only child folders).
         Disambiguation dict for multiple ambiguous matches.
-        None for no match (or hidden-only matches for VIEWER).
+        None for no match (or, for VIEWER, hidden-only or unlisted/removed-only matches).
     """
     rows = db.find_by_name_fuzzy(conn, name)
     if not rows:
         return None
 
-    # Filter hidden for VIEWER
+    # Filter hidden (visibility) and unlisted/removed (listing status) for VIEWER
     if not role.sees_all:
         rows = [r for r in rows if _read_visibility(r) != "hidden"]
+        rows = [r for r in rows if (r.get("status") or "listed") == "listed"]
     if not rows:
         return None
 
@@ -152,7 +153,11 @@ def _build_project_navigation(conn: sqlite3.Connection, row: dict, *, role: Role
     if role.sees_all:
         return result
 
-    # Filter child folders by visibility
+    # Filter child folders to listed-only BEFORE visibility stripping. Order
+    # matters: filter_results_list reduces opaque folders to OPAQUE_FOLDER_FIELDS
+    # (which omits `status`), so a status check applied afterward would default
+    # those to "listed" and let opaque+unlisted folders slip through as stubs.
+    result["folders"] = [f for f in result["folders"] if (f.get("status") or "listed") == "listed"]
     result["folders"], _ = filter_results_list("folder", result["folders"])
     return result
 

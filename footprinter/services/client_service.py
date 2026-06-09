@@ -15,15 +15,33 @@ from footprinter.services.roles import Role
 VALID_INCLUDES = frozenset({"projects", "aggregates"})
 
 
+def _project_status_for_role(role: Role) -> Optional[str]:
+    """Listing-status filter for a client's project enumeration.
+
+    VIEWER (non-``sees_all``) navigation enumerates ``listed`` projects only;
+    unlisted ones are surfaced as an aggregate count instead. ADMIN keeps the
+    default (``None`` → listed + unlisted, removed excluded).
+
+    Note: this is deliberately *not* ``status_arg_for_role`` — that helper
+    returns ``None`` for VIEWER, which on the projects table means listed +
+    unlisted (projects default to ``default_exclude=["removed"]``). An explicit
+    ``"listed"`` is the targeted fix for that status-vs-visibility gap.
+    """
+    return None if role.sees_all else "listed"
+
+
 def _get_client_aggregates(client_name: str, conn: sqlite3.Connection, *, role: Role) -> dict:
     """Compute per-project file counts for a client, respecting visibility.
 
-    Derives aggregates from the visibility-filtered project list rather
-    than raw SQL, so hidden/opaque projects are excluded for non-admin roles.
+    Derives aggregates from the role-filtered project list rather than raw SQL,
+    so hidden/opaque projects are excluded for non-admin roles, and (via
+    ``_project_status_for_role``) unlisted projects are excluded for VIEWER.
     """
     from footprinter.services import project_service
 
-    resp = project_service.list_(conn, role=role, client=client_name)
+    resp = project_service.list_(
+        conn, role=role, client=client_name, status=_project_status_for_role(role)
+    )
     per_project = [
         {
             "project_id": p["id"],
@@ -68,7 +86,9 @@ def get(
         if "projects" in includes:
             from footprinter.services import project_service
 
-            resp = project_service.list_(conn, role=role, client=result["name"])
+            resp = project_service.list_(
+                conn, role=role, client=result["name"], status=_project_status_for_role(role)
+            )
             result["projects"] = resp["projects"]
         if "aggregates" in includes:
             result["aggregates"] = _get_client_aggregates(
@@ -113,7 +133,9 @@ def list_(
             if "projects" in includes:
                 from footprinter.services import project_service
 
-                resp = project_service.list_(conn, role=role, client=client["name"])
+                resp = project_service.list_(
+                    conn, role=role, client=client["name"], status=_project_status_for_role(role)
+                )
                 client["projects"] = resp["projects"]
             if "aggregates" in includes:
                 client["aggregates"] = _get_client_aggregates(
@@ -134,7 +156,8 @@ def resolve_by_name(
     """Resolve a client by fuzzy name match, with navigation data.
 
     Returns full client dict with projects and aggregates for single match,
-    disambiguation dict for multiple ambiguous matches, or None.
+    disambiguation dict for multiple ambiguous matches, or None. For VIEWER the
+    projects list is listed-only and the dict carries ``unlisted_project_count``.
     """
     rows = db.find_by_name_fuzzy(conn, name)
     if not rows:
@@ -177,18 +200,27 @@ def _build_client_navigation(conn: sqlite3.Connection, row: dict, *, role: Role)
     if not role.sees_all and visibility == "opaque":
         return filter_result("client", row)
 
-    # Get projects for this client (hidden filtered)
+    # Get projects for this client (hidden filtered; VIEWER sees listed-only)
     from footprinter.services import project_service
 
-    proj_resp = project_service.list_(conn, role=role, client=row["name"])
+    proj_resp = project_service.list_(
+        conn, role=role, client=row["name"], status=_project_status_for_role(role)
+    )
     projects = proj_resp["projects"]
 
     result = {**row}
     result["projects"] = projects
 
-    # Aggregate stats across all projects
+    # VIEWER: unlisted projects are collapsed to a count, not enumerated.
+    # Computed unconditionally — a client with only unlisted projects has no
+    # listed project_ids, so the count must not depend on the nav query below.
+    if not role.sees_all:
+        result["unlisted_project_count"] = db.count_unlisted_projects(conn, row["id"])
+
+    # Aggregate stats across all projects. VIEWER counts listed-only folders so
+    # total_folders matches the listed-only folder list in project navigation.
     project_ids = [p["id"] for p in projects if "id" in p]
-    nav = db.get_client_navigation(conn, row["id"], project_ids)
+    nav = db.get_client_navigation(conn, row["id"], project_ids, listed_only=not role.sees_all)
     result.update(nav)
 
     return result

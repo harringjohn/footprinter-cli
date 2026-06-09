@@ -298,8 +298,20 @@ def count_hidden_by_name(conn: sqlite3.Connection, name: str) -> int:
     return row[0]
 
 
-def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids: list[int]) -> dict:
-    """Return navigation aggregates for an MCP client view."""
+def get_client_navigation(
+    conn: sqlite3.Connection,
+    client_id: int,
+    project_ids: list[int],
+    *,
+    listed_only: bool = False,
+) -> dict:
+    """Return navigation aggregates for an MCP client view.
+
+    ``listed_only`` (VIEWER) restricts the folder count to ``status = 'listed'``
+    so the client-level ``total_folders`` matches the listed-only folder list
+    returned by project navigation. ADMIN passes ``False`` and keeps the full
+    count.
+    """
     if not project_ids:
         return {
             "total_files": 0,
@@ -310,6 +322,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
 
     ph = ",".join("?" * len(project_ids))
     _nh = "AND COALESCE(visibility, 'inherit') != 'hidden'"
+    _folder_status = "AND status = 'listed'" if listed_only else ""
 
     stats = conn.execute(
         f"""SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as size
@@ -319,7 +332,7 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
     ).fetchone()
 
     folder_count = conn.execute(
-        f"SELECT COUNT(*) FROM folders WHERE project_id IN ({ph}) {_nh}",
+        f"SELECT COUNT(*) FROM folders WHERE project_id IN ({ph}) {_folder_status} {_nh}",
         project_ids,
     ).fetchone()[0]
 
@@ -346,6 +359,23 @@ def get_client_navigation(conn: sqlite3.Connection, client_id: int, project_ids:
             "visits": browser_count,
         },
     }
+
+
+def count_unlisted_projects(conn: sqlite3.Connection, client_id: int) -> int:
+    """Count non-hidden unlisted projects for a client.
+
+    Aggregate for VIEWER client navigation: unlisted projects are collapsed to a
+    count rather than enumerated. Hidden projects are excluded (mirrors the
+    ``!= 'hidden'`` clause used throughout ``get_client_navigation``), so a
+    hidden project's existence is never revealed — not even as a number.
+    """
+    row = conn.execute(
+        """SELECT COUNT(*) FROM projects
+           WHERE client_id = ? AND status = 'unlisted'
+             AND COALESCE(visibility, 'inherit') != 'hidden'""",
+        (client_id,),
+    ).fetchone()
+    return row[0]
 
 
 def find_client_id_by_name(conn: sqlite3.Connection, name: str) -> Optional[int]:
