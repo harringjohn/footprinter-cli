@@ -114,3 +114,74 @@ class TestCascadeProjectId:
         result = cascade_project_id(conn, 3, 1)
         assert result["folders_updated"] == 1  # just the folder itself
         assert result["files_updated"] == 0
+
+
+class TestCascadeWithLocalFolders:
+    """End-to-end: parent_path only → link → cascade reaches all descendants."""
+
+    @pytest.fixture
+    def local_conn(self):
+        """In-memory DB with folders that have parent_path but no parent_folder_id."""
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute("CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT)")
+        db.execute(
+            "CREATE TABLE folders ("
+            "  id INTEGER PRIMARY KEY,"
+            "  path TEXT UNIQUE,"
+            "  relative_path TEXT,"
+            "  name TEXT,"
+            "  source TEXT,"
+            "  parent_path TEXT,"
+            "  parent_folder_id INTEGER,"
+            "  project_id INTEGER"
+            ")"
+        )
+        db.execute(
+            "CREATE TABLE files ("
+            "  id INTEGER PRIMARY KEY,"
+            "  name TEXT,"
+            "  folder_id INTEGER,"
+            "  project_id INTEGER,"
+            "  status TEXT DEFAULT 'listed'"
+            ")"
+        )
+        db.execute("INSERT INTO projects (id, name) VALUES (1, 'TestProject')")
+
+        # Folders with parent_path set, parent_folder_id NULL (simulates local ingest)
+        db.execute(
+            "INSERT INTO folders VALUES (1, '/root', 'root', 'root', 'local', NULL, NULL, NULL)"
+        )
+        db.execute(
+            "INSERT INTO folders VALUES (2, '/root/child1', 'root/child1', 'child1', 'local', '/root', NULL, NULL)"
+        )
+        db.execute(
+            "INSERT INTO folders VALUES (3, '/root/child1/grand', 'root/child1/grand', 'grand', 'local', '/root/child1', NULL, NULL)"
+        )
+        db.execute(
+            "INSERT INTO folders VALUES (4, '/root/child2', 'root/child2', 'child2', 'local', '/root', NULL, NULL)"
+        )
+
+        # Files in various folders
+        db.execute("INSERT INTO files VALUES (10, 'a.txt', 1, NULL, 'listed')")
+        db.execute("INSERT INTO files VALUES (11, 'b.txt', 2, NULL, 'listed')")
+        db.execute("INSERT INTO files VALUES (12, 'c.txt', 3, NULL, 'listed')")
+        db.execute("INSERT INTO files VALUES (13, 'd.txt', 4, NULL, 'listed')")
+
+        db.commit()
+        return db
+
+    def test_cascade_reaches_all_after_linking(self, local_conn):
+        from footprinter.db.folders import cascade_project_id, link_local_folder_parents
+
+        link_local_folder_parents(local_conn)
+
+        result = cascade_project_id(local_conn, 1, 1)
+        assert result["folders_updated"] == 4
+        assert result["files_updated"] == 4
+
+        rows = local_conn.execute(
+            "SELECT id, project_id FROM folders ORDER BY id"
+        ).fetchall()
+        for row in rows:
+            assert row["project_id"] == 1

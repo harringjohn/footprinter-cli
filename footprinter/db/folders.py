@@ -697,6 +697,32 @@ def update_drive_folder_parents(conn: sqlite3.Connection, source: str, folder_ma
     return updated
 
 
+def link_local_folder_parents(conn: sqlite3.Connection) -> int:
+    """Resolve parent_path → parent_folder_id for local folders.
+
+    Returns number of folders updated.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE folders
+        SET parent_folder_id = (
+            SELECT parent.id FROM folders parent
+            WHERE parent.path = folders.parent_path
+        )
+        WHERE parent_folder_id IS NULL
+          AND parent_path IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM folders parent
+              WHERE parent.path = folders.parent_path
+          )
+        """
+    )
+    updated = cursor.rowcount
+    conn.commit()
+    return updated
+
+
 def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
     """Refresh pre-computed file counts for all folders.
 

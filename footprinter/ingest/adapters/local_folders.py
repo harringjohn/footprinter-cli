@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from footprinter.db.folders import mark_removed_folders
+from footprinter.db.folders import link_local_folder_parents, mark_removed_folders
 from footprinter.ingest.adapters.protocol import ErrorType, PipeContext, PipeResult
 from footprinter.ingest.folder_indexer import FolderIndexer
 
@@ -37,6 +37,10 @@ class LocalFoldersAdapter:
             folders = indexer.scan_folders(root_paths)
             inserted, updated, unchanged = indexer.save_folders(folders)
 
+            linked = link_local_folder_parents(db.conn)
+            if linked:
+                logger.info(f"Linked {linked} folder(s) to parents")
+
             # Mark phantom folder rows as removed. Skipped on scoped scans
             # (ctx.scan_roots is not None) — those only walk a subset of
             # configured roots, so every other folder would falsely appear
@@ -58,6 +62,7 @@ class LocalFoldersAdapter:
                 inserted=inserted,
                 updated=updated,
                 unchanged=unchanged,
+                linked=linked,
                 removed=len(removed_ids),
             )
         except Exception as e:
