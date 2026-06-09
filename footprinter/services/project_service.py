@@ -122,9 +122,10 @@ def resolve_by_name(
     if not rows:
         return None
 
-    # Filter hidden for VIEWER
+    # Filter hidden (visibility) and unlisted/removed (listing status) for VIEWER
     if not role.sees_all:
         rows = [r for r in rows if _read_visibility(r) != "hidden"]
+        rows = [r for r in rows if (r.get("status") or "listed") == "listed"]
     if not rows:
         return None
 
@@ -152,8 +153,9 @@ def _build_project_navigation(conn: sqlite3.Connection, row: dict, *, role: Role
     if role.sees_all:
         return result
 
-    # Filter child folders by visibility
+    # Filter child folders by visibility, then by listing status (listed-only)
     result["folders"], _ = filter_results_list("folder", result["folders"])
+    result["folders"] = [f for f in result["folders"] if (f.get("status") or "listed") == "listed"]
     return result
 
 

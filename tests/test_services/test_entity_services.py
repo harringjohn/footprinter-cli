@@ -415,6 +415,62 @@ class TestProjectService:
         assert "id" in result
         assert "name" not in result  # opaque strips name
 
+    def test_resolve_by_name_viewer_unlisted_returns_none(self, service_db):
+        """VIEWER cannot resolve onto an unlisted project (treated like hidden)."""
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (20, 'Zeta', 'unlisted',
+                       1, 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = project_service.resolve_by_name(service_db, "Zeta", role=Role.VIEWER)
+        assert result is None
+
+    def test_resolve_by_name_admin_unlisted_resolves(self, service_db):
+        """ADMIN can still resolve an unlisted project by name."""
+        service_db.execute(
+            """INSERT INTO projects (id, name, status,
+                                     client_id, visibility, access)
+               VALUES (20, 'Zeta', 'unlisted',
+                       1, 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = project_service.resolve_by_name(service_db, "Zeta", role=Role.ADMIN)
+        assert result is not None
+        assert result["name"] == "Zeta"
+
+    def test_resolve_by_name_viewer_excludes_unlisted_folders(self, service_db):
+        """VIEWER project nav lists listed folders only — unlisted dropped."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source, project_id,
+                                    direct_file_count, total_size_bytes, status,
+                                    visibility, access)
+               VALUES (20, '/Users/u/Work/alpha/archive', '/Work/alpha/archive',
+                       'archive', 'local', 1, 1, 100, 'unlisted', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
+        assert result is not None
+        folder_ids = [f["id"] for f in result["folders"]]
+        assert 1 in folder_ids  # listed folder present
+        assert 20 not in folder_ids  # unlisted folder excluded
+
+    def test_resolve_by_name_admin_includes_unlisted_folders(self, service_db):
+        """ADMIN project nav still includes unlisted folders."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source, project_id,
+                                    direct_file_count, total_size_bytes, status,
+                                    visibility, access)
+               VALUES (20, '/Users/u/Work/alpha/archive', '/Work/alpha/archive',
+                       'archive', 'local', 1, 1, 100, 'unlisted', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.ADMIN)
+        assert result is not None
+        folder_ids = [f["id"] for f in result["folders"]]
+        assert 20 in folder_ids
+
     def test_get_admin_returns_full(self, service_db):
         result = project_service.get(service_db, 1, role=Role.ADMIN)
         assert result is not None
