@@ -52,9 +52,12 @@ class LocalFoldersAdapter:
                 scanned_paths = {f["path"] for f in folders}
                 if scanned_paths:
                     removed_ids = mark_removed_folders(db.conn, scanned_paths)
-                    db.conn.commit()
                     if removed_ids:
                         logger.info(f"Marked {len(removed_ids)} folder(s) as removed")
+
+            # Single commit for both link and mark_removed — neither
+            # commits internally, so the adapter controls the transaction.
+            db.conn.commit()
 
             return PipeResult.completed(
                 "local_folders",

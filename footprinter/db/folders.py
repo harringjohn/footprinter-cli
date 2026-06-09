@@ -246,8 +246,8 @@ def get_folder_navigation(
     subfolder_results = [dict(sf) for sf in subfolders]
 
     # Recursive file count across all descendants (excludes hidden files; respects status filter).
-    # Uses path-prefix matching rather than parent_folder_id because ingestion
-    # populates parent_path (string) but not the FK column.
+    # Uses path-prefix matching rather than parent_folder_id so it works
+    # even before link_local_folder_parents has run.
     recursive_status_sql = (
         " AND " + " AND ".join(status_conds) if status_conds else ""
     )
@@ -700,6 +700,9 @@ def update_drive_folder_parents(conn: sqlite3.Connection, source: str, folder_ma
 def link_local_folder_parents(conn: sqlite3.Connection) -> int:
     """Resolve parent_path → parent_folder_id for local folders.
 
+    Does not commit — the caller controls the transaction (same
+    convention as ``mark_removed_folders``).
+
     Returns number of folders updated.
     """
     cursor = conn.cursor()
@@ -709,18 +712,19 @@ def link_local_folder_parents(conn: sqlite3.Connection) -> int:
         SET parent_folder_id = (
             SELECT parent.id FROM folders parent
             WHERE parent.path = folders.parent_path
+              AND parent.source = 'local'
         )
         WHERE parent_folder_id IS NULL
           AND parent_path IS NOT NULL
+          AND source = 'local'
           AND EXISTS (
               SELECT 1 FROM folders parent
               WHERE parent.path = folders.parent_path
+                AND parent.source = 'local'
           )
         """
     )
-    updated = cursor.rowcount
-    conn.commit()
-    return updated
+    return cursor.rowcount
 
 
 def refresh_folder_counts(conn: sqlite3.Connection) -> dict:
