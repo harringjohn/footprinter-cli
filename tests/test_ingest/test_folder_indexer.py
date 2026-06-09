@@ -301,3 +301,62 @@ class TestExclusionPatterns:
 
         assert str(sample) in paths
         assert str(sample / "src") in paths
+
+
+class TestLinkLocalFolderParents:
+    """link_local_folder_parents must resolve parent_path → parent_folder_id."""
+
+    def _get_parent_folder_id(self, db, path):
+        row = db.conn.execute(
+            "SELECT parent_folder_id FROM folders WHERE path = ?", (path,)
+        ).fetchone()
+        return row["parent_folder_id"] if row else None
+
+    def _get_folder_id(self, db, path):
+        row = db.conn.execute(
+            "SELECT id FROM folders WHERE path = ?", (path,)
+        ).fetchone()
+        return row["id"] if row else None
+
+    def test_links_parent_folder_ids(self, folder_db):
+        """save_folders leaves parent_folder_id NULL; link resolves it from parent_path."""
+        indexer = FolderIndexer({}, folder_db)
+        folders = [
+            _make_folder("/Users/test/Work", name="Work", parent_path="/Users/test"),
+            _make_folder("/Users/test/Work/child1", name="child1"),
+            _make_folder("/Users/test/Work/child1/grand", name="grand"),
+            _make_folder("/Users/test/Work/child2", name="child2"),
+        ]
+        indexer.save_folders(folders)
+
+        for f in folders:
+            assert self._get_parent_folder_id(folder_db, f["path"]) is None
+
+        from footprinter.db.folders import link_local_folder_parents
+
+        updated = link_local_folder_parents(folder_db.conn)
+
+        assert updated == 3
+        assert self._get_parent_folder_id(folder_db, "/Users/test/Work") is None
+        root_id = self._get_folder_id(folder_db, "/Users/test/Work")
+        child1_id = self._get_folder_id(folder_db, "/Users/test/Work/child1")
+        assert self._get_parent_folder_id(folder_db, "/Users/test/Work/child1") == root_id
+        assert self._get_parent_folder_id(folder_db, "/Users/test/Work/child2") == root_id
+        assert self._get_parent_folder_id(folder_db, "/Users/test/Work/child1/grand") == child1_id
+
+    def test_link_is_idempotent(self, folder_db):
+        """Second call returns 0 — all already linked."""
+        indexer = FolderIndexer({}, folder_db)
+        folders = [
+            _make_folder("/Users/test/Work", name="Work", parent_path="/Users/test"),
+            _make_folder("/Users/test/Work/child1", name="child1"),
+        ]
+        indexer.save_folders(folders)
+
+        from footprinter.db.folders import link_local_folder_parents
+
+        first = link_local_folder_parents(folder_db.conn)
+        second = link_local_folder_parents(folder_db.conn)
+
+        assert first == 1
+        assert second == 0
