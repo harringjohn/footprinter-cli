@@ -156,7 +156,9 @@ class TestCascadeWithLocalFolders:
             "INSERT INTO folders VALUES (2, '/root/child1', 'root/child1', 'child1', 'local', '/root', NULL, NULL)"
         )
         db.execute(
-            "INSERT INTO folders VALUES (3, '/root/child1/grand', 'root/child1/grand', 'grand', 'local', '/root/child1', NULL, NULL)"
+            "INSERT INTO folders VALUES"
+            " (3, '/root/child1/grand', 'root/child1/grand', 'grand',"
+            " 'local', '/root/child1', NULL, NULL)"
         )
         db.execute(
             "INSERT INTO folders VALUES (4, '/root/child2', 'root/child2', 'child2', 'local', '/root', NULL, NULL)"
