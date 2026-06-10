@@ -64,13 +64,9 @@ class _GatedConn:
 
 def _gate_migration(original, migration_ready: threading.Event, release_gate: threading.Event):
     """Return a wrapper for _migrate_access_columns that gates its commit."""
-    def wrapper(self):
-        real_conn = self.conn
-        self.conn = _GatedConn(real_conn, migration_ready, release_gate)
-        try:
-            original(self)
-        finally:
-            self.conn = real_conn
+    def wrapper(conn):
+        gated = _GatedConn(conn, migration_ready, release_gate)
+        original(gated)
     return wrapper
 
 
@@ -207,7 +203,7 @@ class TestConcurrentMigrationReads:
         self._prepare_pre_migration_db(db_path)
 
         from footprinter.ingest.database import Database
-        from footprinter.ingest.db.ddl import DDLMixin
+        from footprinter.ingest.db import ddl
 
         migration_ready = threading.Event()
         retry_detected = threading.Event()
@@ -241,9 +237,9 @@ class TestConcurrentMigrationReads:
 
         try:
             gated = _gate_migration(
-                DDLMixin._migrate_access_columns, migration_ready, release_gate,
+                ddl._migrate_access_columns, migration_ready, release_gate,
             )
-            with patch.object(DDLMixin, "_migrate_access_columns", gated), \
+            with patch.object(ddl, "_migrate_access_columns", gated), \
                  patch("footprinter.db_base.get_db_path", return_value=tmp_path / "concurrent.db"):
                 threads = [threading.Thread(target=migrate)]
                 for i in range(num_readers):
