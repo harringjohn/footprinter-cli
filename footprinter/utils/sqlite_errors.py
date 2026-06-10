@@ -31,6 +31,9 @@ def is_schema_busy_error(exc: sqlite3.OperationalError) -> bool:
 def is_transient_schema_error(exc: sqlite3.OperationalError) -> bool:
     """True for errors that might be caused by concurrent schema migration."""
     msg = str(exc).lower()
-    if any(p in msg for p in _TRANSIENT_SCHEMA_PATTERNS):
-        return True
-    return _VTABLE_CONSTRUCTOR_FAILED in msg and _PERMANENT_VTABLE_MARKER not in msg
+    # A vtable constructor failure carrying the missing-module cause is a
+    # permanent FTS5-unavailable error and must surface, even when the chained
+    # message also mentions a transient pattern (e.g. "no such table").
+    if _VTABLE_CONSTRUCTOR_FAILED in msg:
+        return _PERMANENT_VTABLE_MARKER not in msg
+    return any(p in msg for p in _TRANSIENT_SCHEMA_PATTERNS)
