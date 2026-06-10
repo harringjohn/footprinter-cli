@@ -562,6 +562,52 @@ class TestScopedVectorization:
         assert mock_store.upsert_file.call_count == 2
 
 
+class TestVectorizationPathParity:
+    """The ingest follow-up (run_vectorization) and the doctor rebuild
+    (_vectorize_files) must embed the same set of files under a widened
+    semantic.vectorize_statuses — they now share one embed path."""
+
+    def test_run_vectorization_and_doctor_agree_on_widened_statuses(self, tmp_path):
+        """Both entry points embed listed + unlisted when config widens statuses.
+
+        The doctor-rebuild half (selecting the identical set) is covered by
+        TestVectorizeFilesHonorsStatuses in test_rebuild_vectors.py; this guard
+        locks the ingest-follow-up half so the two paths cannot diverge.
+        """
+        from footprinter.ingest.processing import run_vectorization
+
+        db = _make_db(tmp_path)
+        (tmp_path / "listed.txt").write_text("listed content")
+        (tmp_path / "unlisted.txt").write_text("unlisted content")
+        _insert_file(db, file_path=str(tmp_path / "listed.txt"), status="listed")
+        _insert_file(db, file_path=str(tmp_path / "unlisted.txt"), status="unlisted")
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0
+        mock_extractor.extract_with_chunking.return_value = [
+            {"content": "text", "chunk_index": 0, "total_chunks": 1}
+        ]
+
+        with (
+            patch("footprinter.semantic.vector_store._file_vectorization_enabled", return_value=True),
+            patch("footprinter.semantic.vector_store.VectorStore.get_instance", return_value=mock_store),
+            patch(
+                "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+                return_value=mock_extractor,
+            ),
+            patch(
+                "footprinter.ingest.processing._get_vectorize_statuses",
+                return_value=["listed", "unlisted"],
+            ),
+        ):
+            run_vectorization(db)
+
+        assert mock_store.upsert_file.call_count == 2, (
+            "Ingest follow-up must embed both listed and unlisted under widened statuses"
+        )
+
+
 class TestChatVectorization:
     """run_vectorization delegates to vector_ops helpers for messages + chat_info."""
 

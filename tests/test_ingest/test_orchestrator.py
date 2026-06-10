@@ -654,11 +654,15 @@ class TestRebuildVectorsFileEnabled:
         )
 
         mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0  # disable size-cap check
         mock_extractor.extract_with_chunking.return_value = [
             {"content": "test content", "chunk_index": 0, "total_chunks": 1}
         ]
 
-        with patch("footprinter.ingest.full_content_extractor.FullContentExtractor", return_value=mock_extractor):
+        with patch(
+            "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+            return_value=mock_extractor,
+        ):
             mock_store = self._run_rebuild(conn)
 
         mock_store.upsert_file.assert_called_once()
@@ -673,11 +677,15 @@ class TestRebuildVectorsFileEnabled:
         )
 
         mock_extractor = MagicMock()
+        mock_extractor.max_vectorize_size_bytes = 0  # disable size-cap check
         mock_extractor.extract_with_chunking.return_value = [
             {"content": "test content", "chunk_index": 0, "total_chunks": 1}
         ]
 
-        with patch("footprinter.ingest.full_content_extractor.FullContentExtractor", return_value=mock_extractor):
+        with patch(
+            "footprinter.ingest.full_content_extractor.FullContentExtractor.from_config",
+            return_value=mock_extractor,
+        ):
             mock_store = self._run_rebuild(conn, quiet=False)
 
         # File vectorization should have run

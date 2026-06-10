@@ -285,10 +285,13 @@ class TestSignalHandling:
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
             mock_ext_inst = MagicMock()
+            mock_ext_inst.max_vectorize_size_bytes = 0  # disable size-cap check
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
             ]
+            # rebuild_vectors builds the extractor via from_config().
             mock_ext.return_value = mock_ext_inst
+            mock_ext.from_config.return_value = mock_ext_inst
 
             cli_mod._shutdown = False
             cli_mod.rebuild_vectors(quiet=True, source="files")
@@ -749,6 +752,7 @@ class TestIncrementalMode:
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
             mock_ext_inst = MagicMock()
+            mock_ext_inst.max_vectorize_size_bytes = 0  # disable size-cap check
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
             ]
@@ -782,6 +786,7 @@ class TestIncrementalMode:
             patch("footprinter.ingest.full_content_extractor.FullContentExtractor") as mock_ext,
         ):
             mock_ext_inst = MagicMock()
+            mock_ext_inst.max_vectorize_size_bytes = 0  # disable size-cap check
             mock_ext_inst.extract_with_chunking.return_value = [
                 {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
             ]
@@ -1353,6 +1358,153 @@ class TestSyncVerifyChunkCounting:
 
 
 # ---------------------------------------------------------------------------
+# File embed path honors semantic.vectorize_statuses
+# ---------------------------------------------------------------------------
+
+
+def _mock_extractor():
+    """Build a mock extractor whose extract_with_chunking returns one chunk."""
+    ext = MagicMock()
+    ext.max_vectorize_size_bytes = 0  # disable size-cap check
+    ext.extract_with_chunking.return_value = [
+        {"content": "chunk", "chunk_index": 0, "total_chunks": 1}
+    ]
+    return ext
+
+
+def _embed_call_count(store):
+    """Total number of embed calls across upsert_file + index_file."""
+    return store.upsert_file.call_count + store.index_file.call_count
+
+
+class TestVectorizeFilesHonorsStatuses:
+    """_vectorize_files must select rows by semantic.vectorize_statuses,
+    not a hardcoded status = 'listed'."""
+
+    def _seed(self, tmp_path):
+        """Real conn + real on-disk files: one listed, one unlisted."""
+        listed = tmp_path / "listed.txt"
+        unlisted = tmp_path / "unlisted.txt"
+        listed.write_text("listed content")
+        unlisted.write_text("unlisted content")
+        conn = _make_preflight_db(
+            files=[
+                {"id": 1, "status": "listed", "path": str(listed)},
+                {"id": 2, "status": "unlisted", "path": str(unlisted)},
+            ]
+        )
+        return conn
+
+    def test_vectorize_files_default_skips_unlisted(self, tmp_path):
+        """Under the default ['listed'], only the listed file is embedded."""
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        conn = self._seed(tmp_path)
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+
+        assert _embed_call_count(store) == 1, "Default statuses should embed only the listed file"
+
+    def test_vectorize_files_embeds_unlisted_when_config_allows(self, tmp_path):
+        """When vectorize_statuses includes 'unlisted', both files are embedded."""
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        conn = self._seed(tmp_path)
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed", "unlisted"],
+        ):
+            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+
+        assert _embed_call_count(store) == 2, (
+            "Widened vectorize_statuses should embed both listed and unlisted files"
+        )
+
+    def test_preflight_file_count_honors_vectorize_statuses(self, tmp_path):
+        """Preflight file count should match the widened embed set."""
+        from footprinter.ingest.vector_ops import _preflight_check
+
+        conn = self._seed(tmp_path)
+        cursor = conn.cursor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed", "unlisted"],
+        ):
+            counts = _preflight_check(
+                conn, cursor, files_enabled=True, chats_enabled=False, console=None, mode="full"
+            )
+
+        assert counts["files"] == 2, f"Preflight should count both files, got {counts['files']}"
+
+    def test_preflight_file_count_default_counts_listed_only(self, tmp_path):
+        """Under the default, preflight counts only the listed file (regression guard)."""
+        from footprinter.ingest.vector_ops import _preflight_check
+
+        conn = self._seed(tmp_path)
+        cursor = conn.cursor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            counts = _preflight_check(
+                conn, cursor, files_enabled=True, chats_enabled=False, console=None, mode="full"
+            )
+
+        assert counts["files"] == 1, f"Default preflight should count only listed, got {counts['files']}"
+
+    def test_sync_verify_file_count_honors_vectorize_statuses(self, tmp_path):
+        """_sync_verify file-chunk sum should include unlisted vectorized files
+        when vectorize_statuses is widened."""
+        from footprinter.ingest.vector_ops import _sync_verify
+
+        listed = tmp_path / "listed.txt"
+        unlisted = tmp_path / "unlisted.txt"
+        listed.write_text("listed content")
+        unlisted.write_text("unlisted content")
+        # Both files already vectorized with 3 chunks each.
+        conn = _make_preflight_db(
+            files=[
+                {"id": 1, "status": "listed", "path": str(listed), "vectorized_at": "2026-01-01"},
+                {"id": 2, "status": "unlisted", "path": str(unlisted), "vectorized_at": "2026-01-01"},
+            ]
+        )
+        conn.execute("UPDATE files SET vectorized_chunks = 3")
+        conn.commit()
+        cursor = conn.cursor()
+
+        store = MagicMock()
+        # Chroma holds chunks for both files (3 + 3 = 6).
+        store.get_file_stats.return_value = {"total_chunks": 6}
+        console = MagicMock()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed", "unlisted"],
+        ):
+            _sync_verify(cursor, store, files_enabled=True, chats_enabled=False, console=console)
+
+        printed = [str(c) for c in console.print.call_args_list]
+        # DB chunk sum (6) must match chroma (6) -> green check, no discrepancy.
+        green = [p for p in printed if "✓" in p and "Files" in p]
+        warnings = [p for p in printed if "⚠" in p and "Files" in p]
+        assert len(green) > 0, f"Expected matching file counts (DB=6, chroma=6). Printed: {printed}"
+        assert len(warnings) == 0, f"Unexpected file discrepancy warning. Printed: {printed}"
+
+
+# ---------------------------------------------------------------------------
 # Preflight vectorize exclusion
 # ---------------------------------------------------------------------------
 
@@ -1376,7 +1528,7 @@ def _make_preflight_db(files=None, messages=None, chats=None):
         "CREATE TABLE files ("
         "  id INTEGER PRIMARY KEY, source TEXT, status TEXT,"
         "  path TEXT, metadata TEXT, vectorized_at TEXT, modified_at TEXT,"
-        "  vectorize INTEGER DEFAULT 1"
+        "  vectorized_chunks INTEGER, vectorize INTEGER DEFAULT 1"
         ")"
     )
     conn.execute(
