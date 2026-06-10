@@ -255,3 +255,33 @@ class TestModeSearchResultShape:
             assert r["source_type"] in ("file", "chat")
             assert isinstance(r["relevance"], (int, float))
             assert isinstance(r["data"], dict)
+
+
+class TestModeEngineCliOnlyContract:
+    """Pin the reconciliation decision: the mode engine is CLI-only.
+
+    ``mode_search`` and its keyword/semantic/hybrid helpers run with implicit
+    ADMIN scope and apply no access control. The module docstring must record
+    that decision and point at the role-aware delegates so it cannot silently
+    rot — and the engine must stay role-free, so it is never wired into an
+    access-controlled path without a real filtering implementation.
+    """
+
+    def test_module_docstring_documents_cli_only(self):
+        import footprinter.services.search_service as svc
+
+        doc = (svc.__doc__ or "").lower()
+        # Records the CLI-only decision for the mode engine.
+        assert "cli-only" in doc or "cli only" in doc
+        # States that the mode engine does no access control.
+        assert "no access control" in doc or "no access filtering" in doc
+        # Points at the semantic role-aware delegate.
+        assert "semantic_service" in doc
+
+    def test_mode_search_has_no_role_param(self):
+        import inspect
+
+        import footprinter.services.search_service as svc
+
+        sig = inspect.signature(svc.mode_search)
+        assert "role" not in sig.parameters

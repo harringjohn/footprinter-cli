@@ -1,9 +1,33 @@
 """search_service — multi-source keyword search with visibility filtering.
 
 Orchestrates per-source searches (files, emails, chats, browser) and applies
-role-based visibility filtering + content stripping.
+role-based visibility filtering + content stripping via ``search()``.
 
-Also provides mode-based search (keyword / semantic / hybrid) via ``mode_search``.
+Also provides mode-based search (keyword / semantic / hybrid) via the mode
+engine: ``mode_search`` and its ``keyword_search`` / ``semantic_search`` /
+``hybrid_search`` helpers.
+
+Access control / reconciliation
+-------------------------------
+The mode engine (``mode_search`` and its keyword/semantic/hybrid helpers) is
+**CLI-only**. It runs with implicit ADMIN scope and applies **no access control**
+(no access filtering, no permission stripping). It returns raw
+FTS5 / vector hits straight from ``db.search`` and the vector store, with no
+``visibility`` / ``access`` enrichment, and so it carries no ``role`` parameter.
+It must not be wired into a VIEWER-facing path without first building a real
+access-control pipeline; doing so would recreate the false sense of access
+control that motivated dropping ``role`` from this engine.
+
+The role-aware paths live elsewhere:
+
+- ``search()`` in this module honors ``role`` for keyword search (visibility
+  filtering + content stripping).
+- ``services/semantic_service.semantic_search()`` honors ``role`` (with D2
+  "visible AND allowed" filtering) for semantic search.
+
+MCP tools use those role-aware paths — ``footprinter_search`` calls
+``search()`` and ``footprinter_semantic`` calls ``semantic_service``. They do
+not call the mode engine.
 """
 
 import os
