@@ -1505,6 +1505,137 @@ class TestVectorizeFilesHonorsStatuses:
 
 
 # ---------------------------------------------------------------------------
+# File eligibility converged across both vectorization entry points
+# ---------------------------------------------------------------------------
+
+
+class TestVectorizeFilesEligibilityConverged:
+    """_vectorize_files must not pre-filter rows by file_types / exclude_patterns
+    in SQL. File-type / exclusion eligibility lives in exactly one place — the
+    shared extractor on the _embed_one_file path — matching run_vectorization.
+    """
+
+    def test_sql_no_longer_prefilters_file_types(self, tmp_path):
+        """With a mock extractor (so extraction never rejects), both rows are
+        selected and embedded even when vec_config restricts file_types — proving
+        the file_types SQL clause is gone."""
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        md = tmp_path / "a.md"
+        txt = tmp_path / "b.txt"
+        md.write_text("markdown content")
+        txt.write_text("text content")
+        conn = _make_preflight_db(
+            files=[
+                {"id": 1, "status": "listed", "path": str(md)},
+                {"id": 2, "status": "listed", "path": str(txt)},
+            ]
+        )
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            _vectorize_files(
+                conn,
+                cursor,
+                store,
+                extractor,
+                vec_config={"file_types": [".md"]},
+                console=None,
+                mode="full",
+            )
+
+        assert _embed_call_count(store) == 2, (
+            "file_types must not pre-filter rows in SQL — both files should be selected"
+        )
+
+    def test_sql_no_longer_prefilters_exclude_patterns(self, tmp_path):
+        """With a mock extractor, both rows are selected even when one matches an
+        exclude_patterns glob — proving the exclude_patterns SQL clause is gone."""
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        keep = tmp_path / "keep.md"
+        excluded_dir = tmp_path / "node_modules"
+        excluded_dir.mkdir()
+        excluded = excluded_dir / "dep.md"
+        keep.write_text("keep content")
+        excluded.write_text("excluded content")
+        conn = _make_preflight_db(
+            files=[
+                {"id": 1, "status": "listed", "path": str(keep)},
+                {"id": 2, "status": "listed", "path": str(excluded)},
+            ]
+        )
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            _vectorize_files(
+                conn,
+                cursor,
+                store,
+                extractor,
+                vec_config={"exclude_patterns": ["**/node_modules/**"]},
+                console=None,
+                mode="full",
+            )
+
+        assert _embed_call_count(store) == 2, (
+            "exclude_patterns must not pre-filter rows in SQL — both files should be selected"
+        )
+
+    def test_eligibility_still_enforced_by_real_extractor(self, tmp_path):
+        """The embed set is unchanged: with the SQL guard removed, the real
+        FullContentExtractor (file_types=['.md']) still skips the .txt file at
+        extract time, so only the .md file is embedded."""
+        from footprinter.ingest.full_content_extractor import FullContentExtractor
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        keep = tmp_path / "keep.md"
+        skip = tmp_path / "skip.txt"
+        keep.write_text("markdown content worth embedding")
+        skip.write_text("plain text content that must be skipped")
+        conn = _make_preflight_db(
+            files=[
+                {"id": 1, "status": "listed", "path": str(keep)},
+                {"id": 2, "status": "listed", "path": str(skip)},
+            ]
+        )
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = FullContentExtractor.from_config(
+            {"vectorization": {"file_types": [".md"]}}
+        )
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+
+        assert _embed_call_count(store) == 1, (
+            "Only the .md file should be embedded — eligibility enforced by the extractor"
+        )
+        # The embedded file must be keep.md, not skip.txt.
+        embedded_paths = [call.args[1] for call in store.index_file.call_args_list]
+        embedded_paths += [call.args[1] for call in store.upsert_file.call_args_list]
+        assert any(str(keep) == p for p in embedded_paths), (
+            f"keep.md should be embedded, got {embedded_paths}"
+        )
+        assert all(str(skip) != p for p in embedded_paths), (
+            f"skip.txt should not be embedded, got {embedded_paths}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Preflight vectorize exclusion
 # ---------------------------------------------------------------------------
 
