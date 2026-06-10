@@ -124,6 +124,23 @@ _COMMIT_INTERVAL = 100
 _shutdown = False
 
 
+@dataclass(frozen=True)
+class EmbedResult:
+    """Outcome of embedding a single file via ``_embed_one_file``.
+
+    Each field is meaningful for exactly one outcome, so no slot carries two
+    different meanings:
+
+    - ``outcome`` — ``"new"``, ``"skipped_missing"``, or ``"skipped_large"``.
+    - ``chunks`` — number of chunks written; non-zero only for ``"new"``.
+    - ``size_bytes`` — on-disk file size; set only for ``"skipped_large"``.
+    """
+
+    outcome: str
+    chunks: int = 0
+    size_bytes: Optional[int] = None
+
+
 def _embed_one_file(
     store: Any,
     extractor: Any,
@@ -133,7 +150,7 @@ def _embed_one_file(
     *,
     vectorize_cap: int = 0,
     use_upsert: bool = True,
-) -> tuple[str, int]:
+) -> EmbedResult:
     """Embed a single file and stamp its vectorization state.
 
     Shared by both file-vectorization entry points (``run_vectorization`` and
@@ -151,13 +168,16 @@ def _embed_one_file(
     the caller can count and log them.
 
     Returns:
-        ``(outcome, chunks)`` where outcome is one of ``"new"``,
-        ``"skipped_missing"``, or ``"skipped_large"`` and ``chunks`` is the
-        number of chunks written (0 for skips).
+        An :class:`EmbedResult` with an ``outcome`` of ``"new"``,
+        ``"skipped_missing"``, or ``"skipped_large"``. ``chunks`` holds the
+        number of chunks written and is non-zero only for ``"new"``;
+        ``size_bytes`` holds the on-disk file size and is set only for
+        ``"skipped_large"``. Each field is meaningful for one outcome, so no
+        single field means two different things.
     """
     path = Path(file_path) if file_path else None
     if path is None or not path.exists():
-        return ("skipped_missing", 0)
+        return EmbedResult("skipped_missing")
 
     if vectorize_cap > 0:
         try:
@@ -179,11 +199,11 @@ def _embed_one_file(
                 " vectorized_chunks = 0 WHERE id = ?",
                 (file_id,),
             )
-            return ("skipped_large", file_size)
+            return EmbedResult("skipped_large", size_bytes=file_size)
 
     chunks = extractor.extract_with_chunking(path)
     if not chunks:
-        return ("skipped_missing", 0)
+        return EmbedResult("skipped_missing")
 
     metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
     if use_upsert:
@@ -195,7 +215,7 @@ def _embed_one_file(
         " vectorized_chunks = ? WHERE id = ?",
         (len(chunks), file_id),
     )
-    return ("new", len(chunks))
+    return EmbedResult("new", chunks=len(chunks))
 
 
 def _handle_shutdown(signum: int, frame: Any) -> None:
@@ -332,7 +352,7 @@ def run_vectorization(
                     file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
                     processed += 1
                     try:
-                        outcome, value = _embed_one_file(
+                        embed = _embed_one_file(
                             store,
                             extractor,
                             db.conn,
@@ -341,13 +361,15 @@ def run_vectorization(
                             vectorize_cap=vectorize_cap,
                             use_upsert=True,
                         )
-                        if outcome == "new":
+                        if embed.outcome == "new":
                             counts["vectorized_new"] += 1
-                        elif outcome == "skipped_missing":
+                        elif embed.outcome == "skipped_missing":
                             counts["vectorized_skipped_missing"] += 1
-                        elif outcome == "skipped_large":
+                        elif embed.outcome == "skipped_large":
                             counts["vectorized_skipped_large"] += 1
-                            skipped_large_files.append({"path": file_path, "size_bytes": value})
+                            skipped_large_files.append(
+                                {"path": file_path, "size_bytes": embed.size_bytes}
+                            )
                     except Exception as e:  # Intentional broad catch: per-row failure must not abort
                         counts["vectorized_failed"] += 1
                         failures.append(f"id={file_id}: {e}")
