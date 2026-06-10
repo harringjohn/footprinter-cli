@@ -902,6 +902,119 @@ class TestFolderService:
         assert 10 not in file_ids
         assert result.get("suppressed", 0) >= 1
 
+    def test_get_by_path_viewer_unlisted_returns_none(self, service_db):
+        """VIEWER exact-path lookup of an unlisted folder must return None."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (30, '/Users/u/Work/alpha/archive', '/Work/alpha/archive',
+                       'archive', 'local', 1, 1, 100, 'unlisted', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/archive",
+            role=Role.VIEWER,
+        )
+        assert result is None
+
+    def test_get_by_path_viewer_removed_returns_none(self, service_db):
+        """VIEWER exact-path lookup of a removed folder must return None."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (31, '/Users/u/Work/alpha/old', '/Work/alpha/old',
+                       'old', 'local', 1, 1, 100, 'removed', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/old",
+            role=Role.VIEWER,
+        )
+        assert result is None
+
+    def test_get_by_path_viewer_listed_unchanged(self, service_db):
+        """VIEWER exact-path lookup of an explicit-listed folder is unchanged."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (32, '/Users/u/Work/alpha/docs', '/Work/alpha/docs',
+                       'docs', 'local', 1, 1, 100, 'listed', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/docs",
+            role=Role.VIEWER,
+        )
+        assert result is not None
+        assert "files" in result
+        assert "subfolders" in result
+        assert "recursive_file_count" in result
+
+    def test_get_by_path_admin_resolves_unlisted(self, service_db):
+        """ADMIN exact-path lookup still resolves an unlisted folder."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (33, '/Users/u/Work/alpha/archive', '/Work/alpha/archive',
+                       'archive', 'local', 1, 1, 100, 'unlisted', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/archive",
+            role=Role.ADMIN,
+        )
+        assert result is not None
+        assert result["name"] == "archive"
+
+    def test_get_by_path_admin_resolves_removed(self, service_db):
+        """ADMIN exact-path lookup still resolves a removed folder."""
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (34, '/Users/u/Work/alpha/old', '/Work/alpha/old',
+                       'old', 'local', 1, 1, 100, 'removed', 'full', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/old",
+            role=Role.ADMIN,
+        )
+        assert result is not None
+        assert result["name"] == "old"
+
+    def test_get_by_path_viewer_opaque_unlisted_returns_none(self, service_db):
+        """An opaque AND unlisted folder must not leak as a stub on direct lookup.
+
+        Regression: the status gate must run for opaque folders too, so an
+        opaque+unlisted folder is fully suppressed rather than returned as a
+        restricted stub.
+        """
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source,
+                                    project_id, direct_file_count, total_size_bytes,
+                                    status, visibility, access)
+               VALUES (35, '/Users/u/Work/alpha/secret-archive',
+                       '/Work/alpha/secret-archive', 'secret-archive', 'local', 1, 1,
+                       100, 'unlisted', 'opaque', 'allow')"""
+        )
+        service_db.commit()
+        result = folder_service.get_by_path(
+            service_db,
+            "/Users/u/Work/alpha/secret-archive",
+            role=Role.VIEWER,
+        )
+        assert result is None
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Chat service

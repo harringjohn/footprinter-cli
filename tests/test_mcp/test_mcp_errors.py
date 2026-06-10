@@ -218,6 +218,7 @@ class TestInformationOracles:
                 relative_path TEXT,
                 name TEXT,
                 source TEXT,
+                status TEXT DEFAULT 'listed',
                 direct_file_count INTEGER,
                 total_size_bytes INTEGER,
                 scanned_at DATETIME,

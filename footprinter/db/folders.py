@@ -168,7 +168,7 @@ def list_folders(
 def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
     """Look up a folder by exact path. Returns dict or None."""
     row = conn.execute(
-        """SELECT id, path, relative_path, name, source,
+        """SELECT id, path, relative_path, name, source, status,
                   direct_file_count, total_size_bytes, scanned_at,
                   project_id, external_id, account, visibility, access,
                   visibility_source, access_source
@@ -181,7 +181,7 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
 def get_folder_by_relative_path(conn: sqlite3.Connection, relative_path: str) -> dict | None:
     """Look up a folder by relative_path. Returns dict or None."""
     row = conn.execute(
-        """SELECT id, path, relative_path, name, source,
+        """SELECT id, path, relative_path, name, source, status,
                   direct_file_count, total_size_bytes, scanned_at,
                   project_id, external_id, account, visibility, access,
                   visibility_source, access_source

@@ -110,6 +110,12 @@ def get_by_path(
     visibility = _read_visibility(row)
 
     if not role.sees_all:
+        # Listing-status gate: an unlisted/removed folder must not be resolvable
+        # by direct exact-path lookup, even when its visibility would otherwise
+        # allow it. Runs before the visibility branch so opaque + unlisted
+        # folders are fully suppressed rather than leaked as a stub.
+        if (row.get("status") or "listed") != "listed":
+            return None
         if visibility == "hidden":
             return None
         if visibility == "opaque":
