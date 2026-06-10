@@ -458,7 +458,7 @@ def register(subparsers) -> None:
     parser.set_defaults(func=_handle)
 
 
-def _build_status_data(args) -> Optional[dict]:
+def _build_status_data(args) -> dict:
     """Assemble the status ``data`` dict shared by both entrypoints.
 
     Performs the db-existence check, config load, counts/health gather, ``data``
