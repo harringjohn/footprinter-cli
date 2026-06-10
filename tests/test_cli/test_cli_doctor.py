@@ -525,6 +525,122 @@ class TestDoctorSemantic:
 
 
 # ---------------------------------------------------------------------------
+# 9b. fp doctor link-folders — routing
+# ---------------------------------------------------------------------------
+
+
+class TestDoctorLinkFolders:
+    @staticmethod
+    def _build_fresh_db(path):
+        from footprinter.ingest.database import Database
+
+        Database(str(path)).close()
+
+    def test_doctor_help_lists_link_folders(self):
+        stdout, stderr, code = run_fp("doctor", "--help")
+        output = stdout + stderr
+        assert code == 0
+        assert "link-folders" in output
+
+    def test_link_folders_help(self):
+        stdout, stderr, code = run_fp("doctor", "link-folders", "--help")
+        output = stdout + stderr
+        assert code == 0
+        lowered = output.lower()
+        assert "folder" in lowered
+        assert "parent" in lowered
+
+    @patch("footprinter.db.folders.link_local_folder_parents")
+    def test_calls_link_local_folder_parents_with_connection(
+        self, mock_link, tmp_path, monkeypatch
+    ):
+        mock_link.return_value = 7
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        stdout, stderr, code = run_fp("doctor", "link-folders")
+        output = stdout + stderr
+
+        mock_link.assert_called_once()
+        conn_arg = mock_link.call_args[0][0]
+        # The handler passes the live DB connection, not None / a path.
+        assert hasattr(conn_arg, "execute")
+        assert hasattr(conn_arg, "commit")
+        assert "7" in output
+
+    @patch("footprinter.db.folders.link_local_folder_parents")
+    def test_commits_once_after_linking(self, mock_link, tmp_path, monkeypatch):
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        # sqlite3.Connection is immutable, so wrap it in a forwarding proxy
+        # that counts commit() calls. Gate on the link call so schema-init
+        # commits during Database() construction are excluded.
+        state = {"linked": False, "commits_after_link": 0}
+
+        class _CountingConn:
+            def __init__(self, real):
+                self._real = real
+
+            def commit(self, *a, **k):
+                if state["linked"]:
+                    state["commits_after_link"] += 1
+                return self._real.commit(*a, **k)
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        from footprinter.ingest import database as database_mod
+
+        real_get_connection = database_mod.get_connection
+
+        def _wrapped_get_connection(*a, **k):
+            return _CountingConn(real_get_connection(*a, **k))
+
+        monkeypatch.setattr(database_mod, "get_connection", _wrapped_get_connection)
+
+        def _link(conn):
+            state["linked"] = True
+            return 3
+
+        mock_link.side_effect = _link
+
+        run_fp("doctor", "link-folders")
+
+        assert state["linked"] is True
+        assert state["commits_after_link"] == 1
+
+    @patch("footprinter.db.folders.link_local_folder_parents")
+    def test_zero_count_still_surfaced(self, mock_link, tmp_path, monkeypatch):
+        mock_link.return_value = 0
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        stdout, stderr, code = run_fp("doctor", "link-folders")
+        output = stdout + stderr
+
+        assert code == 0
+        # A zero result is still reported, never silent.
+        assert "0" in output
+
+    @patch("footprinter.db.folders.link_local_folder_parents")
+    def test_quiet_suppresses_output(self, mock_link, tmp_path, monkeypatch):
+        mock_link.return_value = 5
+        db = tmp_path / "footprinter.db"
+        self._build_fresh_db(db)
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db))
+
+        stdout, stderr, code = run_fp("doctor", "link-folders", "--quiet")
+        output = stdout + stderr
+
+        assert code == 0
+        assert "Linked" not in output
+
+
+# ---------------------------------------------------------------------------
 # 10. FTS health check in bare doctor
 # ---------------------------------------------------------------------------
 
