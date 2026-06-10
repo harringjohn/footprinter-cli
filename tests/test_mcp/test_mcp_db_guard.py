@@ -229,6 +229,30 @@ class TestTransientErrorClassifier:
         )
         assert is_transient_schema_error(exc) is False
 
+    def test_no_such_column_live_migration_stays_transient(self):
+        """A bare 'no such column' stays transient to support live migrations.
+
+        During the window between a writer's column rename/add commit and the
+        dependent schema settling, a concurrent reader sees this exact message
+        and recovers on retry with a fresh connection. The transient and the
+        permanent (unmigrated-DB) messages are textually identical with no
+        co-occurring cause marker to separate them, so the phrase is kept as a
+        bare substring deliberately. This lock-in test fails loudly if a future
+        scoping attempt narrows it and re-breaks the live-migration retry.
+        """
+        exc = sqlite3.OperationalError("no such column: project.name")
+        assert is_transient_schema_error(exc) is True
+
+    def test_no_such_table_live_migration_stays_transient(self):
+        """A bare 'no such table' stays transient to support live migrations.
+
+        Sibling of the column case: the transient live-migration message and the
+        permanent missing-table message are byte-for-byte identical, so the
+        phrase stays a bare substring. This lock-in test pins the retry contract.
+        """
+        exc = sqlite3.OperationalError("no such table: files")
+        assert is_transient_schema_error(exc) is True
+
 
 class TestSchemaBusyClassifier:
     """Tests for is_schema_busy_error — narrow classifier used in status helpers."""
@@ -331,3 +355,50 @@ class TestHandleDbErrorsRetry:
         assert result["error"] == "Unreachable"
         assert "hint" in result
         assert "visibility" not in result["error"]
+
+    def test_permanent_no_such_column_surfaces_after_retry_cap(self):
+        """A permanent 'no such column' surfaces bounded, not swallowed forever.
+
+        The unmigrated-DB column crash is textually identical to the transient
+        live-migration message, so it is necessarily classified transient and
+        retried. The contract this pins is that the retry is *bounded*: the
+        function is called exactly _MAX_RETRIES + 1 times, then the error
+        surfaces as DATABASE_ERROR with the raw column name hidden. The risk is
+        delayed surfacing, not indefinite swallowing.
+        """
+        from footprinter.mcp.db import _MAX_RETRIES
+
+        call_count = 0
+
+        @handle_db_errors
+        def always_fails():
+            nonlocal call_count
+            call_count += 1
+            raise sqlite3.OperationalError("no such column: slug")
+
+        result = always_fails()
+        assert result["error_code"] == "DATABASE_ERROR"
+        assert call_count == _MAX_RETRIES + 1
+        assert "slug" not in result["error"]
+
+    def test_permanent_no_such_table_surfaces_after_retry_cap(self):
+        """A permanent 'no such table' surfaces bounded, not swallowed forever.
+
+        Sibling of the column case: a persistently-missing table is retried up
+        to the cap, then surfaces as DATABASE_ERROR with the raw table name
+        hidden, rather than being retried indefinitely.
+        """
+        from footprinter.mcp.db import _MAX_RETRIES
+
+        call_count = 0
+
+        @handle_db_errors
+        def always_fails():
+            nonlocal call_count
+            call_count += 1
+            raise sqlite3.OperationalError("no such table: legacy_table")
+
+        result = always_fails()
+        assert result["error_code"] == "DATABASE_ERROR"
+        assert call_count == _MAX_RETRIES + 1
+        assert "legacy_table" not in result["error"]
