@@ -13,6 +13,7 @@ import logging
 import signal
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from footprinter.ingest.adapters.protocol import ErrorType, PipeResult
@@ -154,8 +155,6 @@ def _embed_one_file(
         ``"skipped_missing"``, or ``"skipped_large"`` and ``chunks`` is the
         number of chunks written (0 for skips).
     """
-    from pathlib import Path
-
     path = Path(file_path) if file_path else None
     if path is None or not path.exists():
         return ("skipped_missing", 0)

@@ -298,7 +298,10 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
                     if console:
                         console.print(f"  Vectorizing files: {done}/{total}")
         except Exception as e:
-            logger.debug("Skipped file %s: %s", f["file_path"], e)
+            # Per-file failure (extraction or chroma write) must not abort the
+            # rebuild. Log at warning so a persistent failure stays visible at
+            # default log levels — this path has no failures list to surface.
+            logger.warning("Failed to vectorize file %s: %s", f["file_path"], e)
 
     conn.commit()
     return {"done": done, "chunks": chunks, "interrupted": False}
