@@ -603,7 +603,7 @@ class TestFtsFileToResult:
 
     def test_builds_expected_dict(self):
         """_fts_file_to_result produces the correct result shape from a search_files() row."""
-        from footprinter.cli.search import _fts_file_to_result
+        from footprinter.services.search_service import _fts_file_to_result
 
         row = {
             "path": "/home/user/doc.md",
@@ -627,7 +627,7 @@ class TestFtsFileToResult:
 
     def test_falls_back_when_fields_missing(self):
         """_fts_file_to_result defaults relevance to 0.5 and modified_at to empty string."""
-        from footprinter.cli.search import _fts_file_to_result
+        from footprinter.services.search_service import _fts_file_to_result
 
         row = {
             "path": "/home/user/notes.txt",
