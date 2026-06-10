@@ -231,11 +231,16 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
     """
     global _shutdown
 
-    file_types = vec_config.get("file_types")
-    exclude_patterns = vec_config.get("exclude_patterns", [])
-
     # Status filter is config-driven (semantic.vectorize_statuses) so the
-    # doctor rebuild embeds the same set as the ingest follow-up.
+    # doctor rebuild embeds the same set as the ingest follow-up. The row
+    # predicate (status + path + vectorize column, plus the incremental clause)
+    # matches run_vectorization. File-type / exclusion eligibility is NOT applied
+    # here: it lives in exactly one place — the shared extractor reached via
+    # _embed_one_file (FullContentExtractor._extract_full_content), which returns
+    # None for a disallowed extension or excluded path — so the two file-embed
+    # entry points cannot drift on what counts as eligible. vec_config stays in
+    # the signature because callers still pass it; the extractor is built from the
+    # same config upstream.
     statuses = _get_vectorize_statuses()
     status_ph = ",".join("?" * len(statuses))
     where_parts = [
@@ -249,17 +254,6 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
     # Incremental/sync: only process new or modified files
     if mode in ("incremental", "sync"):
         where_parts.append("(vectorized_at IS NULL OR modified_at > vectorized_at)")
-
-    # Defensive file_types/exclude_patterns guard, retained for the doctor path
-    # (the precomputed `vectorize` column already encodes these at ingest time).
-    if file_types:
-        like_clauses = " OR ".join("LOWER(path) LIKE ?" for _ in file_types)
-        where_parts.append(f"({like_clauses})")
-        params.extend(f"%{ext.lower()}" for ext in file_types)
-    for pat in exclude_patterns:
-        sql_pat = pat.replace("**", "%").replace("*", "%")
-        where_parts.append("path NOT LIKE ?")
-        params.append(sql_pat)
 
     cursor.execute(
         f"SELECT id, path as file_path FROM files WHERE {' AND '.join(where_parts)} ORDER BY id",
@@ -726,7 +720,9 @@ def rebuild_vectors(
             except ImportError:
                 raise
 
-        # Build extractor (vec_config also used by _vectorize_files for SQL pre-filtering)
+        # Build extractor. The extractor enforces file-type / exclusion
+        # eligibility at extract time; vec_config is still passed to
+        # _vectorize_files for signature compatibility but no longer drives SQL.
         vec_config = config.get("vectorization", {})
         extractor = FullContentExtractor.from_config(config)
 
