@@ -275,7 +275,7 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
             return {"done": done, "chunks": chunks, "interrupted": True}
 
         try:
-            outcome, value = _embed_one_file(
+            embed = _embed_one_file(
                 store,
                 extractor,
                 conn,
@@ -284,9 +284,9 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
                 vectorize_cap=getattr(extractor, "max_vectorize_size_bytes", 0),
                 use_upsert=use_upsert,
             )
-            if outcome == "new":
+            if embed.outcome == "new":
                 done += 1
-                chunks += value
+                chunks += embed.chunks
                 if done % 100 == 0:
                     conn.commit()
                     if console:

@@ -870,3 +870,100 @@ class TestVectorizationInterruptSafety:
             "SELECT COUNT(*) FROM files WHERE vectorized_at IS NOT NULL"
         ).fetchone()[0]
         assert done >= 100, f"Expected >=100 committed files, got {done}"
+
+
+class TestEmbedOneFileContract:
+    """Lock the per-outcome return contract of ``_embed_one_file``.
+
+    The helper's second value used to be overloaded — a chunk count for
+    ``"new"`` but a byte size for ``"skipped_large"`` — with a docstring that
+    only described the chunk-count meaning. These tests assert the result
+    exposes distinct, unambiguously-named fields so no single slot means two
+    different things.
+    """
+
+    def test_skipped_missing_carries_no_count_or_size(self, tmp_path):
+        """A None / non-existent path returns ``skipped_missing`` with chunks=0
+        and no size — never a chunk count parked in a generic slot."""
+        from footprinter.ingest.processing import _embed_one_file
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_conn = MagicMock()
+
+        result = _embed_one_file(
+            mock_store,
+            mock_extractor,
+            mock_conn,
+            file_id=1,
+            file_path=None,
+            vectorize_cap=0,
+            use_upsert=True,
+        )
+
+        assert result.outcome == "skipped_missing"
+        assert result.chunks == 0
+        assert result.size_bytes is None
+        # Nothing was extracted or written for a missing path.
+        mock_extractor.extract_with_chunking.assert_not_called()
+        mock_store.upsert_file.assert_not_called()
+
+    def test_skipped_large_reads_size_from_size_bytes_field(self, tmp_path):
+        """An over-cap file returns ``skipped_large`` with the on-disk size in
+        ``size_bytes`` (not a generic positional slot) and chunks=0."""
+        from footprinter.ingest.processing import _embed_one_file
+
+        big_path = tmp_path / "big.txt"
+        big_path.write_bytes(b"z" * 4096)
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_conn = MagicMock()
+
+        result = _embed_one_file(
+            mock_store,
+            mock_extractor,
+            mock_conn,
+            file_id=7,
+            file_path=str(big_path),
+            vectorize_cap=1024,
+            use_upsert=True,
+        )
+
+        assert result.outcome == "skipped_large"
+        # The byte size is read from the named size_bytes field.
+        assert result.size_bytes == 4096
+        # The oversize stamp writes vectorized_chunks = 0.
+        assert result.chunks == 0
+        # Over-cap files are not embedded.
+        mock_extractor.extract_with_chunking.assert_not_called()
+        mock_store.upsert_file.assert_not_called()
+
+    def test_new_carries_chunk_count_in_chunks_field(self, tmp_path):
+        """An under-cap file with non-empty chunks returns ``new`` with the
+        chunk count in ``chunks`` and no size."""
+        from footprinter.ingest.processing import _embed_one_file
+
+        small_path = tmp_path / "small.txt"
+        small_path.write_text("hello")
+
+        mock_store = MagicMock()
+        mock_extractor = MagicMock()
+        mock_extractor.extract_with_chunking.return_value = ["c1", "c2", "c3"]
+        mock_conn = MagicMock()
+
+        result = _embed_one_file(
+            mock_store,
+            mock_extractor,
+            mock_conn,
+            file_id=11,
+            file_path=str(small_path),
+            vectorize_cap=0,
+            use_upsert=True,
+        )
+
+        assert result.outcome == "new"
+        # The chunk count is read from the named chunks field.
+        assert result.chunks == 3
+        assert result.size_bytes is None
+        mock_store.upsert_file.assert_called_once()
