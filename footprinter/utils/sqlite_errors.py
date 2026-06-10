@@ -7,6 +7,22 @@ _SCHEMA_BUSY_PATTERNS = (
     "database is locked",
 )
 
+# "no such column" / "no such table" are kept as bare substrings deliberately.
+# Audit conclusion (do NOT add a permanent-cause exclusion clause for these two):
+#   1. They must stay retryable to support the live-migration window — between a
+#      writer's column/table rename-or-add commit and the dependent schema
+#      settling, a concurrent reader gets this exact message and recovers on
+#      retry with a fresh connection.
+#   2. The transient (live-migration) message and the permanent (unmigrated-DB)
+#      message are textually IDENTICAL, with no co-occurring cause marker to
+#      separate them — unlike the vtable case below, where "no such module"
+#      cleanly marks the permanent failure. Any marker that suppressed the
+#      permanent case here would also suppress the transient case.
+#   3. There is no reader-visible migration-in-progress signal to gate on
+#      (schema_version is bumped inside the writer's transaction).
+# The swallow risk is therefore bounded, not eliminated: a persistently-permanent
+# error is retried up to the MCP retry cap (see mcp/db.py), then surfaces as
+# DATABASE_ERROR. The risk is delayed surfacing, not indefinite swallowing.
 _TRANSIENT_SCHEMA_PATTERNS = _SCHEMA_BUSY_PATTERNS + (
     "no such column",
     "no such table",
@@ -36,4 +52,7 @@ def is_transient_schema_error(exc: sqlite3.OperationalError) -> bool:
     # message also mentions a transient pattern (e.g. "no such table").
     if _VTABLE_CONSTRUCTOR_FAILED in msg:
         return _PERMANENT_VTABLE_MARKER not in msg
+    # "no such column" / "no such table" match as bare substrings on purpose; the
+    # transient and permanent messages are identical (see _TRANSIENT_SCHEMA_PATTERNS
+    # note). The permanent case is bounded by the MCP retry cap, not gated here.
     return any(p in msg for p in _TRANSIENT_SCHEMA_PATTERNS)
