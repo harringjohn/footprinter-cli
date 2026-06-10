@@ -1408,8 +1408,10 @@ class TestFTS5Tables:
         cursor.execute("SELECT COUNT(*) FROM chats_fts WHERE chats_fts MATCH 'Test'")
         assert cursor.fetchone()[0] == 0, "FTS index should be empty before backfill"
 
-        # Execute backfill SQL directly (same SQL the init_db backfill loop runs)
-        cursor.execute(db._fts_backfill_sql("chats_fts"))
+        # Execute backfill SQL directly (same SQL the init_schema backfill loop runs)
+        from footprinter.ingest.db import fts
+
+        cursor.execute(fts._fts_backfill_sql("chats_fts"))
         db.conn.commit()
 
         # Verify FTS index now has the row
@@ -1881,10 +1883,10 @@ class TestAppSchemaExtraction:
     """Verify app schema extraction to standalone module."""
 
     def test_schemamixin_no_longer_has_init_app_schema(self):
-        """SchemaMixin should not have init_app_schema after extraction."""
-        from footprinter.ingest.db.schema import SchemaMixin
+        """Database should not expose init_app_schema after extraction."""
+        from footprinter.ingest.database import Database
 
-        assert not hasattr(SchemaMixin, "init_app_schema"), "init_app_schema should be removed from SchemaMixin"
+        assert not hasattr(Database, "init_app_schema"), "init_app_schema should not be on Database"
 
     def test_database_no_longer_has_init_retention_schema(self):
         """Database should not have init_retention_schema after extraction."""
@@ -2097,9 +2099,10 @@ class TestFTSDefinitions:
 
     def test_fts_trigger_names_derived_from_definitions(self):
         """_FTS_TRIGGER_NAMES has exactly 3 entries per FTS table (ai, ad, au)."""
-        from footprinter.ingest.db.schema import _FTS_DEFINITIONS, SchemaMixin
+        from footprinter.ingest.database import Database
+        from footprinter.ingest.db.schema import _FTS_DEFINITIONS
 
-        trigger_names = SchemaMixin._FTS_TRIGGER_NAMES
+        trigger_names = Database._FTS_TRIGGER_NAMES
         assert len(trigger_names) == len(_FTS_DEFINITIONS) * 3
 
         for fts_table in _FTS_DEFINITIONS:
@@ -2109,9 +2112,10 @@ class TestFTSDefinitions:
 
     def test_fts_table_map_derived_from_definitions(self):
         """_FTS_TABLE_MAP keys and values match _FTS_DEFINITIONS."""
-        from footprinter.ingest.db.schema import _FTS_DEFINITIONS, SchemaMixin
+        from footprinter.ingest.db import fts
+        from footprinter.ingest.db.schema import _FTS_DEFINITIONS
 
-        table_map = SchemaMixin._FTS_TABLE_MAP
+        table_map = fts._FTS_TABLE_MAP
         assert set(table_map.keys()) == set(_FTS_DEFINITIONS.keys())
 
         for fts_table, base_table in table_map.items():
@@ -2121,33 +2125,33 @@ class TestFTSDefinitions:
 
 
 class TestNoMigrationScaffolding:
-    """Governance: init_db() and init_app_schema() must contain no migration scaffolding.
+    """Governance: init_schema() must contain no migration scaffolding.
 
     All columns belong in their parent CREATE TABLE. ALTER TABLE ADD COLUMN,
     DROP INDEX IF EXISTS, and RENAME statements are migration artifacts that
     should not exist in clean DDL.
     """
 
-    def _get_source(self, method_name: str) -> str:
-        """Return the source code of a SchemaMixin method."""
+    def _get_source(self) -> str:
+        """Return the source code of init_schema()."""
         import inspect
 
-        from footprinter.ingest.db.schema import SchemaMixin
+        from footprinter.ingest.db import ddl
 
-        return inspect.getsource(getattr(SchemaMixin, method_name))
+        return inspect.getsource(ddl.init_schema)
 
     def test_no_alter_table_in_init_db(self):
-        """init_db() must not contain ALTER TABLE (app-scope uses ALTER TABLE correctly)."""
-        source = self._get_source("init_db")
+        """init_schema() must not contain ALTER TABLE (app-scope uses ALTER TABLE correctly)."""
+        source = self._get_source()
         assert "ALTER TABLE" not in source, (
-            "init_db() still contains ALTER TABLE — fold columns into CREATE TABLE instead"
+            "init_schema() still contains ALTER TABLE — fold columns into CREATE TABLE instead"
         )
 
     def test_no_drop_index_in_init_db(self):
-        """init_db() must not contain DROP INDEX IF EXISTS."""
-        source = self._get_source("init_db")
+        """init_schema() must not contain DROP INDEX IF EXISTS."""
+        source = self._get_source()
         assert "DROP INDEX IF EXISTS" not in source, (
-            "init_db() still contains DROP INDEX IF EXISTS — remove migration scaffolding"
+            "init_schema() still contains DROP INDEX IF EXISTS — remove migration scaffolding"
         )
 
 
@@ -2449,12 +2453,12 @@ class TestMigrationRemoved:
             import footprinter.ingest.db.migration  # noqa: F401
 
     def test_schema_has_no_migrate_reference(self):
-        """schema.py source must not import or call migrate_schema."""
+        """init_schema() source must not import or call migrate_schema."""
         import inspect
 
-        from footprinter.ingest.db.schema import SchemaMixin
+        from footprinter.ingest.db import ddl
 
-        source = inspect.getsource(SchemaMixin.init_db)
+        source = inspect.getsource(ddl.init_schema)
         assert "migrate_schema" not in source
         assert "from footprinter.ingest.db.migration" not in source
 
@@ -2659,21 +2663,29 @@ class TestSchemaModuleSplit:
 
         assert "files" in ACCESS_CONTROL_TABLES
 
-    def test_schemamixin_composes_both_mixins(self):
-        from footprinter.ingest.db.ddl import DDLMixin
-        from footprinter.ingest.db.fts import FTSMixin
-        from footprinter.ingest.db.schema import SchemaMixin
+    def test_ddl_fts_are_free_function_modules(self):
+        import footprinter.ingest.db.ddl as ddl
+        import footprinter.ingest.db.fts as fts
+        import footprinter.ingest.db.schema as schema
 
-        assert issubclass(SchemaMixin, DDLMixin)
-        assert issubclass(SchemaMixin, FTSMixin)
+        # The schema-layer mixins are retired — no mixin classes survive.
+        assert not hasattr(ddl, "DDLMixin")
+        assert not hasattr(fts, "FTSMixin")
+        assert not hasattr(schema, "SchemaMixin")
 
-    def test_fts_trigger_sql_references_ftsmixin(self):
+        # DDL/FTS logic now lives in module-level free functions.
+        assert callable(ddl.init_schema)
+        assert callable(fts.init_fts_tables)
+
+    def test_fts_trigger_sql_uses_free_function(self):
         import inspect
 
-        from footprinter.ingest.db.fts import FTSMixin
+        from footprinter.ingest.db import fts
 
-        source = inspect.getsource(FTSMixin._fts_trigger_sql)
-        assert "FTSMixin._fts_col_expr" in source
+        source = inspect.getsource(fts._fts_trigger_sql)
+        # _fts_col_expr is called as a bare free function, not a mixin method.
+        assert "_fts_col_expr(" in source
+        assert "FTSMixin._fts_col_expr" not in source
         assert "SchemaMixin._fts_col_expr" not in source
 
     def test_fts_does_not_import_ddl(self):

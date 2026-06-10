@@ -21,6 +21,6 @@ def test_import_adapters():
 
 
 def test_import_db_schema():
-    from footprinter.ingest.db.schema import SchemaMixin
+    from footprinter.ingest.db.schema import ACCESS_CONTROL_TABLES
 
-    assert SchemaMixin is not None
+    assert ACCESS_CONTROL_TABLES is not None
