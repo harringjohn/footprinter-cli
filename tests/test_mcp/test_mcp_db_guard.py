@@ -190,6 +190,32 @@ class TestTransientErrorClassifier:
         exc = sqlite3.OperationalError('near "SELECT": syntax error')
         assert is_transient_schema_error(exc) is False
 
+    def test_migration_window_vtable_is_transient(self):
+        """Vtable constructor failure without a missing-module cause is transient.
+
+        This is the migration-window case: FTS5 is present but the vtable's
+        constructor transiently fails between the migration commit and FTS-trigger
+        re-creation. It recovers on retry with a fresh connection.
+        """
+        exc = sqlite3.OperationalError("vtable constructor failed: files_fts")
+        assert is_transient_schema_error(exc) is True
+
+    def test_permanent_vtable_missing_module_is_not_transient(self):
+        """Vtable constructor failure caused by a missing FTS5 module is permanent.
+
+        SQLite emits 'no such module: fts5' as the cause when the extension is
+        unavailable; that case must surface rather than be retried and swallowed.
+        """
+        exc = sqlite3.OperationalError(
+            "vtable constructor failed: files_fts: no such module: fts5"
+        )
+        assert is_transient_schema_error(exc) is False
+
+    def test_no_such_module_alone_is_not_transient(self):
+        """A bare missing-module error (no vtable phrase) is never transient."""
+        exc = sqlite3.OperationalError("no such module: fts5")
+        assert is_transient_schema_error(exc) is False
+
 
 class TestSchemaBusyClassifier:
     """Tests for is_schema_busy_error — narrow classifier used in status helpers."""
