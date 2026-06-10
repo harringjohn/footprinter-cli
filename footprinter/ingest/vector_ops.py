@@ -4,10 +4,10 @@ import logging
 import signal
 import sqlite3
 import uuid
-from pathlib import Path
 from typing import Optional
 
 from footprinter.db_base import get_connection
+from footprinter.ingest.processing import _embed_one_file, _get_vectorize_statuses
 from footprinter.paths import get_db_path
 
 logger = logging.getLogger(__name__)
@@ -91,18 +91,24 @@ def _preflight_check(conn, cursor, files_enabled, chats_enabled, console, mode: 
     counts = {"files": 0, "messages": 0, "chats": 0}
     incremental = mode in ("incremental", "sync")
     if files_enabled:
+        # Status filter mirrors the file embed set (_vectorize_files) so the
+        # "Will process" count agrees with what actually gets embedded.
+        statuses = _get_vectorize_statuses()
+        status_ph = ",".join("?" * len(statuses))
         if incremental:
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
-                "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
+                f"WHERE source = 'local' AND status IN ({status_ph}) AND path IS NOT NULL"
                 " AND vectorize != 0"
-                " AND (vectorized_at IS NULL OR modified_at > vectorized_at)"
+                " AND (vectorized_at IS NULL OR modified_at > vectorized_at)",
+                statuses,
             )
         else:
             cursor.execute(
                 "SELECT COUNT(*) FROM files "
-                "WHERE source = 'local' AND status = 'listed' AND path IS NOT NULL"
-                " AND vectorize != 0"
+                f"WHERE source = 'local' AND status IN ({status_ph}) AND path IS NOT NULL"
+                " AND vectorize != 0",
+                statuses,
             )
         counts["files"] = cursor.fetchone()[0]
     if chats_enabled:
@@ -227,18 +233,25 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
 
     file_types = vec_config.get("file_types")
     exclude_patterns = vec_config.get("exclude_patterns", [])
+
+    # Status filter is config-driven (semantic.vectorize_statuses) so the
+    # doctor rebuild embeds the same set as the ingest follow-up.
+    statuses = _get_vectorize_statuses()
+    status_ph = ",".join("?" * len(statuses))
     where_parts = [
         "source = 'local'",
-        "status = 'listed'",
+        f"status IN ({status_ph})",
         "path IS NOT NULL",
         "vectorize != 0",
     ]
-    params: list = []
+    params: list = list(statuses)
 
     # Incremental/sync: only process new or modified files
     if mode in ("incremental", "sync"):
         where_parts.append("(vectorized_at IS NULL OR modified_at > vectorized_at)")
 
+    # Defensive file_types/exclude_patterns guard, retained for the doctor path
+    # (the precomputed `vectorize` column already encodes these at ingest time).
     if file_types:
         like_clauses = " OR ".join("LOWER(path) LIKE ?" for _ in file_types)
         where_parts.append(f"({like_clauses})")
@@ -268,27 +281,18 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
             return {"done": done, "chunks": chunks, "interrupted": True}
 
         try:
-            fpath = Path(f["file_path"])
-            if not fpath.exists():
-                continue
-            file_chunks = extractor.extract_with_chunking(fpath)
-            if file_chunks:
-                metadata = {"file_type": fpath.suffix.lower(), "file_name": fpath.name}
-                try:
-                    if use_upsert:
-                        store.upsert_file(f["id"], f["file_path"], file_chunks, metadata)
-                    else:
-                        store.index_file(f["id"], f["file_path"], file_chunks, metadata)
-                except Exception as e:
-                    logger.warning("Chroma write failed for file %s: %s", f["file_path"], e)
-                    continue
-                # SQLite update only after chroma success
-                cursor.execute(
-                    "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP, vectorized_chunks = ? WHERE id = ?",
-                    (len(file_chunks), f["id"]),
-                )
+            outcome, value = _embed_one_file(
+                store,
+                extractor,
+                conn,
+                f["id"],
+                f["file_path"],
+                vectorize_cap=getattr(extractor, "max_vectorize_size_bytes", 0),
+                use_upsert=use_upsert,
+            )
+            if outcome == "new":
                 done += 1
-                chunks += len(file_chunks)
+                chunks += value
                 if done % 100 == 0:
                     conn.commit()
                     if console:
@@ -532,9 +536,14 @@ def _sync_verify(cursor, store, files_enabled, chats_enabled, console) -> None:
         console.print("[bold]Sync verification[/bold]")
 
     if files_enabled:
+        # Status filter mirrors the file embed set (_vectorize_files) so the
+        # DB chunk sum is comparable to chroma's count for the same files.
+        statuses = _get_vectorize_statuses()
+        status_ph = ",".join("?" * len(statuses))
         cursor.execute(
             "SELECT COALESCE(SUM(vectorized_chunks), 0) FROM files"
-            " WHERE vectorized_at IS NOT NULL AND status = 'listed'"
+            f" WHERE vectorized_at IS NOT NULL AND status IN ({status_ph})",
+            statuses,
         )
         db_file_chunks = cursor.fetchone()[0]
         chroma_file_chunks = store.get_file_stats().get("total_chunks", 0)

@@ -123,6 +123,82 @@ _COMMIT_INTERVAL = 100
 _shutdown = False
 
 
+def _embed_one_file(
+    store: Any,
+    extractor: Any,
+    db_conn: Any,
+    file_id: int,
+    file_path: Optional[str],
+    *,
+    vectorize_cap: int = 0,
+    use_upsert: bool = True,
+) -> tuple[str, int]:
+    """Embed a single file and stamp its vectorization state.
+
+    Shared by both file-vectorization entry points (``run_vectorization`` and
+    ``_vectorize_files``) so the per-file extract -> size-cap -> store-write ->
+    stamp body cannot drift between them.
+
+    Performs: path resolution + existence check, size-cap enforcement (drops any
+    prior vectors and stamps ``vectorized_chunks = 0`` on oversize), content
+    extraction + chunking, empty-chunk skip, the chroma write (``upsert_file``
+    when ``use_upsert`` else ``index_file``), and the ``vectorized_at`` /
+    ``vectorized_chunks`` SQLite stamp on success.
+
+    Signal handling, progress reporting, commit cadence, and row selection stay
+    with the caller. Per-file failures (extraction, chroma write) propagate so
+    the caller can count and log them.
+
+    Returns:
+        ``(outcome, chunks)`` where outcome is one of ``"new"``,
+        ``"skipped_missing"``, or ``"skipped_large"`` and ``chunks`` is the
+        number of chunks written (0 for skips).
+    """
+    from pathlib import Path
+
+    path = Path(file_path) if file_path else None
+    if path is None or not path.exists():
+        return ("skipped_missing", 0)
+
+    if vectorize_cap > 0:
+        try:
+            file_size = path.stat().st_size
+        except OSError as stat_err:
+            logger.warning(f"stat() failed for {path}; skipping size-cap check: {stat_err}")
+            file_size = None
+        if file_size is not None and file_size > vectorize_cap:
+            logger.info(
+                f"Skipping vectorization of {path.name}: {file_size} bytes "
+                f"exceeds cap of {vectorize_cap} bytes"
+            )
+            try:
+                store.delete_file(file_id)
+            except Exception as e:  # Intentional broad catch: cleanup is best-effort
+                logger.debug(f"delete_file failed for {file_id}: {e}")
+            db_conn.execute(
+                "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
+                " vectorized_chunks = 0 WHERE id = ?",
+                (file_id,),
+            )
+            return ("skipped_large", file_size)
+
+    chunks = extractor.extract_with_chunking(path)
+    if not chunks:
+        return ("skipped_missing", 0)
+
+    metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
+    if use_upsert:
+        store.upsert_file(file_id, str(path), chunks, metadata)
+    else:
+        store.index_file(file_id, str(path), chunks, metadata)
+    db_conn.execute(
+        "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
+        " vectorized_chunks = ? WHERE id = ?",
+        (len(chunks), file_id),
+    )
+    return ("new", len(chunks))
+
+
 def _handle_shutdown(signum: int, frame: Any) -> None:
     global _shutdown
     _shutdown = True
@@ -241,8 +317,6 @@ def run_vectorization(
                         f"SELECT id, path FROM files WHERE {where}", statuses
                     ).fetchall()
 
-                from pathlib import Path
-
                 from footprinter.ingest.full_content_extractor import FullContentExtractor
                 from footprinter.source_registry import get_config
 
@@ -259,47 +333,22 @@ def run_vectorization(
                     file_path = row["path"] if isinstance(row, sqlite3.Row) else row[1]
                     processed += 1
                     try:
-                        path = Path(file_path) if file_path else None
-                        if path is None or not path.exists():
-                            counts["vectorized_skipped_missing"] += 1
-                            continue
-                        if vectorize_cap > 0:
-                            try:
-                                file_size = path.stat().st_size
-                            except OSError as stat_err:
-                                logger.warning(
-                                    f"stat() failed for {path}; skipping size-cap check: {stat_err}"
-                                )
-                                file_size = None
-                            if file_size is not None and file_size > vectorize_cap:
-                                logger.info(
-                                    f"Skipping vectorization of {path.name}: {file_size} bytes "
-                                    f"exceeds cap of {vectorize_cap} bytes"
-                                )
-                                counts["vectorized_skipped_large"] += 1
-                                skipped_large_files.append({"path": str(path), "size_bytes": file_size})
-                                try:
-                                    store.delete_file(file_id)
-                                except Exception as e:  # Intentional broad catch: cleanup is best-effort
-                                    logger.debug(f"delete_file failed for {file_id}: {e}")
-                                db.conn.execute(
-                                    "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
-                                    " vectorized_chunks = 0 WHERE id = ?",
-                                    (file_id,),
-                                )
-                                continue
-                        chunks = extractor.extract_with_chunking(path)
-                        if not chunks:
-                            counts["vectorized_skipped_missing"] += 1
-                            continue
-                        metadata = {"file_type": path.suffix.lower(), "file_name": path.name}
-                        store.upsert_file(file_id, str(path), chunks, metadata)
-                        db.conn.execute(
-                            "UPDATE files SET vectorized_at = CURRENT_TIMESTAMP,"
-                            " vectorized_chunks = ? WHERE id = ?",
-                            (len(chunks), file_id),
+                        outcome, value = _embed_one_file(
+                            store,
+                            extractor,
+                            db.conn,
+                            file_id,
+                            file_path,
+                            vectorize_cap=vectorize_cap,
+                            use_upsert=True,
                         )
-                        counts["vectorized_new"] += 1
+                        if outcome == "new":
+                            counts["vectorized_new"] += 1
+                        elif outcome == "skipped_missing":
+                            counts["vectorized_skipped_missing"] += 1
+                        elif outcome == "skipped_large":
+                            counts["vectorized_skipped_large"] += 1
+                            skipped_large_files.append({"path": file_path, "size_bytes": value})
                     except Exception as e:  # Intentional broad catch: per-row failure must not abort
                         counts["vectorized_failed"] += 1
                         failures.append(f"id={file_id}: {e}")
