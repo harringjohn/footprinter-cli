@@ -12,7 +12,6 @@ Usage:
 """
 
 import argparse
-import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -459,14 +458,17 @@ def register(subparsers) -> None:
     parser.set_defaults(func=_handle)
 
 
-def _handle(args) -> None:
-    """Route ``fp status`` to the appropriate handler."""
-    if getattr(args, "last_run", False):
-        from footprinter.ingest.run_record import load_run_record
+def _build_status_data(args) -> dict:
+    """Assemble the status ``data`` dict shared by both entrypoints.
 
-        print_last_run(load_run_record())
-        return
+    Performs the db-existence check, config load, counts/health gather, ``data``
+    assembly, and the ``visible_totals`` ``files_total`` alignment exactly once.
 
+    Returns the ``data`` dict. When no database exists it returns the empty-DB
+    skeleton (``counts``/``health``/``last_run`` populated as empty) with
+    ``database.exists`` False, leaving the JSON-vs-Panel rendering choice to the
+    caller.
+    """
     db_path = get_db_path()
     config_path = get_config_path()
 
@@ -483,20 +485,10 @@ def _handle(args) -> None:
     }
 
     if not db_path.exists():
-        if getattr(args, "json", False):
-            data["counts"] = {}
-            data["health"] = {}
-            data["last_run"] = None
-            output_json(data)
-        else:
-            console.print(
-                Panel(
-                    f"No database found at [cyan]{db_path}[/cyan]\nRun [bold]fp ingest[/bold] to start indexing.",
-                    title="Footprinter Status",
-                    expand=False,
-                )
-            )
-        return
+        data["counts"] = {}
+        data["health"] = {}
+        data["last_run"] = None
+        return data
 
     try:
         config = get_config()
@@ -510,14 +502,49 @@ def _handle(args) -> None:
         conn.close()
     health = get_source_health(config)
 
+    # Align files_total with visibility-filtered totals so the reported total
+    # matches the "Total files" the rich table displays.
+    counts["files_total"] = visible_totals(counts, health)["files"]
+
     data["counts"] = counts
     data["health"] = health
     data["last_run"] = counts.get("last_run")
+    return data
 
-    if getattr(args, "json", False):
+
+def _render_status(data: dict, *, as_json: bool) -> None:
+    """Render assembled status *data* as JSON or rich output.
+
+    Falls back to the no-database Panel for the non-JSON, no-db case.
+    """
+    if as_json:
         output_json(data)
-    else:
-        print_status(data, health)
+        return
+
+    if not data["database"]["exists"]:
+        console.print(
+            Panel(
+                f"No database found at [cyan]{data['database']['path']}[/cyan]\n"
+                "Run [bold]fp ingest[/bold] to start indexing.",
+                title="Footprinter Status",
+                expand=False,
+            )
+        )
+        return
+
+    print_status(data, data["health"])
+
+
+def _handle(args) -> None:
+    """Route ``fp status`` to the appropriate handler."""
+    if getattr(args, "last_run", False):
+        from footprinter.ingest.run_record import load_run_record
+
+        print_last_run(load_run_record())
+        return
+
+    data = _build_status_data(args)
+    _render_status(data, as_json=getattr(args, "json", False))
 
 
 def main() -> None:
@@ -548,62 +575,8 @@ def main() -> None:
         print_last_run(load_run_record())
         return
 
-    db_path = get_db_path()
-    config_path = get_config_path()
-
-    # Build structured data
-    data: dict = {
-        "database": {
-            "path": str(db_path),
-            "exists": db_path.exists(),
-            "size_mb": round(db_path.stat().st_size / 1024 / 1024, 1) if db_path.exists() else 0,
-        },
-        "config": {
-            "path": str(config_path),
-            "exists": config_path.exists(),
-        },
-    }
-
-    if not db_path.exists():
-        if args.json:
-            data["counts"] = {}
-            data["health"] = {}
-            data["last_run"] = None
-            print(json.dumps(data, indent=2, default=str))
-        else:
-            console.print(
-                Panel(
-                    f"No database found at [cyan]{db_path}[/cyan]\nRun [bold]fp ingest[/bold] to start indexing.",
-                    title="Footprinter Status",
-                    expand=False,
-                )
-            )
-        return
-
-    try:
-        config = get_config()
-    except Exception:
-        config = None
-
-    conn = connect_db(db_path)
-    try:
-        counts = get_data_counts(conn)
-    finally:
-        conn.close()
-    health = get_source_health(config)
-
-    data["counts"] = counts
-    data["health"] = health
-    data["last_run"] = counts.get("last_run")
-
-    # Align files_total with visibility-filtered totals
-    totals = visible_totals(counts, health)
-    counts["files_total"] = totals["files"]
-
-    if args.json:
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print_status(data, health)
+    data = _build_status_data(args)
+    _render_status(data, as_json=args.json)
 
 
 if __name__ == "__main__":

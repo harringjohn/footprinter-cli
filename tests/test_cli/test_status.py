@@ -1071,6 +1071,101 @@ class TestDynamicConnectorHealth:
         assert health.get("connector_rows", []) == []
 
 
+class TestEntrypointParity:
+    """``fp status`` (``_handle``) and ``python -m`` (``main``) must agree.
+
+    Both entrypoints must emit identical JSON for the same DB, including a
+    visibility-filtered ``files_total``. Previously ``main`` aligned
+    ``files_total`` with ``visible_totals`` but ``_handle`` did not, so the two
+    paths diverged on that single field.
+    """
+
+    # Raw counts: local + a remote source. files_total is the all-source sum;
+    # with remote disabled the visible total is local-only (10), so the raw
+    # field (60) must be corrected on both paths.
+    _RAW_COUNTS = {
+        "files": {
+            "local": {"count": 10, "size_mb": 1.0},
+            "gdrive_work": {"count": 50, "size_mb": 5.0},
+        },
+        "files_total": 60,
+        "folders": {"local": 3, "gdrive_work": 20},
+        "visits": 0,
+        "emails": 0,
+        "chats": {},
+        "messages": 0,
+        "top_chats": [],
+        "chat_date_range": {"earliest": None, "latest": None},
+        "remote_source_accounts": {"gdrive_work": "work"},
+        "recent_files": [],
+        "recent_uploads": [],
+        "last_run": None,
+        "access_resolution": {},
+    }
+
+    # Remote disabled — visible_totals excludes gdrive_work.
+    _HEALTH = {
+        "connector_rows": [],
+        "remote_enabled": False,
+        "semantic": {"enabled": False, "installed": False, "available": False},
+    }
+
+    def _patched(self, db_path, monkeypatch):
+        """Patch module-level data/health/config so both paths see identical inputs."""
+        from unittest.mock import patch
+
+        monkeypatch.setenv("FOOTPRINTER_DB_PATH", str(db_path))
+        return (
+            patch("footprinter.cli.status.get_data_counts", return_value=dict(self._RAW_COUNTS)),
+            patch("footprinter.cli.status.get_source_health", return_value=self._HEALTH),
+            patch("footprinter.cli.status.get_config", return_value={}),
+        )
+
+    def _router_json(self, db_path, monkeypatch):
+        """Capture JSON from the router path (``fp status --json`` → ``_handle``)."""
+        from conftest import run_fp
+
+        p1, p2, p3 = self._patched(db_path, monkeypatch)
+        with p1, p2, p3:
+            stdout, _stderr, code = run_fp("status", "--json")
+        assert code == 0, stdout
+        return stdout
+
+    def _module_json(self, db_path, monkeypatch, capsys):
+        """Capture JSON from the module path (``python -m ... --json`` → ``main``)."""
+        from footprinter.cli.status import main
+
+        monkeypatch.setattr("sys.argv", ["fp", "--json"])
+        p1, p2, p3 = self._patched(db_path, monkeypatch)
+        with p1, p2, p3:
+            main()
+        return capsys.readouterr().out
+
+    def test_both_entrypoints_emit_identical_json(self, status_db, monkeypatch, capsys):
+        conn, db_path = status_db
+        conn.commit()
+
+        router = self._router_json(db_path, monkeypatch)
+        module = self._module_json(db_path, monkeypatch, capsys)
+
+        assert json.loads(router) == json.loads(module)
+
+    def test_handle_reports_visibility_filtered_files_total(self, status_db, monkeypatch, capsys):
+        """The router path (``_handle``) must report the visible files_total, not the raw sum."""
+        from footprinter.services.status_service import visible_totals
+
+        conn, db_path = status_db
+        conn.commit()
+
+        router = self._router_json(db_path, monkeypatch)
+        data = json.loads(router)
+
+        expected = visible_totals(self._RAW_COUNTS, self._HEALTH)["files"]
+        assert expected == 10  # local-only; sanity check on the fixture
+        assert data["counts"]["files_total"] == expected
+        assert data["counts"]["files_total"] != self._RAW_COUNTS["files_total"]
+
+
 class TestAccessResolution:
     """Access resolution counts (stamped vs total) in fp status."""
 
