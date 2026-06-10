@@ -187,3 +187,34 @@ class TestCascadeWithLocalFolders:
         ).fetchall()
         for row in rows:
             assert row["project_id"] == 1
+
+    def test_backfill_links_pre_existing_null_fk_tree(self, local_conn):
+        """A pre-existing tree (parent_path set, parent_folder_id NULL) is
+        backfilled, then cascade reaches all descendants — the doctor-repair
+        scenario where no full re-ingest has run."""
+        from footprinter.db.folders import cascade_project_id, link_local_folder_parents
+
+        # Sanity: every non-root folder starts with a NULL FK.
+        null_before = local_conn.execute(
+            "SELECT COUNT(*) FROM folders WHERE parent_folder_id IS NULL"
+        ).fetchone()[0]
+        assert null_before == 4
+
+        linked = link_local_folder_parents(local_conn)
+        # Root has no parent_path; the three children/grandchild get linked.
+        assert linked == 3
+
+        # FKs now resolve so the recursive CTE reaches every descendant + file.
+        result = cascade_project_id(local_conn, 1, 1)
+        assert result["folders_updated"] == 4
+        assert result["files_updated"] == 4
+
+    def test_backfill_is_idempotent(self, local_conn):
+        """Re-running the backfill on an already-linked DB is a no-op."""
+        from footprinter.db.folders import link_local_folder_parents
+
+        first = link_local_folder_parents(local_conn)
+        assert first == 3
+
+        second = link_local_folder_parents(local_conn)
+        assert second == 0

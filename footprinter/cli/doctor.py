@@ -428,7 +428,8 @@ def register(subparsers) -> None:
             "  fp doctor search           Rebuild FTS search indexes\n"
             "  fp doctor semantic         Rebuild vector store (incremental)\n"
             "  fp doctor semantic full    Rebuild vector store (full reset)\n"
-            "  fp doctor repair-vectorized-at  Restore lost vectorized_at timestamps"
+            "  fp doctor repair-vectorized-at  Restore lost vectorized_at timestamps\n"
+            "  fp doctor link-folders     Backfill parent links for local folders"
         ),
         formatter_class=FORMATTER,
     )
@@ -496,6 +497,44 @@ def register(subparsers) -> None:
         "--quiet", "-q", action="store_true", help="Suppress Rich output",
     )
     repair_vec_p.set_defaults(func=_handle_repair_vectorized_at)
+
+    # fp doctor link-folders
+    link_p = sub.add_parser(
+        "link-folders",
+        help="Backfill parent links for local folders",
+        description=(
+            "Resolve parent_path -> parent_folder_id for local folders whose "
+            "parent link is missing. Repairs existing databases so folder-tree "
+            "cascades (project/client assignment) reach every descendant "
+            "without a full re-ingest. Idempotent."
+        ),
+        formatter_class=FORMATTER,
+    )
+    link_p.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress Rich output",
+    )
+    link_p.set_defaults(func=_handle_link_folders)
+
+
+def _handle_link_folders(args) -> None:
+    from footprinter.cli._common import console
+    from footprinter.db.folders import link_local_folder_parents
+    from footprinter.ingest.database import Database
+    from footprinter.paths import get_db_path
+
+    quiet = getattr(args, "quiet", False)
+
+    db = Database(str(get_db_path()))
+    try:
+        linked = link_local_folder_parents(db.conn)
+        db.conn.commit()
+
+        if not quiet:
+            console.print(
+                f"[green]Linked {linked} folder(s) to parents[/green]"
+            )
+    finally:
+        db.close()
 
 
 def _handle_repair_vectorized_at(args) -> None:
