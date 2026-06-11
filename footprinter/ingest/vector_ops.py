@@ -224,7 +224,7 @@ def _cleanup_removed_vectors(conn, cursor, store, *, clean_files=True, clean_mes
     return {"removed": removed_count, "removed_messages": msg_count, "removed_chats": chat_count}
 
 
-def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: str = "full") -> dict:
+def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full") -> dict:
     """Vectorize local files.
 
     Returns {"done": N, "chunks": M, "interrupted": bool}.
@@ -238,9 +238,7 @@ def _vectorize_files(conn, cursor, store, extractor, vec_config, console, mode: 
     # here: it lives in exactly one place — the shared extractor reached via
     # _embed_one_file (FullContentExtractor._extract_full_content), which returns
     # None for a disallowed extension or excluded path — so the two file-embed
-    # entry points cannot drift on what counts as eligible. vec_config stays in
-    # the signature because callers still pass it; the extractor is built from the
-    # same config upstream.
+    # entry points cannot drift on what counts as eligible.
     statuses = _get_vectorize_statuses()
     status_ph = ",".join("?" * len(statuses))
     where_parts = [
@@ -721,9 +719,7 @@ def rebuild_vectors(
                 raise
 
         # Build extractor. The extractor enforces file-type / exclusion
-        # eligibility at extract time; vec_config is still passed to
-        # _vectorize_files for signature compatibility but no longer drives SQL.
-        vec_config = config.get("vectorization", {})
+        # eligibility at extract time — the file selector no longer filters on it.
         extractor = FullContentExtractor.from_config(config)
 
         if console:
@@ -755,7 +751,6 @@ def rebuild_vectors(
                 cursor,
                 store,
                 extractor,
-                vec_config,
                 console,
                 mode=mode,
             )
