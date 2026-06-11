@@ -159,11 +159,11 @@ conn.execute(
 
 # Projects: 2 rows (1 listed, 1 removed)
 conn.execute(
-    "INSERT INTO projects (project_name, status) "
+    "INSERT INTO projects (name, status) "
     "VALUES ('Alpha Project', 'listed')"
 )
 conn.execute(
-    "INSERT INTO projects (project_name, status) "
+    "INSERT INTO projects (name, status) "
     "VALUES ('Dead Project', 'removed')"
 )
 
