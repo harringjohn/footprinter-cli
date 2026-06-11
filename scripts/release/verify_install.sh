@@ -13,8 +13,8 @@
 #   bash scripts/release/verify_install.sh <version> --with-pytest
 #
 # Example:
-#   bash scripts/release/verify_install.sh 1.0.5
-#   bash scripts/release/verify_install.sh 1.0.5 --with-pytest
+#   bash scripts/release/verify_install.sh 1.1.0
+#   bash scripts/release/verify_install.sh 1.1.0 --with-pytest
 #
 # Exit code: 0 on full pass, 1 on any failure.
 
@@ -50,8 +50,8 @@ usage() {
     echo "  --with-pytest   Copy the test suite and run pytest against the installed package" >&2
     echo "" >&2
     echo "Example:" >&2
-    echo "  bash $0 1.0.5" >&2
-    echo "  bash $0 1.0.5 --with-pytest" >&2
+    echo "  bash $0 1.1.0" >&2
+    echo "  bash $0 1.1.0 --with-pytest" >&2
     exit 1
 }
 

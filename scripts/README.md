@@ -15,8 +15,8 @@ Utility scripts for Footprinter operations. All scripts should be run from the p
 | `bash scripts/qa.sh --list` | List available QA tiers |
 | `bash scripts/qa.sh smoke` | Run post-install smoke checks |
 | `bash scripts/qa.sh cli-verify` | Run the full CLI surface verification |
-| `bash scripts/qa.sh verify-upgrade 1.0.4 --from 1.0.3` | Verify upgrade path from previous release |
-| `bash scripts/qa.sh verify-install 1.0.5 --with-pytest` | Verify installed wheel (entry points + optional pytest against installed package) |
+| `bash scripts/qa.sh verify-upgrade 1.1.0 --from 1.0.5` | Verify upgrade path from previous release |
+| `bash scripts/qa.sh verify-install 1.1.0 --with-pytest` | Verify installed wheel (entry points + optional pytest against installed package) |
 | `bash scripts/qa.sh all` | Run all tiers that need no extra args |
 
 Excluded from `all`: `verify-upgrade`, `verify-install` (need version arguments)
@@ -82,8 +82,8 @@ PY=./venv/bin/python3 bash scripts/snapshot-qa/smoke.sh
 | `verify_install.sh` | Tier 5: installed-package verification (clean venv, entry points, optional pytest) |
 
 ```bash
-bash scripts/release/verify_upgrade.sh 1.0.4 --from 1.0.3
-bash scripts/release/verify_install.sh 1.0.5 --with-pytest
+bash scripts/release/verify_upgrade.sh 1.1.0 --from 1.0.5
+bash scripts/release/verify_install.sh 1.1.0 --with-pytest
 ```
 
 ---
