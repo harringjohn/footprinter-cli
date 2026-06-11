@@ -224,6 +224,31 @@ def _cleanup_removed_vectors(conn, cursor, store, *, clean_files=True, clean_mes
     return {"removed": removed_count, "removed_messages": msg_count, "removed_chats": chat_count}
 
 
+def _print_skipped_large(console, files_result: dict) -> None:
+    """Surface files dropped for exceeding the vectorize size cap.
+
+    Mirrors the end-of-run summary in ``_vectorize_stage`` so a file silently
+    missing from search is visible in every rebuild mode, not just ``full``.
+    No-op when nothing was skipped or ``console`` is absent.
+    """
+    if console is None:
+        return
+    skipped_large = files_result.get("skipped_large", 0)
+    if not skipped_large:
+        return
+    console.print(f"  Files: {skipped_large} skipped (too large)")
+    skipped_large_files = files_result.get("skipped_large_files") or []
+    if not skipped_large_files:
+        return
+    from footprinter.utils.paths import abbreviate_home
+
+    for entry in skipped_large_files:
+        size_mb = (entry.get("size_bytes") or 0) / (1024 * 1024)
+        console.print(
+            f"      {size_mb:>7.1f} MB  {abbreviate_home(entry.get('path', ''))}"
+        )
+
+
 def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full") -> dict:
     """Vectorize local files.
 
@@ -824,25 +849,14 @@ def rebuild_vectors(
                     removed_count = cleanup.get("removed", 0)
                     chunks_count = files_r.get("chunks", 0)
                     console.print(f"  Files: {new_count} new/modified ({chunks_count} chunks), {removed_count} removed")
+                    _print_skipped_large(console, files_r)
                 elif do_files:
                     console.print("  Files: skipped (--source chats)")
             else:
                 if "files" in results:
                     r = results["files"]
                     console.print(f"  Files: {r['done']} vectorized ({r['chunks']} chunks)")
-                    skipped_large = r.get("skipped_large", 0)
-                    if skipped_large:
-                        console.print(f"  Files: {skipped_large} skipped (too large)")
-                        skipped_large_files = r.get("skipped_large_files") or []
-                        if skipped_large_files:
-                            from footprinter.utils.paths import abbreviate_home
-
-                            for entry in skipped_large_files:
-                                size_mb = (entry.get("size_bytes") or 0) / (1024 * 1024)
-                                console.print(
-                                    f"      {size_mb:>7.1f} MB  "
-                                    f"{abbreviate_home(entry.get('path', ''))}"
-                                )
+                    _print_skipped_large(console, r)
                 elif run_files:
                     console.print("  Files: skipped (disabled)")
                 elif do_files:

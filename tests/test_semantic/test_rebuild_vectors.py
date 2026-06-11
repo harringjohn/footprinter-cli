@@ -1681,6 +1681,47 @@ class TestVectorizeFilesEligibilityConverged:
         )
 
 
+class TestPrintSkippedLarge:
+    """The skipped-large summary renders in every rebuild mode, not just full."""
+
+    def test_renders_count_and_per_file_detail(self):
+        """The summary prints the count and a size+path line per skipped file."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        console = MagicMock()
+        files_result = {
+            "skipped_large": 1,
+            "skipped_large_files": [
+                {"path": "/some/dir/huge.md", "size_bytes": 5 * 1024 * 1024}
+            ],
+        }
+
+        _print_skipped_large(console, files_result)
+
+        printed = "\n".join(str(c.args[0]) for c in console.print.call_args_list)
+        assert "1 skipped (too large)" in printed, printed
+        # Per-file detail mirrors the _vectorize_stage format: size in MB + path.
+        assert "5.0 MB" in printed, printed
+        assert "huge.md" in printed, printed
+
+    def test_no_op_when_nothing_skipped(self):
+        """A clean run prints nothing about skipped-large files."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        console = MagicMock()
+        _print_skipped_large(console, {"skipped_large": 0, "skipped_large_files": []})
+        console.print.assert_not_called()
+
+    def test_no_op_without_console(self):
+        """Quiet mode (console=None) is tolerated without error."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        _print_skipped_large(
+            None,
+            {"skipped_large": 1, "skipped_large_files": [{"path": "/x", "size_bytes": 1}]},
+        )
+
+
 # ---------------------------------------------------------------------------
 # Preflight vectorize exclusion
 # ---------------------------------------------------------------------------
