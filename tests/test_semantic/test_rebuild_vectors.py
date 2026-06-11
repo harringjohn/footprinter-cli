@@ -1632,6 +1632,95 @@ class TestVectorizeFilesEligibilityConverged:
             f"skip.txt should not be embedded, got {embedded_paths}"
         )
 
+    def test_vectorize_files_surfaces_skipped_large(self, tmp_path):
+        """A file over the vectorize size cap is reported in the rebuild result.
+
+        The doctor-rebuild path must mirror run_vectorization: count the
+        skipped-large file and collect its path + size_bytes, rather than
+        silently dropping it from the summary. The size-cap decision still
+        lives in _embed_one_file — _vectorize_files only reports it, so no
+        extra file is embedded.
+        """
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        big = tmp_path / "big.md"
+        big.write_text("this content comfortably exceeds the tiny cap")
+        expected_size = big.stat().st_size
+        conn = _make_preflight_db(
+            files=[{"id": 1, "status": "listed", "path": str(big)}]
+        )
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+        extractor.max_vectorize_size_bytes = 10  # tiny cap → size-cap branch fires
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            result = _vectorize_files(
+                conn, cursor, store, extractor, console=None, mode="full"
+            )
+
+        # The oversize file is counted and listed with its size.
+        assert result["skipped_large"] >= 1, (
+            f"skipped_large count should be >=1, got {result.get('skipped_large')!r}"
+        )
+        assert result["skipped_large_files"] == [
+            {"path": str(big), "size_bytes": expected_size}
+        ], (
+            "skipped_large_files must carry the path + size_bytes of the skipped "
+            f"file, got {result.get('skipped_large_files')!r}"
+        )
+
+        # No change to which files are embedded: the oversize file is skipped,
+        # not embedded, so done stays 0 and no embed write was issued.
+        assert result["done"] == 0, f"done should be 0, got {result['done']}"
+        assert _embed_call_count(store) == 0, (
+            "the oversize file must be skipped, not embedded"
+        )
+
+
+class TestPrintSkippedLarge:
+    """The skipped-large summary renders in every rebuild mode, not just full."""
+
+    def test_renders_count_and_per_file_detail(self):
+        """The summary prints the count and a size+path line per skipped file."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        console = MagicMock()
+        files_result = {
+            "skipped_large": 1,
+            "skipped_large_files": [
+                {"path": "/some/dir/huge.md", "size_bytes": 5 * 1024 * 1024}
+            ],
+        }
+
+        _print_skipped_large(console, files_result)
+
+        printed = "\n".join(str(c.args[0]) for c in console.print.call_args_list)
+        assert "1 skipped (too large)" in printed, printed
+        # Per-file detail mirrors the _vectorize_stage format: size in MB + path.
+        assert "5.0 MB" in printed, printed
+        assert "huge.md" in printed, printed
+
+    def test_no_op_when_nothing_skipped(self):
+        """A clean run prints nothing about skipped-large files."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        console = MagicMock()
+        _print_skipped_large(console, {"skipped_large": 0, "skipped_large_files": []})
+        console.print.assert_not_called()
+
+    def test_no_op_without_console(self):
+        """Quiet mode (console=None) is tolerated without error."""
+        from footprinter.ingest.vector_ops import _print_skipped_large
+
+        _print_skipped_large(
+            None,
+            {"skipped_large": 1, "skipped_large_files": [{"path": "/x", "size_bytes": 1}]},
+        )
+
 
 # ---------------------------------------------------------------------------
 # Preflight vectorize exclusion

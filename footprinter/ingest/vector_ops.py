@@ -224,10 +224,39 @@ def _cleanup_removed_vectors(conn, cursor, store, *, clean_files=True, clean_mes
     return {"removed": removed_count, "removed_messages": msg_count, "removed_chats": chat_count}
 
 
+def _print_skipped_large(console, files_result: dict) -> None:
+    """Surface files dropped for exceeding the vectorize size cap.
+
+    Mirrors the end-of-run summary in ``_vectorize_stage`` so a file silently
+    missing from search is visible in every rebuild mode, not just ``full``.
+    No-op when nothing was skipped or ``console`` is absent.
+    """
+    if console is None:
+        return
+    skipped_large = files_result.get("skipped_large", 0)
+    if not skipped_large:
+        return
+    console.print(f"  Files: {skipped_large} skipped (too large)")
+    skipped_large_files = files_result.get("skipped_large_files") or []
+    if not skipped_large_files:
+        return
+    from footprinter.utils.paths import abbreviate_home
+
+    for entry in skipped_large_files:
+        size_mb = (entry.get("size_bytes") or 0) / (1024 * 1024)
+        console.print(
+            f"      {size_mb:>7.1f} MB  {abbreviate_home(entry.get('path', ''))}"
+        )
+
+
 def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full") -> dict:
     """Vectorize local files.
 
-    Returns {"done": N, "chunks": M, "interrupted": bool}.
+    Returns {"done": N, "chunks": M, "skipped_large": K,
+    "skipped_large_files": [{"path", "size_bytes"}, ...], "interrupted": bool}.
+    The ``skipped_large`` keys mirror ``run_vectorization`` so a file dropped
+    for exceeding the size cap is surfaced in the rebuild summary, not silently
+    omitted.
     """
     global _shutdown
 
@@ -261,6 +290,8 @@ def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full"
     total = len(files)
     done = 0
     chunks = 0
+    skipped_large = 0
+    skipped_large_files: list = []
 
     # Use upsert in incremental/sync mode (handles both new and modified)
     use_upsert = mode in ("incremental", "sync")
@@ -270,7 +301,13 @@ def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full"
             conn.commit()
             if console:
                 console.print(f"  [yellow]Interrupted[/yellow] at {done}/{total} files")
-            return {"done": done, "chunks": chunks, "interrupted": True}
+            return {
+                "done": done,
+                "chunks": chunks,
+                "skipped_large": skipped_large,
+                "skipped_large_files": skipped_large_files,
+                "interrupted": True,
+            }
 
         try:
             embed = _embed_one_file(
@@ -289,6 +326,14 @@ def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full"
                     conn.commit()
                     if console:
                         console.print(f"  Vectorizing files: {done}/{total}")
+            elif embed.outcome == "skipped_large":
+                # Mirror run_vectorization: count the oversize file and record
+                # its path + size so the rebuild summary can surface it instead
+                # of silently dropping it.
+                skipped_large += 1
+                skipped_large_files.append(
+                    {"path": f["file_path"], "size_bytes": embed.size_bytes}
+                )
         except Exception as e:
             # Per-file failure (extraction or chroma write) must not abort the
             # rebuild. Log at warning so a persistent failure stays visible at
@@ -296,7 +341,13 @@ def _vectorize_files(conn, cursor, store, extractor, console, mode: str = "full"
             logger.warning("Failed to vectorize file %s: %s", f["file_path"], e)
 
     conn.commit()
-    return {"done": done, "chunks": chunks, "interrupted": False}
+    return {
+        "done": done,
+        "chunks": chunks,
+        "skipped_large": skipped_large,
+        "skipped_large_files": skipped_large_files,
+        "interrupted": False,
+    }
 
 
 def _vectorize_messages(conn, cursor, store, console, mode: str = "full") -> dict:
@@ -798,12 +849,14 @@ def rebuild_vectors(
                     removed_count = cleanup.get("removed", 0)
                     chunks_count = files_r.get("chunks", 0)
                     console.print(f"  Files: {new_count} new/modified ({chunks_count} chunks), {removed_count} removed")
+                    _print_skipped_large(console, files_r)
                 elif do_files:
                     console.print("  Files: skipped (--source chats)")
             else:
                 if "files" in results:
                     r = results["files"]
                     console.print(f"  Files: {r['done']} vectorized ({r['chunks']} chunks)")
+                    _print_skipped_large(console, r)
                 elif run_files:
                     console.print("  Files: skipped (disabled)")
                 elif do_files:
