@@ -1632,6 +1632,54 @@ class TestVectorizeFilesEligibilityConverged:
             f"skip.txt should not be embedded, got {embedded_paths}"
         )
 
+    def test_vectorize_files_surfaces_skipped_large(self, tmp_path):
+        """A file over the vectorize size cap is reported in the rebuild result.
+
+        The doctor-rebuild path must mirror run_vectorization: count the
+        skipped-large file and collect its path + size_bytes, rather than
+        silently dropping it from the summary. The size-cap decision still
+        lives in _embed_one_file — _vectorize_files only reports it, so no
+        extra file is embedded.
+        """
+        from footprinter.ingest.vector_ops import _vectorize_files
+
+        big = tmp_path / "big.md"
+        big.write_text("this content comfortably exceeds the tiny cap")
+        expected_size = big.stat().st_size
+        conn = _make_preflight_db(
+            files=[{"id": 1, "status": "listed", "path": str(big)}]
+        )
+        cursor = conn.cursor()
+        store = MagicMock()
+        extractor = _mock_extractor()
+        extractor.max_vectorize_size_bytes = 10  # tiny cap → size-cap branch fires
+
+        with patch(
+            "footprinter.ingest.vector_ops._get_vectorize_statuses",
+            return_value=["listed"],
+        ):
+            result = _vectorize_files(
+                conn, cursor, store, extractor, console=None, mode="full"
+            )
+
+        # The oversize file is counted and listed with its size.
+        assert result["skipped_large"] >= 1, (
+            f"skipped_large count should be >=1, got {result.get('skipped_large')!r}"
+        )
+        assert result["skipped_large_files"] == [
+            {"path": str(big), "size_bytes": expected_size}
+        ], (
+            "skipped_large_files must carry the path + size_bytes of the skipped "
+            f"file, got {result.get('skipped_large_files')!r}"
+        )
+
+        # No change to which files are embedded: the oversize file is skipped,
+        # not embedded, so done stays 0 and no embed write was issued.
+        assert result["done"] == 0, f"done should be 0, got {result['done']}"
+        assert _embed_call_count(store) == 0, (
+            "the oversize file must be skipped, not embedded"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Preflight vectorize exclusion
