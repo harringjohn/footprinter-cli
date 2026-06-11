@@ -1408,7 +1408,7 @@ class TestVectorizeFilesHonorsStatuses:
             "footprinter.ingest.vector_ops._get_vectorize_statuses",
             return_value=["listed"],
         ):
-            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+            _vectorize_files(conn, cursor, store, extractor, console=None, mode="full")
 
         assert _embed_call_count(store) == 1, "Default statuses should embed only the listed file"
 
@@ -1425,7 +1425,7 @@ class TestVectorizeFilesHonorsStatuses:
             "footprinter.ingest.vector_ops._get_vectorize_statuses",
             return_value=["listed", "unlisted"],
         ):
-            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+            _vectorize_files(conn, cursor, store, extractor, console=None, mode="full")
 
         assert _embed_call_count(store) == 2, (
             "Widened vectorize_statuses should embed both listed and unlisted files"
@@ -1516,9 +1516,9 @@ class TestVectorizeFilesEligibilityConverged:
     """
 
     def test_sql_no_longer_prefilters_file_types(self, tmp_path):
-        """With a mock extractor (so extraction never rejects), both rows are
-        selected and embedded even when vec_config restricts file_types — proving
-        the file_types SQL clause is gone."""
+        """With a mock extractor (so extraction never rejects), both a .md and a
+        .txt row are selected and embedded — proving the SQL has no file_types
+        clause; eligibility lives in the extractor, not the selector."""
         from footprinter.ingest.vector_ops import _vectorize_files
 
         md = tmp_path / "a.md"
@@ -1544,7 +1544,6 @@ class TestVectorizeFilesEligibilityConverged:
                 cursor,
                 store,
                 extractor,
-                vec_config={"file_types": [".md"]},
                 console=None,
                 mode="full",
             )
@@ -1583,7 +1582,6 @@ class TestVectorizeFilesEligibilityConverged:
                 cursor,
                 store,
                 extractor,
-                vec_config={"exclude_patterns": ["**/node_modules/**"]},
                 console=None,
                 mode="full",
             )
@@ -1619,7 +1617,7 @@ class TestVectorizeFilesEligibilityConverged:
             "footprinter.ingest.vector_ops._get_vectorize_statuses",
             return_value=["listed"],
         ):
-            _vectorize_files(conn, cursor, store, extractor, vec_config={}, console=None, mode="full")
+            _vectorize_files(conn, cursor, store, extractor, console=None, mode="full")
 
         assert _embed_call_count(store) == 1, (
             "Only the .md file should be embedded — eligibility enforced by the extractor"
