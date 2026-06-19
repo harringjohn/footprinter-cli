@@ -343,20 +343,20 @@ class TestMCPSetupE2E:
     def test_full_write_cycle(self, tmp_path):
         """generate → write → read-back should succeed end-to-end."""
         from footprinter.cli.mcp_setup import (
-            generate_snippet,
+            generate_config_block,
             has_footprinter_entry,
             write_config,
         )
 
         config_path = tmp_path / "claude_desktop_config.json"
 
-        # Generate snippet
-        snippet = generate_snippet()
-        assert "mcpServers" in snippet
-        assert "footprinter" in snippet["mcpServers"]
+        # Generate config_block
+        config_block = generate_config_block()
+        assert "mcpServers" in config_block
+        assert "footprinter" in config_block["mcpServers"]
 
         # Write
-        ok = write_config(snippet, config_path=config_path)
+        ok = write_config(config_block, config_path=config_path)
         assert ok is True
         assert config_path.exists()
 
@@ -367,7 +367,7 @@ class TestMCPSetupE2E:
 
     def test_merge_preserves_existing_servers(self, tmp_path):
         """Writing footprinter config should not clobber other MCP servers."""
-        from footprinter.cli.mcp_setup import generate_snippet, write_config
+        from footprinter.cli.mcp_setup import generate_config_block, write_config
 
         config_path = tmp_path / "claude_desktop_config.json"
         existing = {
@@ -378,8 +378,8 @@ class TestMCPSetupE2E:
         }
         config_path.write_text(json.dumps(existing))
 
-        snippet = generate_snippet()
-        write_config(snippet, config_path=config_path)
+        config_block = generate_config_block()
+        write_config(config_block, config_path=config_path)
 
         config = json.loads(config_path.read_text())
         assert "other-tool" in config["mcpServers"]
@@ -388,29 +388,29 @@ class TestMCPSetupE2E:
 
     def test_backup_created_on_write(self, tmp_path):
         """Writing to existing config should create a .backup_ file."""
-        from footprinter.cli.mcp_setup import generate_snippet, write_config
+        from footprinter.cli.mcp_setup import generate_config_block, write_config
 
         config_path = tmp_path / "claude_desktop_config.json"
         config_path.write_text(json.dumps({"mcpServers": {}}))
 
-        write_config(generate_snippet(), config_path=config_path)
+        write_config(generate_config_block(), config_path=config_path)
         backups = list(tmp_path.glob("*.backup_*.json"))
         assert len(backups) >= 1
 
-    def test_snippet_uses_sys_executable(self):
-        """MCP snippet command should be sys.executable when no run_mcp.sh exists."""
+    def test_config_block_uses_sys_executable(self):
+        """MCP config_block command should be sys.executable when no run_mcp.sh exists."""
         from unittest.mock import patch as _patch
 
-        from footprinter.cli.mcp_setup import generate_snippet
+        from footprinter.cli.mcp_setup import generate_config_block
 
         # Use a tmp_path with no run_mcp.sh, and mock fp-mcp not on PATH
         with (
             tempfile.TemporaryDirectory() as tmp,
             _patch("footprinter.cli.mcp_setup.shutil.which", return_value=None),
         ):
-            snippet = generate_snippet(project_root=Path(tmp))
+            config_block = generate_config_block(project_root=Path(tmp))
 
-        command = snippet["mcpServers"]["footprinter"]["command"]
+        command = config_block["mcpServers"]["footprinter"]["command"]
         assert command == sys.executable
 
     def test_has_footprinter_entry_false_for_missing(self, tmp_path):

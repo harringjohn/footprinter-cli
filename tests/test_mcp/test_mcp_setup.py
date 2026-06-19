@@ -12,9 +12,9 @@ from rich.console import Console as RichConsole
 from footprinter.cli.mcp_setup import (
     _is_dev_checkout,
     detect_config_path,
-    generate_snippet,
+    generate_config_block,
     get_mcp_command,
-    print_snippet,
+    print_config_block,
     write_config,
 )
 
@@ -77,40 +77,40 @@ class TestConfigPathDetection:
 # TestSnippetGeneration — 9 tests
 # ---------------------------------------------------------------------------
 class TestSnippetGeneration:
-    """Tests for generate_snippet()."""
+    """Tests for generate_config_block()."""
 
     def test_returns_dict_with_mcp_servers(self):
-        snippet = generate_snippet()
-        assert "mcpServers" in snippet
-        assert "footprinter" in snippet["mcpServers"]
+        config_block = generate_config_block()
+        assert "mcpServers" in config_block
+        assert "footprinter" in config_block["mcpServers"]
 
     def test_server_has_command(self):
-        snippet = generate_snippet()
-        server = snippet["mcpServers"]["footprinter"]
+        config_block = generate_config_block()
+        server = config_block["mcpServers"]["footprinter"]
         assert "command" in server
 
     def test_server_has_cwd(self, tmp_path):
-        """Dev checkout (mocked): snippet includes cwd."""
+        """Dev checkout (mocked): config_block includes cwd."""
         (tmp_path / "pyproject.toml").touch()
         with (
             patch("footprinter.cli.mcp_setup._repo_root", return_value=tmp_path),
             patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"),
         ):
-            snippet = generate_snippet()
-        server = snippet["mcpServers"]["footprinter"]
+            config_block = generate_config_block()
+        server = config_block["mcpServers"]["footprinter"]
         assert "cwd" in server
         assert server["cwd"] == str(tmp_path)
 
     def test_custom_project_root(self, tmp_path):
-        snippet = generate_snippet(project_root=tmp_path)
-        server = snippet["mcpServers"]["footprinter"]
+        config_block = generate_config_block(project_root=tmp_path)
+        server = config_block["mcpServers"]["footprinter"]
         assert server["cwd"] == str(tmp_path)
 
     def test_produces_valid_json(self):
-        snippet = generate_snippet()
-        json_str = json.dumps(snippet)
+        config_block = generate_config_block()
+        json_str = json.dumps(config_block)
         parsed = json.loads(json_str)
-        assert parsed == snippet
+        assert parsed == config_block
 
     def test_cwd_omitted_for_pip_install(self, tmp_path):
         """Pip-install scenario: no pyproject.toml at repo root → cwd omitted."""
@@ -119,8 +119,8 @@ class TestSnippetGeneration:
             patch("footprinter.cli.mcp_setup._repo_root", return_value=tmp_path),
             patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"),
         ):
-            snippet = generate_snippet()
-        server = snippet["mcpServers"]["footprinter"]
+            config_block = generate_config_block()
+        server = config_block["mcpServers"]["footprinter"]
         assert "cwd" not in server
 
     def test_cwd_set_for_dev_checkout(self, tmp_path):
@@ -130,8 +130,8 @@ class TestSnippetGeneration:
             patch("footprinter.cli.mcp_setup._repo_root", return_value=tmp_path),
             patch("footprinter.cli.mcp_setup.shutil.which", return_value="/usr/local/bin/fp"),
         ):
-            snippet = generate_snippet()
-        server = snippet["mcpServers"]["footprinter"]
+            config_block = generate_config_block()
+        server = config_block["mcpServers"]["footprinter"]
         assert server["cwd"] == str(tmp_path)
 
     def test_pip_install_no_fp_falls_back_to_sys_executable(self, tmp_path):
@@ -140,21 +140,21 @@ class TestSnippetGeneration:
             patch("footprinter.cli.mcp_setup._repo_root", return_value=tmp_path),
             patch("footprinter.cli.mcp_setup.shutil.which", return_value=None),
         ):
-            snippet = generate_snippet()
-        server = snippet["mcpServers"]["footprinter"]
+            config_block = generate_config_block()
+        server = config_block["mcpServers"]["footprinter"]
         assert server["command"] == sys.executable
         assert server["args"] == ["-m", "footprinter.mcp"]
         assert "cwd" not in server
 
-    def test_fp_mcp_snippet_has_no_args(self, tmp_path):
-        """When fp-mcp is on PATH, generated snippet has no args."""
+    def test_fp_mcp_config_block_has_no_args(self, tmp_path):
+        """When fp-mcp is on PATH, generated config_block has no args."""
 
         def _which(name):
             return "/usr/local/bin/fp-mcp" if name == "fp-mcp" else None
 
         with patch("footprinter.cli.mcp_setup.shutil.which", side_effect=_which):
-            snippet = generate_snippet(project_root=tmp_path)
-        server = snippet["mcpServers"]["footprinter"]
+            config_block = generate_config_block(project_root=tmp_path)
+        server = config_block["mcpServers"]["footprinter"]
         assert server["command"] == "/usr/local/bin/fp-mcp"
         assert server.get("args") is None or server.get("args") == []
 
@@ -254,8 +254,8 @@ class TestWriteConfig:
 
     def test_creates_new_config(self, tmp_path):
         path = tmp_path / "claude_desktop_config.json"
-        snippet = generate_snippet()
-        assert write_config(snippet, config_path=path) is True
+        config_block = generate_config_block()
+        assert write_config(config_block, config_path=path) is True
         assert path.exists()
         config = json.loads(path.read_text())
         assert "footprinter" in config["mcpServers"]
@@ -265,8 +265,8 @@ class TestWriteConfig:
         existing = {"mcpServers": {"other": {"command": "/bin/other"}}, "extra": True}
         path.write_text(json.dumps(existing))
 
-        snippet = generate_snippet()
-        assert write_config(snippet, config_path=path) is True
+        config_block = generate_config_block()
+        assert write_config(config_block, config_path=path) is True
 
         config = json.loads(path.read_text())
         assert "other" in config["mcpServers"]
@@ -277,16 +277,16 @@ class TestWriteConfig:
         path = tmp_path / "claude_desktop_config.json"
         path.write_text(json.dumps({"mcpServers": {}}))
 
-        snippet = generate_snippet()
-        write_config(snippet, config_path=path)
+        config_block = generate_config_block()
+        write_config(config_block, config_path=path)
 
         backups = list(tmp_path.glob("*.backup_*.json"))
         assert len(backups) == 1
 
     def test_creates_parent_directories(self, tmp_path):
         path = tmp_path / "Claude" / "claude_desktop_config.json"
-        snippet = generate_snippet()
-        assert write_config(snippet, config_path=path) is True
+        config_block = generate_config_block()
+        assert write_config(config_block, config_path=path) is True
         assert path.exists()
 
 
@@ -301,9 +301,9 @@ class TestBackupCollision:
         path = tmp_path / "claude_desktop_config.json"
         path.write_text(json.dumps({"mcpServers": {}}))
 
-        snippet = generate_snippet()
-        write_config(snippet, config_path=path)
-        write_config(snippet, config_path=path)
+        config_block = generate_config_block()
+        write_config(config_block, config_path=path)
+        write_config(config_block, config_path=path)
 
         backups = list(tmp_path.glob("*.backup_*.json"))
         assert len(backups) == 2, f"Expected 2 unique backups, got {len(backups)}: {[b.name for b in backups]}"
@@ -313,10 +313,10 @@ class TestBackupCollision:
 # Bug 5: TestSnippetValidation — warn on missing command
 # ---------------------------------------------------------------------------
 class TestSnippetValidation:
-    """Test that generate_snippet validates the command exists."""
+    """Test that generate_config_block validates the command exists."""
 
-    def test_generate_snippet_warns_on_missing_command(self, tmp_path):
-        """generate_snippet should warn if the command doesn't exist on disk or PATH."""
+    def test_generate_config_block_warns_on_missing_command(self, tmp_path):
+        """generate_config_block should warn if the command doesn't exist on disk or PATH."""
         import io
 
         from rich.console import Console as RichConsole
@@ -329,9 +329,9 @@ class TestSnippetValidation:
             patch("footprinter.cli.mcp_setup.shutil.which", return_value=None),
             patch("footprinter.cli.mcp_setup.console", fake_console),
         ):
-            snippet = generate_snippet(project_root=tmp_path)
+            config_block = generate_config_block(project_root=tmp_path)
 
-        assert "mcpServers" in snippet
+        assert "mcpServers" in config_block
         output = buf.getvalue()
         assert "warning" in output.lower() or "not found" in output.lower()
 
@@ -340,22 +340,22 @@ class TestSnippetValidation:
 # TestPathEdgeCases — 2 tests
 # ---------------------------------------------------------------------------
 class TestPathEdgeCases:
-    """Tests for generate_snippet() with unusual paths."""
+    """Tests for generate_config_block() with unusual paths."""
 
     def test_project_root_with_spaces(self, tmp_path):
-        """Path containing spaces works in generate_snippet()."""
+        """Path containing spaces works in generate_config_block()."""
         spaced = tmp_path / "my project"
         spaced.mkdir()
-        snippet = generate_snippet(project_root=spaced)
-        server = snippet["mcpServers"]["footprinter"]
+        config_block = generate_config_block(project_root=spaced)
+        server = config_block["mcpServers"]["footprinter"]
         assert str(spaced) in server["cwd"]
 
     def test_project_root_with_unicode(self, tmp_path):
         """Unicode characters in path work."""
         uni = tmp_path / "proyecto_\u00e9l"
         uni.mkdir()
-        snippet = generate_snippet(project_root=uni)
-        server = snippet["mcpServers"]["footprinter"]
+        config_block = generate_config_block(project_root=uni)
+        server = config_block["mcpServers"]["footprinter"]
         assert str(uni) in server["cwd"]
 
 
@@ -369,8 +369,8 @@ class TestWriteConfigEdgeCases:
         """Corrupt JSON in existing file → returns False."""
         path = tmp_path / "claude_desktop_config.json"
         path.write_text("{invalid json content!!!")
-        snippet = generate_snippet()
-        result = write_config(snippet, config_path=path)
+        config_block = generate_config_block()
+        result = write_config(config_block, config_path=path)
         assert result is False
 
     def test_merges_without_losing_non_mcp_keys(self, tmp_path):
@@ -382,8 +382,8 @@ class TestWriteConfigEdgeCases:
             "theme": "dark",
         }
         path.write_text(json.dumps(existing))
-        snippet = generate_snippet()
-        write_config(snippet, config_path=path)
+        config_block = generate_config_block()
+        write_config(config_block, config_path=path)
         config = json.loads(path.read_text())
         assert config["globalShortcut"] == "Ctrl+Space"
         assert config["theme"] == "dark"
@@ -401,8 +401,8 @@ class TestWriteConfigEdgeCases:
         # Make directory read-only
         os.chmod(readonly_dir, stat.S_IRUSR | stat.S_IXUSR)
         try:
-            snippet = generate_snippet()
-            result = write_config(snippet, config_path=path)
+            config_block = generate_config_block()
+            result = write_config(config_block, config_path=path)
             # Either returns False or raises PermissionError — both acceptable
             assert result is False
         except PermissionError:
@@ -418,34 +418,34 @@ class TestWriteConfigEdgeCases:
 class TestMultiClientPaths:
     """Tests for multi-client MCP configuration output."""
 
-    def _capture_snippet(self) -> str:
-        """Capture print_snippet() output via StringIO-backed Rich console."""
+    def _capture_config_block(self) -> str:
+        """Capture print_config_block() output via StringIO-backed Rich console."""
         from footprinter.cli.mcp_setup import MCP_CLIENT_CONFIGS
 
         buf = io.StringIO()
         fake_console = RichConsole(file=buf, force_terminal=False)
-        snippet = generate_snippet()
+        config_block = generate_config_block()
         with (
             patch("footprinter.cli.mcp_setup.console", fake_console),
             patch("footprinter.cli.mcp_setup.detect_installed_clients", return_value=MCP_CLIENT_CONFIGS),
         ):
-            print_snippet(snippet)
+            print_config_block(config_block)
         return buf.getvalue()
 
-    def test_print_snippet_includes_client_paths(self):
-        """print_snippet() output contains all five client names."""
-        output = self._capture_snippet()
+    def test_print_config_block_includes_client_paths(self):
+        """print_config_block() output contains all five client names."""
+        output = self._capture_config_block()
         for name in ["Claude Desktop", "Claude Code", "Cursor", "VS Code", "Gemini CLI"]:
             assert name in output, f"Missing client name: {name}"
 
-    def test_print_snippet_shows_claude_code_mcp_add(self):
-        """print_snippet() output contains the claude mcp add command."""
-        output = self._capture_snippet()
+    def test_print_config_block_shows_claude_code_mcp_add(self):
+        """print_config_block() output contains the claude mcp add command."""
+        output = self._capture_config_block()
         assert "claude mcp add footprinter -- fp-mcp" in output
 
-    def test_print_snippet_shows_config_paths(self):
-        """print_snippet() output contains known config file paths."""
-        output = self._capture_snippet()
+    def test_print_config_block_shows_config_paths(self):
+        """print_config_block() output contains known config file paths."""
+        output = self._capture_config_block()
         for path in [
             "claude_desktop_config.json",
             ".cursor/mcp.json",
@@ -454,9 +454,9 @@ class TestMultiClientPaths:
         ]:
             assert path in output, f"Missing config path: {path}"
 
-    def test_print_snippet_still_shows_json_panel(self):
-        """print_snippet() still renders the JSON panel (regression)."""
-        output = self._capture_snippet()
+    def test_print_config_block_still_shows_json_panel(self):
+        """print_config_block() still renders the JSON panel (regression)."""
+        output = self._capture_config_block()
         assert "mcpServers" in output
         assert "footprinter" in output
 
