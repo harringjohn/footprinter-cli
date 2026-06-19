@@ -95,7 +95,12 @@ indexing:
   # prefer semantic/keyword search for large documents.
   max_read_size_mb: 10
   lookback_days: 14         # Browser history window (days back to index)
-  content_snippets: false   # Extract file/email content previews for keyword search
+  # Opt-in (default off). When true, ingest reads each file/email and stores a
+  # short preview (~1000 chars/file) so keyword search matches file content, not
+  # just names. Cost: extra read work during ingest + the stored preview in SQLite.
+  # Enabling this after the first ingest backfills already-indexed files only on
+  # the next `fp ingest` run; new ingests populate previews automatically.
+  content_snippets: false
 
 # Semantic search — stores content as embeddings in a local ChromaDB database
 # Enables finding files and chats by meaning, not just keywords

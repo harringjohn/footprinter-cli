@@ -842,12 +842,13 @@ def collect_vectorization_answers(
     """
     existing_vec = (existing or {}).get("vectorization", {})
     existing_semantic = (existing or {}).get("semantic", {})
-    # Fresh installs default to ON so `fp search` returns content matches, not
-    # just filenames; reconfigure runs preserve the user's prior choice.
+    # Fresh installs default to OFF: content snippets are an informed opt-in
+    # (they read and store file content), so the wizard presents the choice
+    # without pre-selecting it. Reconfigure runs preserve the user's prior choice.
     if existing is not None and "indexing" in existing and "content_snippets" in existing["indexing"]:
         snippets_default = existing["indexing"]["content_snippets"]
     else:
-        snippets_default = True
+        snippets_default = False
     file_types = existing_vec.get("file_types", list(DEFAULT_FILE_TYPES))
     existing_excludes = existing_vec.get("exclude_patterns", [])
 
@@ -868,7 +869,9 @@ def collect_vectorization_answers(
         "  [bold]Local only[/bold]: previews are written to a local SQLite database\n"
         "  on your machine. Nothing is uploaded or shared, and the MCP client only sees\n"
         "  content when you grant explicit permission via fp permission.\n"
-        "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]"
+        "  [dim]Trade-off: Footprinter keeps a stored copy of file (and connector) previews on disk.[/dim]\n"
+        "  [dim]Enabling this later only backfills already-indexed files when you\n"
+        "  re-run `fp ingest`; new ingests populate previews automatically.[/dim]"
     )
     content_snippets = Confirm.ask("  Enable file content snippets?", default=snippets_default)
 

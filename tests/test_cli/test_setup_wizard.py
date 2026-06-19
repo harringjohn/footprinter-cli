@@ -2510,16 +2510,17 @@ class TestCollectVectorizationFull:
 
 
 # ---------------------------------------------------------------------------
-# TestContentSnippetsDefault — flip default to ON with security language
+# TestContentSnippetsDefault — explicit opt-in defaulting to OFF, with
+# local-only security language and a re-ingest-to-backfill note
 # ---------------------------------------------------------------------------
 class TestContentSnippetsDefault:
-    """Content snippets prompt should default to ON for fresh installs and
-    explain the local-only security posture."""
+    """Content snippets prompt should default to OFF for fresh installs
+    (an informed opt-in) and explain the local-only security posture."""
 
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
-    def test_content_snippets_default_on_fresh_install(self, mock_importable, mock_console, tmp_path):
-        """Fresh install: snippet Confirm.ask is invoked with default=True."""
+    def test_content_snippets_default_off_fresh_install(self, mock_importable, mock_console, tmp_path):
+        """Fresh install: snippet Confirm.ask is invoked with default=False."""
         from footprinter.cli.setup import collect_vectorization_answers
 
         d = tmp_path / "work"
@@ -2534,8 +2535,8 @@ class TestContentSnippetsDefault:
         with patch("footprinter.cli.setup.Confirm.ask", side_effect=capture):
             collect_vectorization_answers(directories=[str(d)])
 
-        assert seen_defaults == [True], (
-            f"Expected snippet prompt with default=True on fresh install; got {seen_defaults}"
+        assert seen_defaults == [False], (
+            f"Expected snippet prompt with default=False on fresh install; got {seen_defaults}"
         )
 
     @patch("footprinter.cli.setup.console")
@@ -2588,6 +2589,32 @@ class TestContentSnippetsDefault:
         assert "stores" in printed or "stored copy" in printed or "preview" in printed, (
             "Snippets language should disclose that file content is stored"
         )
+
+    @patch("footprinter.cli.diagnostics.is_importable", return_value=True)
+    @patch("footprinter.cli.setup.Confirm.ask", return_value=False)
+    def test_snippets_prompt_mentions_reingest_backfill(self, mock_confirm, mock_importable, tmp_path):
+        """The snippet prompt should note that enabling it after first ingest
+        only backfills existing files on the next ingest run."""
+        from footprinter.cli.setup import collect_vectorization_answers
+
+        d = tmp_path / "work"
+        d.mkdir()
+        mock_console = MagicMock()
+        with patch("footprinter.cli.setup.console", mock_console):
+            collect_vectorization_answers(directories=[str(d)])
+
+        printed = _extract_printed_text(mock_console).lower()
+        # Mentions re-running ingest to populate
+        assert "re-ingest" in printed or "re-run" in printed or ("re-run" in printed and "ingest" in printed), (
+            "Snippets language should mention re-ingesting / re-running ingest to backfill"
+        )
+        # Mentions that the backfill targets already-indexed/existing files
+        assert (
+            "already-indexed" in printed
+            or "already indexed" in printed
+            or "existing" in printed
+            or "backfill" in printed
+        ), "Snippets language should disclose that existing files are backfilled on re-ingest"
 
 
 # ---------------------------------------------------------------------------
