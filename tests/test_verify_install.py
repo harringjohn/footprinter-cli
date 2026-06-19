@@ -10,6 +10,18 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERIFY_SCRIPT = REPO_ROOT / "scripts" / "release" / "verify_install.sh"
+VERIFY_UPGRADE_SCRIPT = REPO_ROOT / "scripts" / "release" / "verify_upgrade.sh"
+
+# Single source of truth for the parameterized loop-guard tests: the two release
+# scripts carry a byte-identical arch re-exec guard, so the guard-specific
+# assertions run against both. Each entry maps a script name to its path and the
+# CLI args that satisfy its arg parser past the guard region.
+#   - verify_install.sh:  <version> [--with-pytest]
+#   - verify_upgrade.sh:  <target-version> --from <base-version>  (Phase 0 needs >= 3 args)
+LOOPGUARD_SCRIPTS = {
+    "verify_install.sh": (VERIFY_SCRIPT, ["9.9.9", "--with-pytest"]),
+    "verify_upgrade.sh": (VERIFY_UPGRADE_SCRIPT, ["9.9.9", "--from", "9.9.8"]),
+}
 
 INSTALL_COMMON_STUB = """\
 #!/usr/bin/env bash
@@ -186,15 +198,59 @@ echo "1"
 """
 
 
-@pytest.fixture()
-def loopguard_harness(tmp_path):
+class LoopguardHarness:
+    """Bundle of everything a loop-guard test needs for one script: the harness
+    root, the script's name, and the CLI args that carry it past the guard."""
+
+    def __init__(self, root: Path, script_name: str, invocation_args: list[str]):
+        self.root = root
+        self.script_name = script_name
+        self.invocation_args = invocation_args
+
+    @property
+    def script(self) -> Path:
+        return self.root / "scripts" / "release" / self.script_name
+
+    @property
+    def counter_file(self) -> Path:
+        return self.root / "arch_reexec_count"
+
+    @property
+    def config_path(self) -> Path:
+        return self.root / "installed_config" / "config.example.yaml"
+
+    def command(self) -> list[str]:
+        return ["bash", str(self.script), *self.invocation_args]
+
+    def env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["PATH"] = f"{self.root / 'stubs'}{os.pathsep}{env['PATH']}"
+        env["ARCH_REEXEC_COUNTER"] = str(self.counter_file)
+        env["STUB_CONFIG_PATH"] = str(self.config_path)
+        return env
+
+    def reexec_count(self) -> int:
+        if self.counter_file.exists():
+            return int(self.counter_file.read_text().strip())
+        return 0
+
+
+@pytest.fixture(params=list(LOOPGUARD_SCRIPTS), ids=list(LOOPGUARD_SCRIPTS))
+def loopguard_harness(request, tmp_path):
     """Harness that KEEPS the Rosetta re-exec guard intact, with PATH stubs that
     drive the guard's preconditions true on any host (Darwin + arm64 hw + a
-    non-arm64 `arch`), so the real guard can be exercised."""
+    non-arm64 `arch`), so the real guard can be exercised.
+
+    Parameterized over both release scripts from a single source of truth
+    (``LOOPGUARD_SCRIPTS``) so the byte-identical guard in each stays covered
+    together and cannot silently drift apart."""
+    script_name = request.param
+    script_path, invocation_args = LOOPGUARD_SCRIPTS[script_name]
+
     scripts_dir = tmp_path / "scripts" / "release"
     scripts_dir.mkdir(parents=True)
     # Copy the script UNMODIFIED — the guard stays in place (unlike verify_harness).
-    shutil.copy2(VERIFY_SCRIPT, scripts_dir / "verify_install.sh")
+    shutil.copy2(script_path, scripts_dir / script_name)
 
     stubs_dir = tmp_path / "stubs"
     stubs_dir.mkdir()
@@ -223,7 +279,7 @@ def loopguard_harness(tmp_path):
     installed_dir.mkdir()
     (installed_dir / "config.example.yaml").write_text("# bundled config stub")
 
-    return tmp_path
+    return LoopguardHarness(tmp_path, script_name, invocation_args)
 
 
 class TestArchReexecLoopGuard:
@@ -231,61 +287,69 @@ class TestArchReexecLoopGuard:
         """The guard must re-exec at most once. With a stub `arch` that always
         reports non-arm64 (as a single-arch x86_64 bash does under Rosetta), an
         unguarded re-exec loops forever; the sentinel-gated guard fires once,
-        then proceeds under the current interpreter to completion."""
-        counter_file = loopguard_harness / "arch_reexec_count"
-        config_path = loopguard_harness / "installed_config" / "config.example.yaml"
+        then proceeds under the current interpreter.
 
-        stubs_dir = loopguard_harness / "stubs"
-        env = os.environ.copy()
-        env["PATH"] = f"{stubs_dir}{os.pathsep}{env['PATH']}"
-        env["ARCH_REEXEC_COUNTER"] = str(counter_file)
-        env["STUB_CONFIG_PATH"] = str(config_path)
-
-        script = loopguard_harness / "scripts" / "release" / "verify_install.sh"
+        Runs against both release scripts. The re-exec cap (<= 1) and the
+        safety-cap-not-reached invariant hold for both. The strict whole-script
+        ``returncode == 0`` is asserted only for ``verify_install.sh``, whose
+        stubbed body completes; ``verify_upgrade.sh``'s post-upgrade sqlite
+        assertions are not stubbed, so for it the exit-0 intent is satisfied
+        indirectly by proving the guard did not loop (counter <= 1, well under
+        the arch-stub safety cap)."""
         result = subprocess.run(
-            ["bash", str(script), "9.9.9", "--with-pytest"],
+            loopguard_harness.command(),
             capture_output=True,
             text=True,
-            cwd=loopguard_harness,
-            env=env,
+            cwd=loopguard_harness.root,
+            env=loopguard_harness.env(),
             timeout=30,
         )
 
-        reexec_count = int(counter_file.read_text().strip()) if counter_file.exists() else 0
-        # Loop-guard holds: the re-exec fires at most once.
+        reexec_count = loopguard_harness.reexec_count()
+        # Loop-guard holds for both scripts: the re-exec fires at most once.
         assert reexec_count <= 1, (
-            f"re-exec fired {reexec_count} times (expected <= 1) — loop guard failed\n"
+            f"[{loopguard_harness.script_name}] re-exec fired {reexec_count} times "
+            f"(expected <= 1) — loop guard failed\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-        # And the script runs through to completion rather than spinning.
-        assert result.returncode == 0, (
-            f"script did not exit 0 (got {result.returncode})\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+
+        if loopguard_harness.script_name == "verify_install.sh":
+            # The stubbed body completes, so the whole script must exit 0.
+            assert result.returncode == 0, (
+                f"[{loopguard_harness.script_name}] script did not exit 0 "
+                f"(got {result.returncode})\n"
+                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            )
+        else:
+            # verify_upgrade.sh: the body's sqlite assertions are unstubbed, so
+            # whole-script exit 0 is out of scope. The guard invariant we DO
+            # assert is that it did not spin: the arch stub's safety cap was
+            # never reached.
+            safety_cap = int(loopguard_harness.env().get("ARCH_REEXEC_CAP", "8"))
+            assert reexec_count < safety_cap, (
+                f"[{loopguard_harness.script_name}] re-exec reached the arch-stub "
+                f"safety cap ({reexec_count} >= {safety_cap}) — loop guard failed\n"
+                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            )
 
     def test_second_pass_warns_about_x86_only_bash(self, loopguard_harness):
         """When the guard cannot obtain a native arm64 bash, it warns to stderr
-        naming the cause (x86_64-only bash) before continuing."""
-        counter_file = loopguard_harness / "arch_reexec_count"
-        config_path = loopguard_harness / "installed_config" / "config.example.yaml"
+        naming the cause (x86_64-only bash) before continuing.
 
-        stubs_dir = loopguard_harness / "stubs"
-        env = os.environ.copy()
-        env["PATH"] = f"{stubs_dir}{os.pathsep}{env['PATH']}"
-        env["ARCH_REEXEC_COUNTER"] = str(counter_file)
-        env["STUB_CONFIG_PATH"] = str(config_path)
-
-        script = loopguard_harness / "scripts" / "release" / "verify_install.sh"
+        Asserted for both release scripts: because both guards emit the identical
+        WARN, this is the assertion that pins the pair together — a divergence in
+        either guard's warning text fails here."""
         result = subprocess.run(
-            ["bash", str(script), "9.9.9", "--with-pytest"],
+            loopguard_harness.command(),
             capture_output=True,
             text=True,
-            cwd=loopguard_harness,
-            env=env,
+            cwd=loopguard_harness.root,
+            env=loopguard_harness.env(),
             timeout=30,
         )
 
         assert "x86_64-only" in result.stderr, (
-            f"expected a second-pass warning naming x86_64-only bash\n"
+            f"[{loopguard_harness.script_name}] expected a second-pass warning "
+            f"naming x86_64-only bash\n"
             f"stderr:\n{result.stderr}"
         )
