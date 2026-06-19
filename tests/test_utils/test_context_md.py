@@ -160,7 +160,7 @@ class TestConfinement:
 
     def test_context_path_outside_home_returns_none(self, tmp_path):
         # tmp_path is home (autouse fixture); a sibling dir escapes it.
-        outside = tmp_path.parent / "fpr2050-outside"
+        outside = tmp_path.parent / "outside-home"
         outside.mkdir(exist_ok=True)
         md = outside / "escape.md"
         md.write_text("Should never be read.")
@@ -169,7 +169,7 @@ class TestConfinement:
 
     def test_symlink_escaping_root_returns_none(self, tmp_path):
         # A real file outside home, reached via a symlink that lives inside home.
-        outside = tmp_path.parent / "fpr2050-symlink-target"
+        outside = tmp_path.parent / "symlink-target"
         outside.mkdir(exist_ok=True)
         target = outside / "secret.md"
         target.write_text("Symlink target outside home.")
