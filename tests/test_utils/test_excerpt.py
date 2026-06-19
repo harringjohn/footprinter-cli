@@ -77,3 +77,49 @@ class TestBuildExcerptCustomBudget:
         assert result["excerpt"] == "abcd"
         assert result["chars_returned"] == 4
         assert result["has_more"] is True
+
+
+class TestBuildExcerptBoundaryTrim:
+    """The over-budget slice trims back to a word boundary, never mid-word."""
+
+    # "wordd " is 6 chars, so the hard cut at index 500 lands inside the 84th
+    # token ("wordd" starts at index 498), i.e. mid-word.
+    OVER_BUDGET = "wordd " * 200  # 1200 chars, far beyond the 500 budget
+
+    def test_no_mid_word_cut_at_boundary(self):
+        result = build_excerpt(self.OVER_BUDGET, source="content_preview")
+        hard = self.OVER_BUDGET[:EXCERPT_BUDGET]
+        # The hard cut would end mid-token; the boundary-aware excerpt trims
+        # back to the last whitespace boundary at or before the budget.
+        expected = hard[: hard.rfind(" ")].rstrip()
+        assert result["excerpt"] == expected
+        # No dangling trailing whitespace, no trailing partial token.
+        assert result["excerpt"] == result["excerpt"].rstrip()
+        assert not result["excerpt"].endswith("wordd"[: len("wordd") - 1] + " ")
+
+    def test_chars_returned_matches_trimmed_excerpt(self):
+        result = build_excerpt(self.OVER_BUDGET, source="content_preview")
+        assert result["chars_returned"] == len(result["excerpt"])
+        assert result["chars_returned"] <= EXCERPT_BUDGET
+
+    def test_has_more_true_and_chars_available_full_length(self):
+        result = build_excerpt(self.OVER_BUDGET, source="content_preview")
+        assert result["has_more"] is True
+        assert result["chars_available"] == len(self.OVER_BUDGET)
+
+    def test_no_boundary_fallback_single_long_token(self):
+        text = "x" * 1200
+        result = build_excerpt(text, source="content_preview")
+        assert result["excerpt"] == "x" * EXCERPT_BUDGET
+        assert result["chars_returned"] == EXCERPT_BUDGET
+        assert result["has_more"] is True
+
+    def test_boundary_exactly_at_budget_not_over_trimmed(self):
+        # A whitespace char sits at index == budget: the hard slice already
+        # ends cleanly, so the whole preceding word must be kept.
+        prefix = "a" * (EXCERPT_BUDGET - 1)  # 499 chars
+        text = prefix + " trailing words here"  # space lands at index 499
+        result = build_excerpt(text, source="content_preview", budget=EXCERPT_BUDGET)
+        assert result["excerpt"] == prefix
+        assert result["chars_returned"] == len(prefix)
+        assert result["has_more"] is True
