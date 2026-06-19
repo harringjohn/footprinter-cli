@@ -46,7 +46,15 @@ def build_excerpt(
     ``total_chunks`` at the call site.
     """
     text = text or ""
-    excerpt = text[:budget]
+    if len(text) <= budget:
+        excerpt = text
+    else:
+        # Over budget: hard-slice to the ceiling, then trim back to the last
+        # whitespace boundary within the slice so we never cut mid-word. If the
+        # slice holds no whitespace (a single long token), keep the hard cut.
+        hard = text[:budget]
+        match = re.search(r"\s\S*$", hard)
+        excerpt = hard[: match.start()].rstrip() if match else hard
     available = chars_available if chars_available is not None else len(text)
     chars_returned = len(excerpt)
     return {

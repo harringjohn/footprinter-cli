@@ -118,8 +118,12 @@ class TestSearchFilesKeyword:
         assert "/Users/u/docs/notes.txt" in match["excerpt"]
 
     def test_excerpt_respects_500_char_budget(self, db_conn):
-        """content_preview excerpts are sliced to the flat 500-char ceiling."""
-        long_preview = "report " + ("z" * 1000)
+        """content_preview excerpts are capped near the flat 500-char ceiling.
+
+        The excerpt trims back to a word boundary, so it lands at or below the
+        budget (never above) and never cuts mid-word.
+        """
+        long_preview = "report " + ("word " * 400)  # well over the 500 budget
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, visibility, access, content_preview) "
@@ -131,7 +135,9 @@ class TestSearchFilesKeyword:
         self._rebuild_fts(db_conn)
         results = search_files_keyword(db_conn, terms=["report"], has_query=True, limit=10)
         match = [r for r in results if r["id"] == 111][0]
-        assert match["chars_returned"] == 500
+        assert match["chars_returned"] <= 500
+        assert match["chars_returned"] == len(match["excerpt"])
+        assert not match["excerpt"].endswith("wor")  # no mid-word cut
         assert match["chars_available"] == len(long_preview)
         assert match["has_more"] is True
 
@@ -484,8 +490,12 @@ class TestFileFts5Fallback:
         assert "snippet" not in match
 
     def test_excerpt_respects_500_char_budget(self, db_conn):
-        """content_preview excerpts are sliced to the flat 500-char ceiling, not 200."""
-        long_preview = "report " + ("z" * 1000)
+        """content_preview excerpts are capped near the flat 500-char ceiling, not 200.
+
+        The excerpt trims back to a word boundary, so it lands at or below the
+        budget (never above) and never cuts mid-word.
+        """
+        long_preview = "report " + ("word " * 400)  # well over the 500 budget
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, visibility, access, content_preview) "
@@ -497,7 +507,9 @@ class TestFileFts5Fallback:
         self._rebuild_fts(db_conn)
         results = file_fts5_fallback(db_conn, "report", 10)
         match = [r for r in results if r["id"] == 103][0]
-        assert match["chars_returned"] == 500
+        assert match["chars_returned"] <= 500
+        assert match["chars_returned"] == len(match["excerpt"])
+        assert not match["excerpt"].endswith("wor")  # no mid-word cut
         assert match["chars_available"] == len(long_preview)
         assert match["has_more"] is True
 
