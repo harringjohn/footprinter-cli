@@ -227,7 +227,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
     cursor.execute(
         """SELECT id, name, slug, client_type, status,
                   visibility, access,
-                  visibility_source, access_source
+                  visibility_source, access_source, context_path
            FROM clients WHERE id = ?""",
         (client_id,),
     )
@@ -245,6 +245,7 @@ def get_client(conn: sqlite3.Connection, client_id: int) -> Optional[dict]:
         "access": row["access"] or "inherit",
         "visibility_source": row["visibility_source"],
         "access_source": row["access_source"],
+        "context_path": row["context_path"],
     }
 
     # Attached projects
@@ -282,7 +283,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     rows = conn.execute(
         """SELECT id, name, slug, client_type, status,
                   created_at, visibility, access,
-                  visibility_source, access_source
+                  visibility_source, access_source, context_path
            FROM clients WHERE name LIKE ?""",
         (f"%{name}%",),
     ).fetchall()

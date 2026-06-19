@@ -459,6 +459,12 @@ Folder hierarchy for both local filesystem and remote sources (connector-provide
 |--------|------|---------|
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
 
+**Curated context:**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `context_path` | TEXT | Nullable; pointer to a curated-context Markdown file. Convention-first (auto-detect `README.md` in the folder path); this column overrides. Surfaced on demand by the orientation tools as a `curated_context` block carrying the excerpt contract (`excerpt_source: context_md`). |
+
 **Indexes:**
 
 | Index | Columns | Notes |
@@ -513,6 +519,12 @@ Project metadata for detected code projects and work projects.
 |--------|------|---------|
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
 
+**Curated context:**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `context_path` | TEXT | Nullable; pointer to a curated-context Markdown file. Projects have no path to scan, so this column is the only resolver (no convention auto-detect). Surfaced on demand by the orientation tools as a `curated_context` block carrying the excerpt contract (`excerpt_source: context_md`). |
+
 **Indexes:**
 
 | Index | Columns | Notes |
@@ -543,6 +555,7 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `access_source` | TEXT | Policy scope that set `access` (provenance) |
 | `visibility_source` | TEXT | Policy scope that set `visibility` (provenance) |
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
+| `context_path` | TEXT | Nullable; pointer to a curated-context Markdown file. Convention-first (`context/client-<slug>.md` under a context root); this column overrides. Surfaced on demand by the orientation tools as a `curated_context` block carrying the excerpt contract (`excerpt_source: context_md`). |
 
 **Indexes:**
 

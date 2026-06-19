@@ -65,7 +65,7 @@ def find_by_name_fuzzy(conn: sqlite3.Connection, name: str) -> list[dict]:
     rows = conn.execute(
         """SELECT id, name, status, client,
                   description, visibility, access,
-                  visibility_source, access_source
+                  visibility_source, access_source, context_path
            FROM projects
            WHERE name LIKE ?""",
         (f"%{name}%",),

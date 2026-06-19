@@ -194,7 +194,8 @@ class TestInformationOracles:
                 visibility TEXT DEFAULT 'inherit',
                 access TEXT DEFAULT 'inherit',
                 visibility_source TEXT,
-                access_source TEXT
+                access_source TEXT,
+                context_path TEXT
             )
         """)
         cursor.execute("""
@@ -208,7 +209,8 @@ class TestInformationOracles:
                 visibility TEXT DEFAULT 'inherit',
                 access TEXT DEFAULT 'inherit',
                 visibility_source TEXT,
-                access_source TEXT
+                access_source TEXT,
+                context_path TEXT
             )
         """)
         cursor.execute("""
@@ -228,7 +230,8 @@ class TestInformationOracles:
                 visibility TEXT DEFAULT 'inherit',
                 access TEXT,
                 visibility_source TEXT,
-                access_source TEXT
+                access_source TEXT,
+                context_path TEXT
             )
         """)
         cursor.execute("""

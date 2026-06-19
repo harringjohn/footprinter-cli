@@ -46,6 +46,7 @@ __all__ = [
     "filter_results_list",
     "strip_content_for_denied",
     "strip_governance_fields",
+    "attach_curated_context",
     "get_opaque_metadata",
     # Governance denylist
     "GOVERNANCE_FIELDS",
@@ -180,6 +181,27 @@ GOVERNANCE_FIELDS = frozenset({
 def strip_governance_fields(result: Dict[str, Any]) -> Dict[str, Any]:
     """Return a copy of ``result`` with governance/provenance fields removed."""
     return {k: v for k, v in result.items() if k not in GOVERNANCE_FIELDS}
+
+
+def attach_curated_context(
+    result: Dict[str, Any], entity_type: str
+) -> Dict[str, Any]:
+    """Resolve curated Markdown context for a nav result and attach it in place.
+
+    Consumes the raw ``context_path`` column from ``result`` (popped so the bare
+    pointer is not surfaced) and, when a readable Markdown file resolves, attaches
+    the uniform excerpt-contract block under ``result["curated_context"]`` —
+    carrying ``excerpt_source == "context_md"`` plus ``chars_available`` /
+    ``has_more``. Missing/unset pointers leave the result unchanged. Returns the
+    same dict for convenience.
+    """
+    from footprinter.utils.context_md import resolve_curated_context
+
+    block = resolve_curated_context(result, entity_type)
+    result.pop("context_path", None)
+    if block is not None:
+        result["curated_context"] = block
+    return result
 
 
 # ---------------------------------------------------------------------------
