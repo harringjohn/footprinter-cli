@@ -107,6 +107,14 @@ semantic:
   # Add 'unlisted' to also embed hidden/dot-files.
   # vectorize_statuses:
   #   - listed
+  # Semantic file results — how much matched content to return per result.
+  # A chunk is ~1000 chars ≈ 250 tokens. Payload size ≈ max_chunks_per_file ×
+  # max_chunk_chars, so raise these for more context at higher token cost.
+  # Max characters of each matched chunk to return. Default 1000. 0 = no cap
+  # (return the whole chunk).
+  max_chunk_chars: 1000
+  # How many matched chunks to return per file, best-relevance first. Default 3.
+  max_chunks_per_file: 3
 
 # Vectorization — controls what gets embedded for semantic search
 # Requires semantic.file_vectorization: true to take effect for files

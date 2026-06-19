@@ -58,6 +58,17 @@ _FILE_FIELDS = {
     "relevance_score",
     "chunk_index",
     "total_chunks",
+    # Top-N matched chunks for this file (each a per-chunk excerpt dict).
+    "chunks",
+    *_EXCERPT_FIELDS,
+}
+
+# Per-chunk dict shape for the ``chunks`` list — excerpt contract + chunk index
+# fields only. No governance data rides along on individual chunks.
+_CHUNK_FIELDS = {
+    "relevance_score",
+    "chunk_index",
+    "total_chunks",
     *_EXCERPT_FIELDS,
 }
 
@@ -65,6 +76,61 @@ _FILE_FIELDS = {
 _OK = "ok"
 _DEGRADED = "degraded"
 _FAILED = "failed"
+
+# Vector-read widening: full chunk text up to a configurable cap, and the
+# top-N matched chunks per file. Defaults track vectorization.chunk_size
+# (~1000 chars ≈ 250 tokens) and a conservative N.
+_DEFAULT_MAX_CHUNK_CHARS = 1000
+_DEFAULT_MAX_CHUNKS_PER_FILE = 3
+
+
+def _get_max_chunk_chars() -> int:
+    """Per-chunk excerpt cap (chars). ``0`` means no cap — return whole chunk.
+
+    Lazy config resolver: reads ``semantic.max_chunk_chars`` at call time so
+    config changes are picked up without re-import, falling back to the module
+    default on any failure.
+    """
+    try:
+        from footprinter.source_registry import get_config
+
+        val = get_config().get("semantic", {}).get(
+            "max_chunk_chars", _DEFAULT_MAX_CHUNK_CHARS
+        )
+        if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+            return val
+        logger.warning(
+            "semantic.max_chunk_chars: expected non-negative int, using default %d",
+            _DEFAULT_MAX_CHUNK_CHARS,
+        )
+        return _DEFAULT_MAX_CHUNK_CHARS
+    except Exception as e:
+        logger.debug("Config unavailable for max_chunk_chars: %s", e)
+        return _DEFAULT_MAX_CHUNK_CHARS
+
+
+def _get_max_chunks_per_file() -> int:
+    """Number of matched chunks to return per file (≥1).
+
+    Lazy config resolver: reads ``semantic.max_chunks_per_file``, clamps to at
+    least 1, and falls back to the module default on any failure.
+    """
+    try:
+        from footprinter.source_registry import get_config
+
+        val = get_config().get("semantic", {}).get(
+            "max_chunks_per_file", _DEFAULT_MAX_CHUNKS_PER_FILE
+        )
+        if isinstance(val, int) and not isinstance(val, bool):
+            return max(1, val)
+        logger.warning(
+            "semantic.max_chunks_per_file: expected int, using default %d",
+            _DEFAULT_MAX_CHUNKS_PER_FILE,
+        )
+        return _DEFAULT_MAX_CHUNKS_PER_FILE
+    except Exception as e:
+        logger.debug("Config unavailable for max_chunks_per_file: %s", e)
+        return _DEFAULT_MAX_CHUNKS_PER_FILE
 
 
 # ---------------------------------------------------------------------------
@@ -268,36 +334,42 @@ def _search_files(
             logger.warning("File FTS5 fallback failed: %s", fallback_err)
             return [], ["File search failed — try footprinter_search"], 0, _FAILED
     else:
+        max_chunk_chars = _get_max_chunk_chars()
         for r in raw_results:
             distance = r.get("distance") or 0
             r["relevance_score"] = round(max(0, 1 - (distance / 2)), 3)
-            # Vector file hit → matched-chunk excerpt. chars_available is the
-            # full chunk length; content_snippet is already budget-sliced.
+            # Vector file hit → matched-chunk excerpt. content_snippet is the
+            # full chunk; build_excerpt applies the single configurable cap.
+            # 0 means "no cap" — pass a budget ≥ the chunk length so the helper
+            # returns the whole chunk rather than slicing to empty.
+            text = r.get("content_snippet") or ""
+            budget = max_chunk_chars if max_chunk_chars > 0 else len(text)
             r.update(
                 build_excerpt(
-                    r.get("content_snippet") or "",
+                    text,
                     source="chunk",
+                    budget=budget,
                     chars_available=r.get("content_length"),
                 )
             )
             r.pop("content_snippet", None)
             r.pop("content_length", None)
 
-        deduped, dropped = _deduplicate_by_file(raw_results)
+        grouped, dropped = _top_chunks_by_file(raw_results, _get_max_chunks_per_file())
         if dropped > 0:
             logger.warning(
                 "Dropped %d vector results with missing file_id",
                 dropped,
             )
 
-        file_ids = [r["file_id"] for r in deduped if r.get("file_id")]
+        file_ids = [r["file_id"] for r in grouped if r.get("file_id")]
         if file_ids:
             db_lookup = enrich_file_metadata(conn, file_ids, status=status_arg)
-            for r in deduped:
+            for r in grouped:
                 db_row = db_lookup.get(r["file_id"])
                 if db_row:
                     r.update(db_row)
-            enriched = [r for r in deduped if r.get("id")]
+            enriched = [r for r in grouped if r.get("id")]
 
     # Access control filtering
     if role.sees_all:
@@ -329,19 +401,46 @@ def _search_files(
 # ---------------------------------------------------------------------------
 
 
-def _deduplicate_by_file(results: List[Dict]) -> tuple[List[Dict], int]:
-    """Group by file_id, keep highest-relevance chunk per file."""
-    best: Dict[int, Dict] = {}
+def _chunk_excerpt(result: Dict) -> Dict:
+    """Project a vector result to a per-chunk excerpt dict.
+
+    Carries only the excerpt contract + chunk-index + relevance fields — no
+    governance data — so each entry in a file's ``chunks`` list is safe to
+    surface to any role.
+    """
+    return {k: v for k, v in result.items() if k in _CHUNK_FIELDS}
+
+
+def _top_chunks_by_file(results: List[Dict], n: int) -> tuple[List[Dict], int]:
+    """Group vector hits by file_id, keep the top-N chunks per file.
+
+    Returns ``(rows, dropped)`` where each row is the file's best chunk
+    (highest relevance) carrying that chunk's top-level excerpt fields, plus a
+    ``chunks`` list of the top-N matched chunks for the file ordered by
+    relevance descending (stable on ties by ``chunk_index`` ascending). The
+    first ``chunks`` entry mirrors the row's top-level excerpt. Results with a
+    missing ``file_id`` are dropped and counted.
+    """
+    groups: Dict[int, List[Dict]] = {}
     dropped = 0
     for r in results:
         fid = r.get("file_id")
         if fid is None:
             dropped += 1
             continue
-        existing = best.get(fid)
-        if existing is None or r.get("relevance_score", 0) > existing.get("relevance_score", 0):
-            best[fid] = r
-    return list(best.values()), dropped
+        groups.setdefault(fid, []).append(r)
+
+    rows: List[Dict] = []
+    for chunks in groups.values():
+        ordered = sorted(
+            chunks,
+            key=lambda c: (-c.get("relevance_score", 0), c.get("chunk_index", 0)),
+        )
+        top = ordered[:n]
+        row = dict(top[0])  # representative row = best chunk's fields
+        row["chunks"] = [_chunk_excerpt(c) for c in top]
+        rows.append(row)
+    return rows, dropped
 
 
 def _trim_chat_result(result: dict) -> dict:

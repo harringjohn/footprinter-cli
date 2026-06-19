@@ -267,6 +267,319 @@ class TestSemanticExcerptContract:
         assert "Visible Chat" in match["excerpt"]
         assert "snippet" not in match
 
+    def test_vector_file_excerpt_full_chunk_up_to_cap(self, service_db):
+        """Full chunk (≤ cap) surfaces in the excerpt — no 500-char truncation."""
+        chunk = "z" * 1000
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": chunk,
+                    "content_length": 1000,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunk_chars": 1000}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        assert match["excerpt"] == chunk
+        assert match["chars_returned"] == 1000
+        assert match["chars_available"] == 1000
+        assert match["has_more"] is False
+
+    def test_vector_file_excerpt_capped_when_chunk_exceeds(self, service_db):
+        """A chunk longer than the cap is capped; has_more reports the remainder."""
+        chunk = "z" * 1500
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": chunk,
+                    "content_length": 1500,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunk_chars": 1000}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        assert match["chars_returned"] == 1000
+        assert match["chars_available"] == 1500
+        assert match["has_more"] is True
+
+    def test_vector_file_excerpt_default_cap_when_config_unavailable(self, service_db):
+        """When get_config raises, the module-default cap (1000) is used."""
+        chunk = "z" * 1500
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": chunk,
+                    "content_length": 1500,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                side_effect=RuntimeError("config missing"),
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        assert match["chars_returned"] == semantic_service._DEFAULT_MAX_CHUNK_CHARS
+        assert match["chars_returned"] == 1000
+
+    def test_vector_file_excerpt_zero_cap_means_no_cap(self, service_db):
+        """max_chunk_chars: 0 returns the whole chunk regardless of length."""
+        chunk = "z" * 1800
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": chunk,
+                    "content_length": 1800,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunk_chars": 0}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        assert match["excerpt"] == chunk
+        assert match["chars_returned"] == 1800
+        assert match["has_more"] is False
+
+
+class TestSemanticMultiChunk:
+    """Vector file hits return the top-N chunks per file, relevance-ordered."""
+
+    def _mock_vs_module(self, *, files=None):
+        mock_store = MagicMock()
+        mock_store.search_files.return_value = files or []
+        mock_module = MagicMock()
+        mock_module.VectorStore.get_instance.return_value = mock_store
+        return mock_module
+
+    @staticmethod
+    def _chunk(file_id, chunk_index, total_chunks, distance, text):
+        return {
+            "file_id": file_id,
+            "distance": distance,
+            "content_snippet": text,
+            "content_length": len(text),
+            "chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+        }
+
+    def test_top_n_chunks_per_file_relevance_ordered(self, service_db):
+        """Three chunks for one file collapse to a single row carrying a
+        relevance-ordered ``chunks`` list; the best chunk is the top-level
+        excerpt and equals chunks[0]."""
+        # distances 0.2 / 0.6 / 1.0 → relevance 0.9 / 0.7 / 0.5
+        files = [
+            self._chunk(1, 5, 9, 0.6, "mid relevance chunk"),
+            self._chunk(1, 2, 9, 0.2, "best relevance chunk"),
+            self._chunk(1, 7, 9, 1.0, "low relevance chunk"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        rows = [f for f in result["files"] if f.get("id") == 1]
+        assert len(rows) == 1  # one row per file id
+        row = rows[0]
+        assert "chunks" in row
+        assert len(row["chunks"]) == 3
+        scores = [c["relevance_score"] for c in row["chunks"]]
+        assert scores == sorted(scores, reverse=True)
+        # Top-level excerpt is the highest-relevance chunk.
+        assert row["excerpt"] == "best relevance chunk"
+        assert row["chunk_index"] == 2
+        # chunks[0] mirrors the top-level excerpt.
+        assert row["chunks"][0]["excerpt"] == row["excerpt"]
+        assert row["chunks"][0]["chunk_index"] == row["chunk_index"]
+
+    def test_one_row_per_file(self, service_db):
+        """Distinct file ids each get exactly one representative row."""
+        service_db.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access) "
+            "VALUES (4, 'local', 'second.md', '/Users/u/Work/alpha/second.md', "
+            "'listed', 'markdown', 700, '2026-01-15', 'full', 'allow')"
+        )
+        service_db.commit()
+        files = [
+            self._chunk(1, 0, 2, 0.2, "file one chunk a"),
+            self._chunk(1, 1, 2, 0.6, "file one chunk b"),
+            self._chunk(4, 0, 1, 0.4, "file four chunk"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        ids = sorted(f["id"] for f in result["files"])
+        assert ids == [1, 4]
+        assert len([f for f in result["files"] if f["id"] == 1]) == 1
+
+    def test_n_caps_the_chunk_list(self, service_db):
+        """With max_chunks_per_file: 2, only the two best chunks are kept."""
+        files = [
+            self._chunk(1, i, 5, distance, f"chunk {i}")
+            for i, distance in enumerate([1.0, 0.2, 0.8, 0.4, 0.6])
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 2}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        assert len(row["chunks"]) == 2
+        # The two highest-relevance chunks: distances 0.2 and 0.4.
+        kept_indices = {c["chunk_index"] for c in row["chunks"]}
+        assert kept_indices == {1, 3}
+
+    def test_default_n_when_config_unavailable(self, service_db):
+        """When get_config raises, the module-default N (3) caps the chunk list."""
+        files = [
+            self._chunk(1, i, 5, distance, f"chunk {i}")
+            for i, distance in enumerate([1.0, 0.2, 0.8, 0.4, 0.6])
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                side_effect=RuntimeError("config missing"),
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        assert len(row["chunks"]) == semantic_service._DEFAULT_MAX_CHUNKS_PER_FILE
+        assert len(row["chunks"]) == 3
+
+    def test_chunks_survive_viewer_trim_no_governance(self, service_db):
+        """``chunks`` survives the VIEWER keep-allowlist trim and each chunk dict
+        carries only excerpt-contract + chunk-index keys (no governance)."""
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        files = [
+            self._chunk(1, 0, 2, 0.2, "chunk a"),
+            self._chunk(1, 1, 2, 0.6, "chunk b"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        assert "chunks" in row  # not stripped by _trim_file_result
+        allowed_keys = {
+            "excerpt",
+            "excerpt_source",
+            "chars_returned",
+            "chars_available",
+            "has_more",
+            "chunk_index",
+            "total_chunks",
+            "relevance_score",
+        }
+        for chunk in row["chunks"]:
+            assert set(chunk).issubset(allowed_keys), (
+                f"chunk dict carries unexpected keys: {set(chunk) - allowed_keys}"
+            )
+            for field in GOVERNANCE_FIELDS:
+                assert field not in chunk
+
+    def test_single_chunk_file_regression(self, service_db):
+        """One chunk for one file → a chunks list of length 1 whose sole entry
+        equals the top-level excerpt; flat fields unchanged from today."""
+        files = [self._chunk(1, 3, 9, 0.2, "the only matched chunk")]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        assert row["excerpt"] == "the only matched chunk"
+        assert row["excerpt_source"] == "chunk"
+        assert row["chunk_index"] == 3
+        assert row["total_chunks"] == 9
+        assert len(row["chunks"]) == 1
+        assert row["chunks"][0]["excerpt"] == row["excerpt"]
+        assert row["chunks"][0]["chunk_index"] == row["chunk_index"]
+
 
 class TestSemanticGovernanceStripped:
     """Full-visibility semantic VIEWER results carry no governance fields.

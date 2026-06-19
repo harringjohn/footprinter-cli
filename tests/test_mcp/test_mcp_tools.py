@@ -3554,17 +3554,17 @@ class TestFootprinterSemantic:
         assert "1" in result["summary"]
         assert "report.txt" in result["summary"]
 
-    def test_deduplicate_returns_dropped_count(self):
-        """_deduplicate_by_file returns (results, dropped_count) tuple."""
-        from footprinter.services.semantic_service import _deduplicate_by_file
+    def test_top_chunks_returns_dropped_count(self):
+        """_top_chunks_by_file returns (rows, dropped_count); missing file_id is dropped."""
+        from footprinter.services.semantic_service import _top_chunks_by_file
 
         results = [
             {"file_id": 1, "relevance_score": 0.9},
             {"file_id": 2, "relevance_score": 0.8},
             {"file_id": None, "relevance_score": 0.7},
         ]
-        deduped, dropped = _deduplicate_by_file(results)
-        assert len(deduped) == 2
+        rows, dropped = _top_chunks_by_file(results, n=3)
+        assert len(rows) == 2
         assert dropped == 1
 
     # --- Visibility consistency ---
