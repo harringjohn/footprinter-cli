@@ -214,8 +214,12 @@ def search_files_keyword(
     results = []
     for r in rows:
         # File-excerpt precedence (mirrors file_fts5_fallback):
-        # content_preview when present (and not access-denied), else name/path.
-        if r["content_preview"] and r["access"] != "deny":
+        # content_preview when present and access-allowed, else name/path.
+        # Fail closed: surface content only on an explicit allow/inherit access
+        # (inherit follows the baseline-allow default the rest of the system
+        # uses); a NULL or unexpected value falls back to the title rung so a
+        # missing access value never leaks content.
+        if r["content_preview"] and r["access"] in ("allow", "inherit"):
             excerpt_fields = build_excerpt(r["content_preview"], source="content_preview")
         else:
             excerpt_fields = build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title")

@@ -157,6 +157,28 @@ class TestSearchFilesKeyword:
             if isinstance(value, str):
                 assert "CONFIDENTIAL DATA" not in value, f"content_preview leaked via field '{key}'"
 
+    def test_null_access_fails_closed_no_content_leak(self, db_conn):
+        """A file with a NULL access must not leak content_preview.
+
+        The gate fails closed on a missing access value: the excerpt falls
+        back to the name/path title rung rather than surfacing content.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (113, 'local', 'orphan.txt', '/Users/u/docs/orphan.txt', "
+            "'listed', 'text', 2000, '2026-01-15', 'full', NULL, "
+            "'SECRET payload that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["orphan"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 113][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "SECRET payload" not in value, f"content_preview leaked via field '{key}'"
+
     def test_no_snippet_key(self, db_conn):
         results = search_files_keyword(db_conn, terms=[], has_query=False, limit=10)
         assert all("snippet" not in r for r in results)
