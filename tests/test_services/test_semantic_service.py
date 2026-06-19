@@ -831,6 +831,42 @@ class TestReadFileChunks:
             )
         assert result.get("status") == "no_match"
 
+    def test_distant_chunks_do_not_count_as_matches(self, service_db):
+        """search_files returns the top-N nearest chunks with no relevance floor,
+        so a small file hands back all its chunks. Only chunks within the
+        relevance band of the nearest hit should drive neighbor expansion: a
+        clear top hit at chunk 5 (distance 0.1) plus far-off chunks (distance
+        0.9) must still narrow to {4,5,6}, not widen to the whole file."""
+        search = [
+            self._match(1, 5, 9, 0.10),  # the genuine hit
+            self._match(1, 0, 9, 0.90),  # near-neighbors in vector space, not hits
+            self._match(1, 8, 9, 0.92),
+        ]
+        file_chunks = [self._chunk(i, 9, f"body of chunk {i}") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        # Only the close hit drives expansion → matched chunk + neighbors.
+        assert result["chunk_indices"] == [4, 5, 6]
+        assert result["incomplete"] is True
+
+    def test_comparably_close_matches_still_widen(self, service_db):
+        """Two genuinely-close, scattered hits (both within the band) still widen
+        to the whole set per §5.1 — the floor narrows noise, not real matches."""
+        search = [
+            self._match(1, 1, 9, 0.20),
+            self._match(1, 7, 9, 0.22),
+        ]
+        file_chunks = [self._chunk(i, 9, f"c{i}") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["chunk_indices"] == list(range(9))
+
 
 class TestSemanticServiceD2Access:
     """D2: semantic matches are content-derived — visible items need read access."""

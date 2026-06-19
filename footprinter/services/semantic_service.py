@@ -242,11 +242,13 @@ def read_file_chunks(
 ) -> dict:
     """Read a file's content straight from indexed chunks (note §5, §5.1).
 
-    Ranks the file's chunks for ``query``, applies the §5.1 reassembly heuristic
-    (isolated match → matched chunk ± 1 neighbors; adjacent matches → contiguous
-    span; scattered matches or ``total_chunks <= 2`` → whole available chunk
-    set), fetches the needed chunks from the vector store by chunk id, and
-    reassembles them in ``chunk_index`` order.
+    Ranks the file's chunks for ``query``, keeps only those within the relevance
+    band of the nearest hit (so the top-N nearest chunks of a small file are not
+    all treated as matches), applies the §5.1 reassembly heuristic (isolated
+    match → matched chunk ± 1 neighbors; adjacent matches → contiguous span;
+    scattered matches or ``total_chunks <= 2`` → whole available chunk set),
+    fetches the needed chunks from the vector store by chunk id, and reassembles
+    them in ``chunk_index`` order.
 
     Returns the uniform excerpt contract plus the vector-read provenance /
     completeness caveats (``from_vectors``, ``reassembled``, ``incomplete``,
@@ -276,7 +278,7 @@ def read_file_chunks(
         return {"status": "no_match"}
 
     total_chunks = matches[0].get("total_chunks") or 1
-    matched_indices = sorted({m.get("chunk_index", 0) for m in matches})
+    matched_indices = _matched_indices_by_relevance(matches)
 
     selected, incomplete = _select_chunk_span(matched_indices, total_chunks)
 
@@ -299,6 +301,39 @@ def read_file_chunks(
     # Incomplete when fewer than the file's full chunk set was returned.
     result["incomplete"] = incomplete or len(selected_present) < total_chunks
     return {k: v for k, v in result.items() if k in _VECTOR_READ_FIELDS}
+
+
+# A chunk counts as a query "match" only while its distance stays within this
+# band of the nearest chunk's distance. Without a floor, ``search_files`` returns
+# the top-N nearest chunks regardless of relevance, so for any file with fewer
+# chunks than N every chunk would read as a match and the §5.1 "isolated match →
+# chunk + neighbors" branch could never narrow. The band is relative to the best
+# match (not an absolute distance) so it is robust across embedding models.
+_MATCH_DISTANCE_BAND = 0.15
+
+
+def _matched_indices_by_relevance(matches: List[Dict]) -> List[int]:
+    """Pick which chunk indices count as genuine query matches (note §5.1).
+
+    ``search_files`` returns the top-N nearest chunks for the file with no
+    relevance floor, so a small file hands back all its chunks. To recover the
+    §5.1 distinction between an isolated hit and a scattered/whole-file read,
+    keep only the chunks whose distance is within ``_MATCH_DISTANCE_BAND`` of the
+    nearest match; the rest are near-neighbors in vector space, not true hits and
+    so should not drive neighbor expansion. The nearest chunk always qualifies.
+    Falls back to all returned indices when distances are absent.
+    """
+    with_distance = [m for m in matches if m.get("distance") is not None]
+    if not with_distance:
+        return sorted({m.get("chunk_index", 0) for m in matches})
+
+    best = min(m["distance"] for m in with_distance)
+    kept = {
+        m.get("chunk_index", 0)
+        for m in with_distance
+        if m["distance"] <= best + _MATCH_DISTANCE_BAND
+    }
+    return sorted(kept)
 
 
 def _select_chunk_span(
