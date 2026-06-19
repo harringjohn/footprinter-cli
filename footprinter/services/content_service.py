@@ -19,6 +19,50 @@ logger = logging.getLogger(__name__)
 # payload ceiling. Overridable via indexing.max_read_size_mb; 0 = no cap.
 _DEFAULT_MAX_READ_MB = 10
 
+# Ceiling on the text returned in a single read result. A single MCP tool result
+# has a ~1 MB payload protocol wall (the same limit search.py caps result counts
+# against — see footprinter/mcp/tools/search.py). The read cap above bounds the
+# bytes pulled from disk, but a mid-size file (e.g. a multi-MB PDF) can extract to
+# text larger than that wall and fail to return entirely. This ceiling bounds the
+# returned content independently of the input read cap so a read always returns a
+# usable, in-budget result. Held conservatively under 1 MB so the JSON-serialized
+# result (content + metadata) stays under the wall.
+_MAX_OUTPUT_CHARS = 800_000
+
+# Message attached when the output bound trips, pointing callers at search for
+# large documents (mirrors search.py's protocol-limit phrasing).
+_OUTPUT_TRUNCATED_MESSAGE = (
+    "content truncated to stay within the ~1 MB tool-result protocol limit; "
+    "use semantic or keyword search to locate the relevant section of large documents"
+)
+
+
+def _bound_output(content: str) -> tuple[str, bool]:
+    """Bound returned content to the payload-safe output ceiling.
+
+    Returns ``(content, False)`` unchanged when within budget, or a sliced
+    ``(content[:_MAX_OUTPUT_CHARS], True)`` when it would exceed the ceiling.
+    """
+    if len(content) <= _MAX_OUTPUT_CHARS:
+        return content, False
+    return content[:_MAX_OUTPUT_CHARS], True
+
+
+def _ok_result(content: str, meta: dict) -> dict:
+    """Build an ``ok`` read result, bounding content to the output ceiling.
+
+    When the bound trips, marks ``meta["output_truncated"] = True`` and attaches
+    a message pointing at search for large documents, so the result is always
+    in-budget and usable rather than an oversized payload that fails to return.
+    """
+    bounded, was_bounded = _bound_output(content)
+    result: dict = {"status": "ok", "content": bounded, "metadata": meta}
+    if was_bounded:
+        meta["output_truncated"] = True
+        meta["output_truncated_message"] = _OUTPUT_TRUNCATED_MESSAGE
+        result["message"] = f"file:{meta.get('id')} {_OUTPUT_TRUNCATED_MESSAGE}"
+    return result
+
 
 def _get_max_read_bytes() -> int:
     """Resolve the MCP read-path byte cap from config, lazily.
@@ -114,7 +158,7 @@ def read_file(
         meta["extraction_method"] = "raw"
         meta["extraction_success"] = True
         meta["extraction_error"] = None
-        return {"status": "ok", "content": content, "metadata": meta}
+        return _ok_result(content, meta)
 
     # Text mode with extraction
     extracted_text, error = extract_text(data, extractor_type)
@@ -123,7 +167,7 @@ def read_file(
         meta["extraction_method"] = extractor_type
         meta["extraction_success"] = True
         meta["extraction_error"] = None
-        return {"status": "ok", "content": extracted_text, "metadata": meta}
+        return _ok_result(extracted_text, meta)
 
     # Extraction failed. If the file was truncated by the read cap, the byte
     # range is structurally incomplete and a raw decode would return unusable
@@ -168,7 +212,7 @@ def read_file(
     meta["extraction_method"] = "raw"
     meta["extraction_success"] = False
     meta["extraction_error"] = error
-    return {"status": "ok", "content": content, "metadata": meta}
+    return _ok_result(content, meta)
 
 
 # ---------------------------------------------------------------------------

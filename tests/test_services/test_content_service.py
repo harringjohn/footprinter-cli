@@ -381,6 +381,87 @@ class TestConfigurableReadCap:
         assert result["metadata"].get("truncated") is not True
 
 
+class TestOutputPayloadBound:
+    """The MCP result has a ~1 MB payload ceiling. A file that extracts
+    successfully but larger than that ceiling must return a bounded, in-budget
+    slice (marked output_truncated), never an oversized result that fails to
+    return entirely."""
+
+    def _run(self, *, extracted_text=None, raw_bytes=None, format="text"):
+        """Invoke read_file for a local file. When ``extracted_text`` is given,
+        the text extractor succeeds with it; when ``raw_bytes`` is given, the
+        decode path returns it (raw mode or no extractor)."""
+        metadata = {
+            "id": 1,
+            "name": "doc.md",
+            "source": "local",
+            "path": "/Users/u/Work/doc.md",
+            "mime_type": "text/markdown",
+        }
+        conn = MagicMock()
+        mock_registry = MagicMock()
+        mock_registry.is_remote_source.return_value = False
+
+        read_payload = raw_bytes if raw_bytes is not None else b"# placeholder"
+
+        with (
+            patch(
+                "footprinter.services.content_service._read_local_file_bytes",
+                return_value=read_payload,
+            ),
+            patch(
+                "footprinter.source_registry.SourceRegistry",
+                return_value=mock_registry,
+            ),
+            patch(
+                "footprinter.utils.extraction.get_extractor_for_file",
+                return_value="markdown",
+            ),
+            patch(
+                "footprinter.utils.extraction.extract_text",
+                return_value=(extracted_text, None),
+            ),
+            patch("footprinter.source_registry.get_config") as mock_get_config,
+        ):
+            mock_get_config.return_value = {"indexing": {"max_read_size_mb": 10}}
+            result = content_service.read_file(conn, metadata, format=format)
+
+        return result
+
+    def test_oversized_extraction_is_bounded_and_marked(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_CHARS
+
+        oversized = "A" * (_MAX_OUTPUT_CHARS + 100_000)
+        result = self._run(extracted_text=oversized)
+
+        assert result["status"] == "ok"
+        assert len(result["content"]) <= _MAX_OUTPUT_CHARS
+        assert result["content"] != oversized
+        assert result["metadata"].get("output_truncated") is True
+        # A pointer to search for large documents must be present somewhere.
+        msg = (result.get("message") or "") + (
+            result["metadata"].get("output_truncated_message") or ""
+        )
+        assert "search" in msg.lower()
+
+    def test_in_budget_extraction_unmarked(self):
+        result = self._run(extracted_text="# Hello")
+
+        assert result["status"] == "ok"
+        assert result["content"] == "# Hello"
+        assert not result["metadata"].get("output_truncated")
+
+    def test_raw_mode_output_also_bounded(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_CHARS
+
+        oversized = b"B" * (_MAX_OUTPUT_CHARS + 100_000)
+        result = self._run(raw_bytes=oversized, format="raw")
+
+        assert result["status"] == "ok"
+        assert len(result["content"]) <= _MAX_OUTPUT_CHARS
+        assert result["metadata"].get("output_truncated") is True
+
+
 # ---------------------------------------------------------------------------
 # _decode_bytes
 # ---------------------------------------------------------------------------
