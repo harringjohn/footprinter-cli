@@ -3219,12 +3219,27 @@ class TestFootprinterSemantic:
             result = footprinter_semantic("test query", source="chats")
 
         chat = result["chats"][0]
-        allowed = {"chat_id", "chat_title", "snippet", "relevance_score", "source", "created_at", "message_id"}
-        assert set(chat.keys()) == allowed
-        for field in (
-            "chunk_type",
+        allowed = {
+            "chat_id",
+            "chat_title",
+            "relevance_score",
+            "source",
+            "created_at",
+            "message_id",
+            # Uniform excerpt contract (chunk_index/total_chunks kept for chunk source).
+            "excerpt",
+            "excerpt_source",
+            "chars_returned",
+            "chars_available",
+            "has_more",
             "chunk_index",
             "total_chunks",
+        }
+        assert set(chat.keys()) == allowed
+        assert chat["excerpt_source"] == "chunk"
+        assert "snippet" not in chat
+        for field in (
+            "chunk_type",
             "semantic_rank",
             "keyword_rank",
             "rrf_score",
@@ -3313,8 +3328,15 @@ class TestFootprinterSemantic:
 
         assert result["query"] == "revenue analysis"
         f = result["files"][0]
-        for field in ("id", "name", "path", "content_type", "size_bytes", "modified_at", "relevance_score", "snippet"):
+        for field in (
+            "id", "name", "path", "content_type", "size_bytes", "modified_at",
+            "relevance_score", "excerpt", "excerpt_source", "chunk_index", "total_chunks",
+        ):
             assert field in f, f"Missing field: {field}"
+        assert f["excerpt_source"] == "chunk"
+        assert f["excerpt"] == "Quarterly revenue analysis"
+        assert "snippet" not in f
+        assert "content_snippet" not in f
 
     def test_file_fts5_fallback(self, mcp_db):
         """When vector search fails for files, falls back to FTS5 with note."""

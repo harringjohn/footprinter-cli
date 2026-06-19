@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from footprinter.paths import get_chroma_path
+from footprinter.utils.text import EXCERPT_BUDGET
 
 
 def _semantic_available() -> bool:
@@ -252,7 +253,8 @@ class VectorStore:
 
         Returns:
             List of dicts with file_id, file_path, chunk_index, total_chunks,
-            content_snippet, distance.
+            content_snippet (chunk text sliced to the excerpt budget),
+            content_length (full chunk length, for excerpt provenance), distance.
         """
         query_embedding = self.ef([query])[0]
         results = self._files.query(
@@ -264,13 +266,15 @@ class VectorStore:
         formatted = []
         if results["ids"] and len(results["ids"]) > 0:
             for i in range(len(results["ids"][0])):
+                chunk_text = results["documents"][0][i]
                 formatted.append(
                     {
                         "file_id": results["metadatas"][0][i].get("file_id"),
                         "file_path": results["metadatas"][0][i]["file_path"],
                         "chunk_index": results["metadatas"][0][i]["chunk_index"],
                         "total_chunks": results["metadatas"][0][i]["total_chunks"],
-                        "content_snippet": results["documents"][0][i][:500],
+                        "content_snippet": chunk_text[:EXCERPT_BUDGET],
+                        "content_length": len(chunk_text),
                         "distance": results["distances"][0][i] if "distances" in results else None,
                     }
                 )
@@ -469,6 +473,9 @@ class VectorStore:
                         "source": meta.get("source", "unknown"),
                         "created_at": meta.get("created_at", ""),
                         "snippet": snippet,
+                        # Full matched-chunk length, for excerpt provenance
+                        # (the snippet above is a query-centered window of it).
+                        "content_length": meta.get("content_length") or len(content),
                         "relevance_score": round(relevance, 3),
                         "chunk_type": chunk_type,
                         "chunk_index": meta.get("chunk_index", 0),

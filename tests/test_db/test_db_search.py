@@ -357,8 +357,8 @@ class TestFileFts5Fallback:
         assert "name" in results[0]
         assert "relevance_score" in results[0]
 
-    def test_snippet_shows_content_when_populated(self, db_conn):
-        """Snippet uses content_preview when populated and access allows it."""
+    def test_excerpt_shows_content_when_populated(self, db_conn):
+        """Excerpt uses content_preview (source='content_preview') when access allows it."""
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, visibility, access, content_preview) "
@@ -371,10 +371,30 @@ class TestFileFts5Fallback:
         results = file_fts5_fallback(db_conn, "report", 10)
         assert len(results) >= 1
         match = [r for r in results if r["id"] == 100][0]
-        assert "report content preview" in match["snippet"]
+        assert "report content preview" in match["excerpt"]
+        assert match["excerpt_source"] == "content_preview"
+        assert "snippet" not in match
 
-    def test_snippet_falls_back_to_metadata_when_no_content(self, db_conn):
-        """Snippet uses name — path when content_preview is NULL."""
+    def test_excerpt_respects_500_char_budget(self, db_conn):
+        """content_preview excerpts are sliced to the flat 500-char ceiling, not 200."""
+        long_preview = "report " + ("z" * 1000)
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (103, 'local', 'long.md', '/Users/u/docs/long.md', "
+            "'listed', 'markdown', 9000, '2026-01-15', 'full', 'allow', ?)",
+            (long_preview,),
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = file_fts5_fallback(db_conn, "report", 10)
+        match = [r for r in results if r["id"] == 103][0]
+        assert match["chars_returned"] == 500
+        assert match["chars_available"] == len(long_preview)
+        assert match["has_more"] is True
+
+    def test_excerpt_falls_back_to_metadata_when_no_content(self, db_conn):
+        """Excerpt uses name — path (source='title') when content_preview is NULL."""
         db_conn.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, visibility, access, content_preview) "
@@ -386,8 +406,9 @@ class TestFileFts5Fallback:
         results = file_fts5_fallback(db_conn, "notes", 10)
         assert len(results) >= 1
         match = [r for r in results if r["id"] == 102][0]
-        assert "notes.txt" in match["snippet"]
-        assert "/Users/u/docs/notes.txt" in match["snippet"]
+        assert match["excerpt_source"] == "title"
+        assert "notes.txt" in match["excerpt"]
+        assert "/Users/u/docs/notes.txt" in match["excerpt"]
 
     def test_denied_file_no_content_leak(self, db_conn):
         """File with access='deny' must not have content_preview in any field."""

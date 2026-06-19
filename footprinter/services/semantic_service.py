@@ -20,19 +20,32 @@ from footprinter.services.access_service import (
 )
 from footprinter.services.includes import status_arg_for_role
 from footprinter.services.roles import Role
+from footprinter.utils.text import build_excerpt
 
 logger = logging.getLogger(__name__)
 
 _VALID_SOURCES = frozenset({"chats", "files", "all"})
 
+# The uniform excerpt contract (footprinter_search shares the same field names).
+_EXCERPT_FIELDS = {
+    "excerpt",
+    "excerpt_source",
+    "chars_returned",
+    "chars_available",
+    "has_more",
+}
+
 _CHAT_FIELDS = {
     "chat_id",
     "chat_title",
-    "snippet",
     "relevance_score",
     "source",
     "created_at",
     "message_id",
+    # chunk_index / total_chunks present only on chunk-sourced excerpts.
+    "chunk_index",
+    "total_chunks",
+    *_EXCERPT_FIELDS,
 }
 
 _FILE_FIELDS = {
@@ -43,7 +56,9 @@ _FILE_FIELDS = {
     "size_bytes",
     "modified_at",
     "relevance_score",
-    "snippet",
+    "chunk_index",
+    "total_chunks",
+    *_EXCERPT_FIELDS,
 }
 
 # Search outcome: ok (vector worked), degraded (FTS5 fallback), failed (both crashed)
@@ -177,12 +192,25 @@ def _search_chats(
         enrich_chat_visibility(conn, chat_ids, status=status_arg) if chat_ids else {}
     )
 
+    # Vector hits excerpt from the matched chunk; the FTS5 fallback only has
+    # the chat title. (Message-derived chat excerpts are a follow-up issue.)
+    excerpt_source = "title" if status == _DEGRADED else "chunk"
+
     for r in results:
         db_row = vis_lookup.get(r.get("chat_id"))
         r["id"] = r.get("chat_id")
         r["account"] = db_row["account"] if db_row else ""
         r["visibility"] = db_row["visibility"] if db_row else "hidden"
         r["access"] = db_row["access"] if db_row else None
+        r.update(
+            build_excerpt(
+                r.get("snippet") or "",
+                source=excerpt_source,
+                chars_available=r.get("content_length"),
+            )
+        )
+        r.pop("snippet", None)
+        r.pop("content_length", None)
 
     # Access control filtering
     if role.sees_all:
@@ -243,7 +271,17 @@ def _search_files(
         for r in raw_results:
             distance = r.get("distance") or 0
             r["relevance_score"] = round(max(0, 1 - (distance / 2)), 3)
-            r["snippet"] = r.get("content_snippet", "")
+            # Vector file hit → matched-chunk excerpt. chars_available is the
+            # full chunk length; content_snippet is already budget-sliced.
+            r.update(
+                build_excerpt(
+                    r.get("content_snippet") or "",
+                    source="chunk",
+                    chars_available=r.get("content_length"),
+                )
+            )
+            r.pop("content_snippet", None)
+            r.pop("content_length", None)
 
         deduped, dropped = _deduplicate_by_file(raw_results)
         if dropped > 0:

@@ -560,8 +560,9 @@ def file_fts5_fallback(
     """FTS5 keyword fallback for file search.
 
     Returns dicts shaped for semantic_service consumption: id, source, name,
-    path, content_type, size_bytes, modified_at, relevance_score, snippet,
-    visibility, access.
+    path, content_type, size_bytes, modified_at, relevance_score, the excerpt
+    contract (excerpt, excerpt_source, chars_returned, chars_available,
+    has_more), visibility, access.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     terms = split_query_terms(query)
@@ -587,10 +588,12 @@ def file_fts5_fallback(
 
     results = []
     for row in rows:
+        # File-excerpt precedence on the keyword fallback path:
+        # content_preview when present (and not access-denied), else name/path.
         if row["content_preview"] and row["access"] != "deny":
-            snippet = row["content_preview"][:200]
+            excerpt_fields = build_excerpt(row["content_preview"], source="content_preview")
         else:
-            snippet = f"{row['name']} — {row['path']}"
+            excerpt_fields = build_excerpt(f"{row['name']} — {row['path'] or ''}", source="title")
         results.append(
             {
                 "id": row["id"],
@@ -601,7 +604,7 @@ def file_fts5_fallback(
                 "size_bytes": row["size_bytes"],
                 "modified_at": row["modified_at"],
                 "relevance_score": 0.5,
-                "snippet": snippet,
+                **excerpt_fields,
                 "visibility": row["visibility"],
                 "access": row["access"],
                 "visibility_source": row["visibility_source"],
