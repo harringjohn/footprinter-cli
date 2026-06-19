@@ -1371,6 +1371,66 @@ class TestCuratedContext:
         assert result is not None
         assert "curated_context" not in result
 
+    def test_client_convention_surfaces_block_via_home(
+        self, service_db, tmp_path, monkeypatch
+    ):
+        """A client with only the conventional file (no override) surfaces context.
+
+        Drives the production path: ``attach_curated_context`` resolves the client
+        convention under ``get_home()``. Pointing ``FOOTPRINTER_HOME`` at
+        ``tmp_path`` (the class fixture already points ``HOME`` there for
+        confinement) places ``context/client-acme.md`` under the resolved home, so
+        the convention fires without any injected ``context_root`` and without the
+        ``context_path`` override column being set.
+        """
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(tmp_path))
+        context_dir = tmp_path / "context"
+        context_dir.mkdir()
+        convention = context_dir / "client-acme.md"
+        convention.write_text("Acme curated context via convention.")
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Acme curated context via convention."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(convention)
+        assert block["context_path"].endswith("context/client-acme.md")
+
+    def test_client_convention_surfaces_when_home_relocated_outside_user_home(
+        self, service_db, tmp_path, monkeypatch
+    ):
+        """The convention fires when ``FOOTPRINTER_HOME`` is outside ``HOME``.
+
+        The class fixture points ``HOME`` at ``tmp_path``; here ``FOOTPRINTER_HOME``
+        is relocated to a *sibling* directory that is **not** under that ``HOME``
+        (an isolated/relocated home, as the test harness's ``cli-verify`` uses).
+        Confinement honours the caller's ``context_root`` as well as ``Path.home()``,
+        so the convention path under the relocated home still passes confinement and
+        surfaces the block. Without that, the path would silently fail confinement
+        and the documented convention would never fire under a relocated home.
+        """
+        relocated_home = tmp_path.parent / "fp-relocated-home"
+        context_dir = relocated_home / "context"
+        context_dir.mkdir(parents=True)
+        convention = context_dir / "client-acme.md"
+        convention.write_text("Acme context under a relocated home.")
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(relocated_home))
+
+        # FOOTPRINTER_HOME must not be under HOME, or the test would not exercise
+        # the divergent-root path.
+        assert not str(relocated_home.resolve()).startswith(
+            str(tmp_path.resolve()) + "/"
+        )
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
+        assert result is not None
+        block = result["curated_context"]
+        assert block["excerpt"] == "Acme context under a relocated home."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(convention)
+
     def test_folder_readme_auto_detect_surfaces_block(self, service_db, tmp_path):
         folder = tmp_path / "alpha-src"
         folder.mkdir()

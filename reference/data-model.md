@@ -555,7 +555,7 @@ Client/project grouping table. Projects can optionally reference a client via `c
 | `access_source` | TEXT | Policy scope that set `access` (provenance) |
 | `visibility_source` | TEXT | Policy scope that set `visibility` (provenance) |
 | `display_name` | TEXT | Uniform display label (auto-populated from `name` via trigger) |
-| `context_path` | TEXT | Nullable; pointer to a curated-context Markdown file. Convention-first (`context/client-<slug>.md` under a context root); this column overrides. Surfaced on demand by the orientation tools as a `curated_context` block carrying the excerpt contract (`excerpt_source: context_md`). |
+| `context_path` | TEXT | Nullable; pointer to a curated-context Markdown file. Convention-first: with no override, the orientation tools resolve `context/client-<slug>.md` under the Footprinter home root (`$FOOTPRINTER_HOME`, default `~/.footprinter/`) → `~/.footprinter/context/client-<slug>.md`. This column overrides that convention. Surfaced on demand by the orientation tools as a `curated_context` block carrying the excerpt contract (`excerpt_source: context_md`). |
 
 **Indexes:**
 
