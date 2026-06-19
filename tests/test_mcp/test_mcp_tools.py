@@ -528,6 +528,84 @@ class TestContexterSearch:
         assert len(result["files"]) == 1
         assert result["files"][0]["name"] == "readme.md"
 
+    def test_denied_file_no_content_preview_via_viewer_search(self, mcp_db):
+        """A denied file returns no excerpt/content on the VIEWER keyword path.
+
+        The files branch must apply ``strip_content_for_denied('file', ...)``
+        like email/chat, so a full-visibility but access-denied file surfaces
+        as a hit with the excerpt fields stripped — never the content_preview.
+        """
+        from footprinter.services import access_service
+
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, source, name, path, status, modified_at, "
+            "visibility, access, content_preview) "
+            "VALUES (1, 'local', 'classified.md', '/test/classified.md', 'listed', "
+            "'2024-01-01', 'full', 'deny', 'TOPSECRET payload that must not leak')"
+        )
+        self._set_visible(mcp_db, "source:files")
+        mcp_db.commit()
+
+        prior = access_service._global_permission
+        access_service.load_globals(mcp_db)
+        try:
+            with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+                mock_get_db.return_value.__enter__ = lambda s: mcp_db
+                mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+                from footprinter.mcp.tools.search import footprinter_search
+
+                result = footprinter_search("classified", sources=["files"])
+        finally:
+            access_service._global_permission = prior
+
+        match = [f for f in result["files"] if f["id"] == 1][0]
+        assert "excerpt" not in match
+        for value in match.values():
+            if isinstance(value, str):
+                assert "TOPSECRET payload" not in value
+
+    def test_inherit_file_under_global_deny_no_content_preview_via_viewer_search(self, mcp_db):
+        """An inherit-access file under global-deny leaks no content via VIEWER search.
+
+        Under a global-deny policy ``inherit`` resolves to deny, so the
+        service-layer net must strip the excerpt fields.
+        """
+        from footprinter.services import access_service
+
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO permission_policies (scope, setting) VALUES ('global', 'deny')"
+        )
+        cursor.execute(
+            "INSERT INTO files (id, source, name, path, status, modified_at, "
+            "visibility, access, content_preview) "
+            "VALUES (2, 'local', 'inherited.md', '/test/inherited.md', 'listed', "
+            "'2024-01-01', 'full', 'inherit', 'GLOBALSECRET payload that must not leak')"
+        )
+        self._set_visible(mcp_db, "source:files")
+        mcp_db.commit()
+
+        prior = access_service._global_permission
+        access_service.load_globals(mcp_db)
+        try:
+            with patch("footprinter.mcp.tools.search.get_db") as mock_get_db:
+                mock_get_db.return_value.__enter__ = lambda s: mcp_db
+                mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+                from footprinter.mcp.tools.search import footprinter_search
+
+                result = footprinter_search("inherited", sources=["files"])
+        finally:
+            access_service._global_permission = prior
+
+        match = [f for f in result["files"] if f["id"] == 2][0]
+        assert "excerpt" not in match
+        for value in match.values():
+            if isinstance(value, str):
+                assert "GLOBALSECRET payload" not in value
+
     def test_search_returns_all_source_keys(self, mcp_db):
         self._set_visible(mcp_db, "source:files", "source:emails", "source:chats")
 
