@@ -1278,7 +1278,7 @@ class TestCuratedContext:
 
     Each test inserts a fresh super-entity row pointing at a real Markdown file
     (column override) or a folder containing a README (auto-detect), then asserts
-    the navigation result carries a ``curated_context`` block with the FPR-2025
+    the navigation result carries a ``curated_context`` block with the uniform
     excerpt contract: ``excerpt_source == "context_md"``, ``chars_available``,
     ``has_more``, plus the resolved ``context_path``. The unset case carries no
     block.

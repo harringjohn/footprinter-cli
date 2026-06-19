@@ -192,8 +192,8 @@ def attach_curated_context(
     pointer is not surfaced) and, when a readable Markdown file resolves, attaches
     the uniform excerpt-contract block under ``result["curated_context"]`` —
     carrying ``excerpt_source == "context_md"`` plus ``chars_available`` /
-    ``has_more`` (FPR-2025). Missing/unset pointers leave the result unchanged.
-    Returns the same dict for convenience.
+    ``has_more``. Missing/unset pointers leave the result unchanged. Returns the
+    same dict for convenience.
     """
     from footprinter.utils.context_md import resolve_curated_context
 
