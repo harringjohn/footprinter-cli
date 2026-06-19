@@ -1185,3 +1185,84 @@ class TestVisitService:
         result = visit_service.assign(service_db, 1, project_id=1)
         assert result is not None
         assert result["project_id"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Governance-denylist / content-strip ordering
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestListContentStripOrdering:
+    """``list_`` must strip denied content BEFORE the governance denylist runs.
+
+    The denylist (applied inside ``filter_results_list``) removes the ``access``
+    field on full-visibility rows. ``strip_content_for_denied`` reads ``access``
+    and fails closed to ``deny`` when it is missing, so if filtering ran first
+    it would wrongly strip content from full-visibility, allowed rows. These
+    tests pin the ordering against rows that carry the excerpt contract.
+    """
+
+    _EXCERPT_ROW = {
+        "id": 1,
+        "visibility": "full",
+        "access": "allow",
+        "excerpt": "real matched content",
+        "excerpt_source": "body_preview",
+        "chars_returned": 20,
+        "chars_available": 20,
+        "has_more": False,
+    }
+
+    def _patched_response(self, key):
+        import copy
+
+        return {key: [copy.deepcopy(self._EXCERPT_ROW)], "pagination": {}}
+
+    def test_email_list_keeps_excerpt_on_allowed_full_row(self, monkeypatch):
+        monkeypatch.setattr(
+            email_service.db,
+            "list_emails",
+            lambda *a, **k: self._patched_response("emails"),
+        )
+        result = email_service.list_(None, role=Role.VIEWER)
+        row = result["emails"][0]
+        assert row["excerpt"] == "real matched content"  # content survives
+        assert "access" not in row  # governance denylist still applied
+
+    def test_chat_list_keeps_excerpt_on_allowed_full_row(self, monkeypatch):
+        monkeypatch.setattr(
+            chat_service.db,
+            "list_chats",
+            lambda *a, **k: self._patched_response("chats"),
+        )
+        result = chat_service.list_(None, role=Role.VIEWER)
+        row = result["chats"][0]
+        assert row["excerpt"] == "real matched content"
+        assert "access" not in row
+
+    def test_file_list_keeps_excerpt_on_allowed_full_row(self, monkeypatch):
+        monkeypatch.setattr(
+            file_service.db,
+            "list_files",
+            lambda *a, **k: self._patched_response("files"),
+        )
+        result = file_service.list_(None, role=Role.VIEWER)
+        row = result["files"][0]
+        assert row["excerpt"] == "real matched content"
+        assert "access" not in row
+
+    def test_denied_row_still_has_content_stripped(self, monkeypatch):
+        """A full-visibility but access='deny' row loses content (fail-closed)."""
+        import copy
+
+        denied = copy.deepcopy(self._EXCERPT_ROW)
+        denied["access"] = "deny"
+        monkeypatch.setattr(
+            email_service.db,
+            "list_emails",
+            lambda *a, **k: {"emails": [denied], "pagination": {}},
+        )
+        result = email_service.list_(None, role=Role.VIEWER)
+        row = result["emails"][0]
+        assert "excerpt" not in row  # content stripped for denied
+        assert "access" not in row  # governance denylist applied

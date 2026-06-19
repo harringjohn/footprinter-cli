@@ -45,7 +45,10 @@ __all__ = [
     "filter_result",
     "filter_results_list",
     "strip_content_for_denied",
+    "strip_governance_fields",
     "get_opaque_metadata",
+    # Governance denylist
+    "GOVERNANCE_FIELDS",
     # Opaque field sets
     "OPAQUE_FILE_FIELDS",
     "OPAQUE_EMAIL_FIELDS",
@@ -161,6 +164,25 @@ OPAQUE_CLIENT_FIELDS = {"id", "client_type", "status"}
 
 
 # ---------------------------------------------------------------------------
+# Governance denylist
+# ---------------------------------------------------------------------------
+
+# Governance/provenance metadata that VIEWER full-visibility results must not
+# carry. Denylist (strip a fixed set) rather than a per-type keep-allowlist:
+# lower maintenance and it won't drift as new presentation fields are added.
+# Trade-off: a future *internal* field must be added here to avoid leaking.
+GOVERNANCE_FIELDS = frozenset({
+    "visibility", "access", "visibility_source", "access_source",
+    "status", "status_reason",
+})
+
+
+def strip_governance_fields(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of ``result`` with governance/provenance fields removed."""
+    return {k: v for k, v in result.items() if k not in GOVERNANCE_FIELDS}
+
+
+# ---------------------------------------------------------------------------
 # List filtering
 # ---------------------------------------------------------------------------
 
@@ -183,7 +205,7 @@ def filter_result(item_type: str, full_result: Dict[str, Any]) -> Optional[Dict[
     if visibility == "opaque":
         return _filter_to_opaque(item_type, full_result)
 
-    return full_result  # visible
+    return strip_governance_fields(full_result)  # visible
 
 
 def filter_results_list(
@@ -206,7 +228,7 @@ def filter_results_list(
         if visibility == "opaque":
             filtered.append(_filter_to_opaque(item_type, result))
         else:
-            filtered.append(result)
+            filtered.append(strip_governance_fields(result))
 
     return filtered, suppressed
 

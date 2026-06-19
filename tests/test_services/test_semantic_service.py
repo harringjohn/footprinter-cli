@@ -268,6 +268,92 @@ class TestSemanticExcerptContract:
         assert "snippet" not in match
 
 
+class TestSemanticGovernanceStripped:
+    """Full-visibility semantic VIEWER results carry no governance fields.
+
+    Semantic already trims full-visibility rows through keep-allowlists
+    (``_CHAT_FIELDS`` / ``_FILE_FIELDS``) that exclude the governance set, so no
+    source change is needed there. This regression guard ties that guarantee to
+    the shared ``GOVERNANCE_FIELDS`` constant so the keyword and semantic paths
+    stay in lockstep.
+    """
+
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO chats_fts(chats_fts) VALUES('rebuild')")
+        conn.commit()
+
+    def _mock_vs_module(self, *, files=None, chats=None):
+        mock_store = MagicMock()
+        mock_store.search_files.return_value = files or []
+        mock_store.search_chats.return_value = chats or []
+        mock_module = MagicMock()
+        mock_module.VectorStore.get_instance.return_value = mock_store
+        return mock_module
+
+    def test_vector_file_result_excludes_governance(self, service_db):
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": "matched chunk",
+                    "content_length": 100,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        for field in GOVERNANCE_FIELDS:
+            assert field not in match
+
+    def test_vector_chat_result_excludes_governance(self, service_db):
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        mock_module = self._mock_vs_module(
+            chats=[
+                {
+                    "chat_id": 1,
+                    "chat_title": "Visible Chat",
+                    "snippet": "matched window",
+                    "content_length": 100,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "relevance_score": 0.9,
+                    "source": "claude",
+                    "created_at": "",
+                    "message_id": 11,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "conversation", role=Role.VIEWER, source="chats"
+            )
+        match = [c for c in result["chats"] if c.get("chat_id") == 1][0]
+        for field in GOVERNANCE_FIELDS:
+            assert field not in match
+
+    def test_fts5_fallback_file_result_excludes_governance(self, service_db):
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db, "readme", role=Role.VIEWER, source="files"
+        )
+        matches = [f for f in result.get("files", []) if f.get("name") == "readme.md"]
+        assert matches
+        for field in GOVERNANCE_FIELDS:
+            assert field not in matches[0]
+
+
 class TestSemanticServiceD2Access:
     """D2: semantic matches are content-derived — visible items need read access."""
 

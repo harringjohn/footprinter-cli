@@ -7,11 +7,13 @@ import pytest
 
 from footprinter.services import Role, access_service
 from footprinter.services.access_service import (
+    GOVERNANCE_FIELDS,
     filter_result,
     filter_results_list,
     load_globals,
     resolve_inherit_visibility,
     strip_content_for_denied,
+    strip_governance_fields,
 )
 
 # ---------------------------------------------------------------------------
@@ -376,7 +378,9 @@ def test_filter_result_visible_returns_full():
         "visibility": "full",
     }
     result = filter_result("file", item)
-    assert result == item
+    # Visible results keep all presentation fields but drop governance metadata
+    # (here: ``visibility``) via the denylist.
+    assert result == {k: v for k, v in item.items() if k != "visibility"}
 
 
 def test_filter_result_opaque_client_fields():
@@ -485,6 +489,156 @@ def test_filter_results_list_removes_hidden_counts_suppressed():
     assert len(filtered) == 2
     assert filtered[0]["id"] == 1
     assert set(filtered[1].keys()) == {"id", "browser"}
+
+
+# ---------------------------------------------------------------------------
+# strip_governance_fields (denylist)
+# ---------------------------------------------------------------------------
+
+# The fixed governance/provenance set the denylist must remove.
+_ALL_GOVERNANCE = {
+    "visibility",
+    "access",
+    "visibility_source",
+    "access_source",
+    "status",
+    "status_reason",
+}
+
+
+class TestStripGovernanceFields:
+    """The denylist helper removes the fixed governance set and nothing else."""
+
+    def test_constant_is_the_fixed_six(self):
+        assert set(GOVERNANCE_FIELDS) == _ALL_GOVERNANCE
+
+    def test_removes_all_six_fields(self):
+        item = {
+            "id": 1,
+            "name": "readme.md",
+            "excerpt": "hello",
+            "visibility": "full",
+            "access": "allow",
+            "visibility_source": "global",
+            "access_source": "global",
+            "status": "listed",
+            "status_reason": "ingested",
+        }
+        result = strip_governance_fields(item)
+        assert set(result.keys()) == {"id", "name", "excerpt"}
+
+    def test_keeps_presentation_fields_intact(self):
+        item = {
+            "id": 7,
+            "name": "plan.md",
+            "excerpt": "the plan",
+            "excerpt_source": "content_preview",
+            "visibility": "full",
+        }
+        result = strip_governance_fields(item)
+        assert result["id"] == 7
+        assert result["name"] == "plan.md"
+        assert result["excerpt"] == "the plan"
+        assert result["excerpt_source"] == "content_preview"
+        assert "visibility" not in result
+
+    def test_no_op_when_fields_absent(self):
+        item = {"id": 1, "name": "x", "excerpt": "y"}
+        result = strip_governance_fields(item)
+        assert result == item
+
+    def test_does_not_mutate_input(self):
+        item = {"id": 1, "visibility": "full", "name": "x"}
+        result = strip_governance_fields(item)
+        assert "visibility" in item  # original untouched
+        assert "visibility" not in result
+
+
+def test_filter_results_list_strips_governance_on_full_visibility():
+    """Full-visibility rows lose the six governance fields but keep presentation."""
+    items = [
+        {
+            "id": 1,
+            "name": "report.md",
+            "excerpt": "matched text",
+            "excerpt_source": "content_preview",
+            "visibility": "full",
+            "access": "allow",
+            "visibility_source": "global",
+            "access_source": "global",
+            "status": "listed",
+            "status_reason": "ingested",
+        },
+        {"id": 2, "name": "hidden", "visibility": "hidden"},
+        {
+            "id": 3,
+            "name": "opaque.md",
+            "content_type": "markdown",
+            "source": "local",
+            "visibility": "opaque",
+        },
+    ]
+    filtered, suppressed = filter_results_list("file", items)
+
+    assert suppressed == 1  # hidden removed
+    assert len(filtered) == 2
+
+    full_row = filtered[0]
+    assert full_row["id"] == 1
+    # Governance fields gone.
+    for field in _ALL_GOVERNANCE:
+        assert field not in full_row
+    # Presentation fields kept.
+    assert full_row["name"] == "report.md"
+    assert full_row["excerpt"] == "matched text"
+    assert full_row["excerpt_source"] == "content_preview"
+
+    # Opaque row reduced to its keep-set (never included the governance set anyway).
+    opaque_row = filtered[1]
+    assert set(opaque_row.keys()) == {"id", "content_type", "source"}
+
+
+def test_filter_result_strips_governance_on_full_visibility():
+    """Single full-visibility result loses governance, keeps everything else."""
+    item = {
+        "id": 1,
+        "name": "report.md",
+        "excerpt": "matched text",
+        "visibility": "full",
+        "access": "allow",
+        "visibility_source": "global",
+        "access_source": "global",
+        "status": "listed",
+        "status_reason": "ingested",
+    }
+    result = filter_result("file", item)
+    assert result is not None
+    for field in _ALL_GOVERNANCE:
+        assert field not in result
+    assert result["id"] == 1
+    assert result["name"] == "report.md"
+    assert result["excerpt"] == "matched text"
+
+
+def test_filter_result_opaque_unchanged_by_denylist():
+    """Opaque branch keeps using the opaque keep-set — status survives there."""
+    item = {
+        "id": 6,
+        "name": "Footprinter",
+        "status": "listed",
+        "client_id": 2,
+        "visibility": "opaque",
+    }
+    # project opaque keep-set includes 'status' — the denylist must NOT run here.
+    result = filter_result("project", item)
+    assert result is not None
+    assert set(result.keys()) == {"id", "status", "client_id"}
+    assert result["status"] == "listed"
+
+
+def test_filter_result_hidden_still_returns_none():
+    item = {"id": 1, "name": "secret", "visibility": "hidden", "status": "listed"}
+    assert filter_result("file", item) is None
 
 
 # ---------------------------------------------------------------------------

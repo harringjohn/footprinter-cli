@@ -585,7 +585,7 @@ class TestFilterResult:
         assert filtered is None
 
     def test_visible_returns_full(self):
-        """Visible items return full result."""
+        """Visible items return all presentation fields, minus governance metadata."""
         result = {
             "id": 3,
             "name": "allowed.txt",
@@ -595,7 +595,8 @@ class TestFilterResult:
             "visibility": "full",
         }
         filtered = filter_result("file", result)
-        assert filtered == result
+        # ``visibility`` (governance) is stripped by the denylist; everything else survives.
+        assert filtered == {k: v for k, v in result.items() if k != "visibility"}
 
     def test_opaque_file_filtered(self):
         """Opaque files return only allowed fields."""

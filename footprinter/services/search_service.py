@@ -146,8 +146,11 @@ def search(
         if role.sees_all:
             results["emails"] = email_results
         else:
+            # Strip denied content BEFORE filter_results_list — the latter now
+            # removes the governance ``access`` field on full-visibility rows,
+            # which strip_content_for_denied reads to decide what to redact.
+            strip_content_for_denied("email", email_results)
             filtered, suppressed = filter_results_list("email", email_results)
-            strip_content_for_denied("email", filtered)
             results["emails"] = filtered
             total_suppressed += suppressed
         counts["emails"] = {"returned": len(results["emails"]), "has_more": has_more}
@@ -170,8 +173,9 @@ def search(
         if role.sees_all:
             results["chats"] = chat_results
         else:
+            # Strip denied content BEFORE filter_results_list — see emails above.
+            strip_content_for_denied("chat", chat_results)
             filtered, suppressed = filter_results_list("chat", chat_results)
-            strip_content_for_denied("chat", filtered)
             results["chats"] = filtered
             total_suppressed += suppressed
         counts["chats"] = {"returned": len(results["chats"]), "has_more": has_more}
