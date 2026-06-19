@@ -333,6 +333,148 @@ class TestConfigurableReadCap:
         assert result["metadata"].get("truncated") is True
         assert result["metadata"].get("extraction_incomplete") is True
 
+    def test_complete_cap_sized_file_not_truncated(self):
+        """A *complete* file exactly at the cap (size_bytes == len(data) == cap)
+        whose extraction fails for an unrelated reason is NOT labeled truncated.
+
+        The read returns exactly max_bytes, but the indexed size_bytes proves the
+        whole file was read, so raising the read cap would not help. Result must
+        fall back to raw decode (status ok, extraction_success False) rather than
+        reporting extraction_failed / truncated."""
+        cap_mb = 1
+        cap_bytes = cap_mb * 1024 * 1024
+        metadata = _local_pdf_metadata(size_bytes=cap_bytes)
+        conn = MagicMock()
+        mock_registry = MagicMock()
+        mock_registry.is_remote_source.return_value = False
+
+        def fake_read(path, max_bytes=500_000):
+            # Return exactly the cap; the file is complete at this size.
+            return b"%PDF-1.7" + b"\x00" * (max_bytes - 8)
+
+        with (
+            patch(
+                "footprinter.services.content_service._read_local_file_bytes",
+                side_effect=fake_read,
+            ),
+            patch(
+                "footprinter.source_registry.SourceRegistry",
+                return_value=mock_registry,
+            ),
+            patch(
+                "footprinter.utils.extraction.get_extractor_for_file",
+                return_value="pdf",
+            ),
+            patch(
+                "footprinter.utils.extraction.extract_text",
+                return_value=(None, "Cannot find Root object"),
+            ),
+            patch("footprinter.source_registry.get_config") as mock_get_config,
+        ):
+            mock_get_config.return_value = {"indexing": {"max_read_size_mb": cap_mb}}
+            result = content_service.read_file(conn, metadata)
+
+        assert result["status"] == "ok"
+        assert result["metadata"]["extraction_success"] is False
+        assert result["metadata"].get("truncated") is not True
+        assert result["metadata"].get("extraction_incomplete") is not True
+
+    def test_genuinely_truncated_cap_sized_file_still_truncated(self):
+        """Regression guard: a genuinely larger file (size_bytes > cap) that reads
+        exactly cap bytes and fails extraction is still labeled truncated."""
+        cap_mb = 1
+        cap_bytes = cap_mb * 1024 * 1024
+        metadata = _local_pdf_metadata(size_bytes=cap_bytes * 5)
+        conn = MagicMock()
+        mock_registry = MagicMock()
+        mock_registry.is_remote_source.return_value = False
+
+        def fake_read(path, max_bytes=500_000):
+            return b"%PDF-1.7" + b"\x00" * (max_bytes - 8)
+
+        with (
+            patch(
+                "footprinter.services.content_service._read_local_file_bytes",
+                side_effect=fake_read,
+            ),
+            patch(
+                "footprinter.source_registry.SourceRegistry",
+                return_value=mock_registry,
+            ),
+            patch(
+                "footprinter.utils.extraction.get_extractor_for_file",
+                return_value="pdf",
+            ),
+            patch(
+                "footprinter.utils.extraction.extract_text",
+                return_value=(None, "Cannot find Root object"),
+            ),
+            patch("footprinter.source_registry.get_config") as mock_get_config,
+        ):
+            mock_get_config.return_value = {"indexing": {"max_read_size_mb": cap_mb}}
+            result = content_service.read_file(conn, metadata)
+
+        assert result["status"] == "extraction_failed"
+        assert result["metadata"]["extraction_success"] is False
+        assert result["metadata"].get("truncated") is True
+        assert result["metadata"].get("extraction_incomplete") is True
+
+    def test_was_truncated_exact_cap_size_known_not_truncated(self):
+        """Unit-level boundary table for _was_truncated with a known size_bytes."""
+        cap = 1024
+        # Complete, exactly at cap -> not truncated.
+        assert content_service._was_truncated(b"x" * cap, cap, size_bytes=cap) is False
+        # More bytes exist past the cap -> truncated.
+        assert content_service._was_truncated(b"x" * cap, cap, size_bytes=cap + 1) is True
+        # Stale smaller size; data already covers the whole file -> not truncated.
+        assert content_service._was_truncated(b"x" * cap, cap, size_bytes=cap - 1) is False
+        # No cap -> not truncated.
+        assert content_service._was_truncated(b"x" * cap, 0, size_bytes=cap) is False
+        # Under-len read but indexed size proves more bytes exist -> truncated.
+        assert content_service._was_truncated(b"x" * (cap - 1), cap, size_bytes=cap * 5) is True
+
+    def test_was_truncated_size_unknown_uses_probe(self):
+        """Size-unknown exact-boundary case is resolved by an over-cap probe.
+
+        With size_bytes absent and len(data) == cap, _was_truncated consults a
+        one-byte over-cap probe (via _read_local_file_bytes with
+        max_bytes == cap + 1) rather than defaulting to truncated."""
+        cap = 1024
+        data = b"x" * cap
+        path = "/Users/u/Work/big.pdf"
+
+        # Probe returns more than cap bytes -> something past the cap -> truncated.
+        def probe_more(p, max_bytes=500_000):
+            assert max_bytes == cap + 1
+            return b"x" * (cap + 1)
+
+        with patch(
+            "footprinter.services.content_service._read_local_file_bytes",
+            side_effect=probe_more,
+        ):
+            assert (
+                content_service._was_truncated(
+                    data, cap, size_bytes=None, path=path
+                )
+                is True
+            )
+
+        # Probe returns exactly cap bytes -> nothing past the cap -> not truncated.
+        def probe_exact(p, max_bytes=500_000):
+            assert max_bytes == cap + 1
+            return b"x" * cap
+
+        with patch(
+            "footprinter.services.content_service._read_local_file_bytes",
+            side_effect=probe_exact,
+        ):
+            assert (
+                content_service._was_truncated(
+                    data, cap, size_bytes=None, path=path
+                )
+                is False
+            )
+
     def test_nontruncated_extraction_failure_keeps_fallback(self):
         """A small file whose extraction fails still falls back to raw decode
         (status ok, extraction_success False). The truncation guard must key off
