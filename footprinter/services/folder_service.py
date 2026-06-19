@@ -6,6 +6,7 @@ from typing import Optional
 from footprinter.db import folders as db
 from footprinter.services.access_service import (
     _read_visibility,
+    attach_curated_context,
     filter_result,
     filter_results_list,
 )
@@ -133,6 +134,7 @@ def get_by_path(
     # Fetch navigation data (files, subfolders, recursive count)
     nav = db.get_folder_navigation(conn, row["id"], path, status=status_arg)
     result = {**row, **nav}
+    attach_curated_context(result, "folder")
 
     if role.sees_all:
         return result

@@ -6,6 +6,7 @@ from typing import Optional
 from footprinter.db import projects as db
 from footprinter.services.access_service import (
     _read_visibility,
+    attach_curated_context,
     filter_result,
     filter_results_list,
 )
@@ -149,6 +150,7 @@ def _build_project_navigation(conn: sqlite3.Connection, row: dict, *, role: Role
 
     nav = db.get_project_navigation(conn, row["id"])
     result = {**row, **nav}
+    attach_curated_context(result, "project")
 
     if role.sees_all:
         return result

@@ -6,6 +6,7 @@ from typing import Optional
 from footprinter.db import clients as db
 from footprinter.services.access_service import (
     _read_visibility,
+    attach_curated_context,
     filter_result,
     filter_results_list,
 )
@@ -210,6 +211,7 @@ def _build_client_navigation(conn: sqlite3.Connection, row: dict, *, role: Role)
 
     result = {**row}
     result["projects"] = projects
+    attach_curated_context(result, "client")
 
     # VIEWER: unlisted projects are collapsed to a count, not enumerated.
     # Computed unconditionally — a client with only unlisted projects has no

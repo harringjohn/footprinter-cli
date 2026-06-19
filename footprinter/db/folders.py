@@ -171,7 +171,7 @@ def get_folder_by_path(conn: sqlite3.Connection, path: str) -> dict | None:
         """SELECT id, path, relative_path, name, source, status,
                   direct_file_count, total_size_bytes, scanned_at,
                   project_id, external_id, account, visibility, access,
-                  visibility_source, access_source
+                  visibility_source, access_source, context_path
            FROM folders WHERE path = ?""",
         (path,),
     ).fetchone()
