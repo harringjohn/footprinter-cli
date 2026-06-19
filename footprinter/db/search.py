@@ -18,6 +18,7 @@ from footprinter.db.sql_utils import (
     paginated_response,
     split_query_terms,
 )
+from footprinter.utils.text import build_excerpt
 
 
 def _status_clause(
@@ -225,6 +226,9 @@ def search_files_keyword(
             "visibility": r["visibility"],
             "status": r["status"],
             "status_reason": r["status_reason"],
+            # Bottom rung of the file-excerpt precedence: name/path. The
+            # content_preview rung is added on the keyword path by a later issue.
+            **build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title"),
         }
         for r in rows
     ]
@@ -322,7 +326,7 @@ def search_emails_keyword(
             "received_at": r["received_at"],
             "account": r["account"],
             "labels": r["labels"],
-            "snippet": r["body_preview"],
+            **build_excerpt(r["body_preview"] or "", source="body_preview"),
             "project_name": r["project_name"],
             "client_name": r["client_name"],
             "visibility": r["visibility"],
@@ -415,6 +419,8 @@ def search_chats_keyword(
             "visibility_source": r["visibility_source"],
             "access_source": r["access_source"],
             "status": r["status"],
+            # Title fallback rung; the message-derived excerpt is a later issue.
+            **build_excerpt(r["title"] or "", source="title"),
         }
         for r in rows
     ]

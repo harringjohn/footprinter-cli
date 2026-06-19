@@ -69,6 +69,25 @@ class TestSearchFilesKeyword:
         assert "name" in results[0]
         assert "path" in results[0]
 
+    def test_excerpt_uses_name_path_fallback(self, db_conn):
+        """Keyword files carry a name/path excerpt with excerpt_source='title'.
+
+        The content_preview rung is added on the keyword path by a later issue;
+        here the bottom (name/path) rung of the file-excerpt precedence applies.
+        """
+        results = search_files_keyword(db_conn, terms=["readme"], has_query=True, limit=10)
+        match = [r for r in results if r["name"] == "readme.md"][0]
+        assert match["excerpt_source"] == "title"
+        assert "readme.md" in match["excerpt"]
+        assert "/Users/u/Work/alpha/readme.md" in match["excerpt"]
+        assert match["chars_returned"] == len(match["excerpt"])
+        assert match["chars_available"] == len(match["excerpt"])
+        assert match["has_more"] is False
+
+    def test_no_snippet_key(self, db_conn):
+        results = search_files_keyword(db_conn, terms=[], has_query=False, limit=10)
+        assert all("snippet" not in r for r in results)
+
     def test_exclude_hidden(self, db_conn):
         results = search_files_keyword(
             db_conn,
@@ -147,6 +166,20 @@ class TestSearchEmailsKeyword:
         assert "id" in results[0]
         assert "subject" in results[0]
 
+    def test_excerpt_from_body_preview(self, db_conn):
+        """Emails carry an excerpt sourced from body_preview with provenance."""
+        results = search_emails_keyword(db_conn, terms=["update"], has_query=True, limit=10)
+        match = [r for r in results if r["subject"] == "Project Update"][0]
+        assert match["excerpt"] == "Here is the update..."
+        assert match["excerpt_source"] == "body_preview"
+        assert match["chars_returned"] == len("Here is the update...")
+        assert match["chars_available"] == len("Here is the update...")
+        assert match["has_more"] is False
+
+    def test_no_snippet_key(self, db_conn):
+        results = search_emails_keyword(db_conn, terms=[], has_query=False, limit=10)
+        assert all("snippet" not in r for r in results)
+
     def test_exclude_hidden(self, db_conn):
         results = search_emails_keyword(
             db_conn,
@@ -201,6 +234,23 @@ class TestSearchChatsKeyword:
         assert len(results) >= 1
         assert "id" in results[0]
         assert "title" in results[0]
+
+    def test_excerpt_from_title(self, db_conn):
+        """Keyword chats carry a title excerpt with excerpt_source='title'.
+
+        The message-derived excerpt is the job of a later issue; here the
+        title fallback applies.
+        """
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt"] == "Visible Chat"
+        assert match["excerpt_source"] == "title"
+        assert match["chars_returned"] == len("Visible Chat")
+        assert match["has_more"] is False
+
+    def test_no_snippet_key(self, db_conn):
+        results = search_chats_keyword(db_conn, terms=[], has_query=False, limit=10)
+        assert all("snippet" not in r for r in results)
 
     def test_exclude_hidden(self, db_conn):
         results = search_chats_keyword(

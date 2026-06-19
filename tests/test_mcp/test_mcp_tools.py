@@ -1006,7 +1006,11 @@ class TestContexterSearch:
             result = footprinter_search("GitHub Request", sources=["browser"])
 
         assert len(result["browser"]) == 1
-        assert result["browser"][0]["title"] == "GitHub Pull Request"
+        entry = result["browser"][0]
+        assert entry["title"] == "GitHub Pull Request"
+        # Browser is a non-content source: it carries no excerpt contract fields.
+        for field in ("excerpt", "excerpt_source", "chars_returned", "chars_available", "has_more", "snippet"):
+            assert field not in entry
 
     def test_search_summary_with_results(self, mcp_db):
         cursor = mcp_db.cursor()
@@ -1364,8 +1368,8 @@ class TestContexterSearch:
         assert len(result["files"]) == 1
         assert result["files"][0]["name"] == "work.txt"
 
-    def test_search_email_results_include_snippet(self, mcp_db):
-        """Email results include from_address and snippet keys."""
+    def test_search_email_results_include_excerpt(self, mcp_db):
+        """Email results include from_address and the excerpt contract (from body_preview)."""
         self._insert_email(mcp_db, 1, "Test", from_address="alice@test.com", body_preview="Preview text here")
         self._set_visible(mcp_db, "source:emails")
 
@@ -1379,7 +1383,11 @@ class TestContexterSearch:
 
         email = result["emails"][0]
         assert email["from_address"] == "alice@test.com"
-        assert email["snippet"] == "Preview text here"
+        assert email["excerpt"] == "Preview text here"
+        assert email["excerpt_source"] == "body_preview"
+        assert email["chars_returned"] == len("Preview text here")
+        assert email["has_more"] is False
+        assert "snippet" not in email
 
     def test_search_file_results_include_account(self, mcp_db):
         """File results include account and mime_type keys."""
@@ -1443,8 +1451,8 @@ class TestContexterSearch:
 
     # --- Permission enforcement (2) ---
 
-    def test_email_permission_denied_strips_snippet(self, mcp_db):
-        """Visible email with access='deny' appears without body_preview snippet."""
+    def test_email_permission_denied_strips_excerpt(self, mcp_db):
+        """Visible email with access='deny' appears without excerpt or its provenance."""
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO emails (id, message_id, thread_id, account, subject, "
@@ -1469,10 +1477,16 @@ class TestContexterSearch:
         assert len(result["emails"]) == 1
         email = result["emails"][0]
         assert email["subject"] == "Confidential"  # metadata preserved
-        assert "snippet" not in email  # content stripped
+        # Excerpt and every provenance field stripped together.
+        for field in ("excerpt", "excerpt_source", "chars_returned", "chars_available", "has_more", "snippet"):
+            assert field not in email
+        # And the body must not leak through any surviving field.
+        for value in email.values():
+            if isinstance(value, str):
+                assert "Secret email body" not in value
 
-    def test_chat_search_permission_denied_strips_snippet(self, mcp_db):
-        """Visible chat with access='deny' appears without snippet."""
+    def test_chat_search_permission_denied_strips_excerpt(self, mcp_db):
+        """Visible chat with access='deny' appears without excerpt or its provenance."""
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO chats (id, external_id, account, title, "
@@ -1493,7 +1507,8 @@ class TestContexterSearch:
         assert len(result["chats"]) == 1
         chat = result["chats"][0]
         assert chat["title"] == "Secret Chat"  # metadata preserved
-        assert "snippet" not in chat  # content stripped
+        for field in ("excerpt", "excerpt_source", "chars_returned", "chars_available", "has_more", "snippet"):
+            assert field not in chat
 
 
 # ---------------------------------------------------------------------------

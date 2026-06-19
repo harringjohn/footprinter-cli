@@ -233,11 +233,21 @@ def _filter_to_opaque(item_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in result.items() if k in allowed}
 
 
-# Content fields that listing tools must strip when access != 'allow'
+# Content fields that listing tools must strip when access != 'allow'.
+# The excerpt and its provenance describe (and may quote) the content, so they
+# are removed together — leaving the row present preserves the "you matched
+# something" signal without revealing what was matched.
+_EXCERPT_FIELDS = [
+    "excerpt",
+    "excerpt_source",
+    "chars_returned",
+    "chars_available",
+    "has_more",
+]
 _CONTENT_FIELDS: Dict[str, List[str]] = {
-    "chat": ["snippet"],
-    "email": ["snippet"],
-    "file": ["snippet"],
+    "chat": list(_EXCERPT_FIELDS),
+    "email": list(_EXCERPT_FIELDS),
+    "file": list(_EXCERPT_FIELDS),
 }
 
 
