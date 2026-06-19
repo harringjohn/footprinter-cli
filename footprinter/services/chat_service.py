@@ -82,8 +82,11 @@ def list_(
     )
     if role.sees_all:
         return response
+    # Strip denied content BEFORE filter_results_list — the latter strips the
+    # governance ``access`` field on full-visibility rows, which
+    # strip_content_for_denied reads to decide what to redact.
+    strip_content_for_denied("chat", response["chats"])
     filtered, suppressed = filter_results_list("chat", response["chats"])
-    filtered = strip_content_for_denied("chat", filtered)
     response["chats"] = filtered
     response["suppressed"] = suppressed
     return response
