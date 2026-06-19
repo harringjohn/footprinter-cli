@@ -211,15 +211,20 @@ def search_files_keyword(
         params,
     ).fetchall()
 
+    # Function-local import: services.access_service pulls in db.chats/files,
+    # which load this module via db/__init__, so a module-level import here
+    # would close an import cycle. Deferring to call time breaks the loop while
+    # still using the one canonical permission resolver.
+    from footprinter.services.access_service import resolve_inherit_permission
+
     results = []
     for r in rows:
-        # File-excerpt precedence (mirrors file_fts5_fallback):
-        # content_preview when present and access-allowed, else name/path.
-        # Fail closed: surface content only on an explicit allow/inherit access
-        # (inherit follows the baseline-allow default the rest of the system
-        # uses); a NULL or unexpected value falls back to the title rung so a
-        # missing access value never leaks content.
-        if r["content_preview"] and r["access"] in ("allow", "inherit"):
+        # File-excerpt precedence: content_preview when present and the
+        # canonical resolver puts access at 'allow', else name/path. Using
+        # resolve_inherit_permission honors a global-deny policy for 'inherit'
+        # files and fails closed on NULL/unexpected values, so the in-DB
+        # excerpt decision agrees with the service-layer content-gating net.
+        if r["content_preview"] and resolve_inherit_permission(r["access"]) == "allow":
             excerpt_fields = build_excerpt(r["content_preview"], source="content_preview")
         else:
             excerpt_fields = build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title")
@@ -237,6 +242,7 @@ def search_files_keyword(
                 "project": r["project_name"],
                 "client": r["client"],
                 "visibility": r["visibility"],
+                "access": r["access"],
                 "status": r["status"],
                 "status_reason": r["status_reason"],
                 **excerpt_fields,
@@ -643,11 +649,17 @@ def file_fts5_fallback(
         [match_str, *status_params, limit],
     ).fetchall()
 
+    # Function-local import — see search_files_keyword for the cycle rationale.
+    from footprinter.services.access_service import resolve_inherit_permission
+
     results = []
     for row in rows:
-        # File-excerpt precedence on the keyword fallback path:
-        # content_preview when present (and not access-denied), else name/path.
-        if row["content_preview"] and row["access"] != "deny":
+        # File-excerpt precedence on the keyword fallback path: content_preview
+        # when present and the canonical resolver puts access at 'allow', else
+        # name/path. resolve_inherit_permission honors a global-deny policy for
+        # 'inherit' files and fails closed on NULL — the weaker `!= "deny"`
+        # gate leaked content for NULL/inherit-under-global-deny rows.
+        if row["content_preview"] and resolve_inherit_permission(row["access"]) == "allow":
             excerpt_fields = build_excerpt(row["content_preview"], source="content_preview")
         else:
             excerpt_fields = build_excerpt(f"{row['name']} — {row['path'] or ''}", source="title")

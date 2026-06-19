@@ -1,5 +1,7 @@
 """Tests for db/search.py and db/sql_utils.py query helpers."""
 
+import pytest
+
 from footprinter.db.search import (
     chat_fts5_fallback,
     enrich_chat_visibility,
@@ -56,6 +58,27 @@ class TestQueryHelpers:
         cond, params = build_term_conditions(["title"], ["foo", "bar"])
         assert " AND " in cond
         assert len(params) == 2
+
+
+@pytest.fixture
+def global_deny(db_conn):
+    """Apply a global-deny permission policy and hot-load it.
+
+    Sets ``permission_policies(scope='global', setting='deny')`` and refreshes
+    the ``access_service`` global cache so ``resolve_inherit_permission`` maps
+    ``inherit`` to deny. Restores the prior cache value in teardown so other
+    tests are unaffected by the module-level global.
+    """
+    from footprinter.services import access_service
+
+    prior = access_service._global_permission
+    db_conn.execute(
+        "INSERT OR REPLACE INTO permission_policies (scope, setting) VALUES ('global', 'deny')"
+    )
+    db_conn.commit()
+    access_service.load_globals(db_conn)
+    yield db_conn
+    access_service._global_permission = prior
 
 
 class TestSearchFilesKeyword:
@@ -184,6 +207,77 @@ class TestSearchFilesKeyword:
         for key, value in match.items():
             if isinstance(value, str):
                 assert "SECRET payload" not in value, f"content_preview leaked via field '{key}'"
+
+    def test_inherit_under_global_deny_no_content_leak(self, global_deny):
+        """An ``inherit``-access file under global-deny must not leak content.
+
+        Canonically ``resolve_inherit_permission('inherit')`` resolves to the
+        global policy — deny here — so the excerpt must fall back to the title
+        rung. The old inline gate ``access in ('allow','inherit')`` surfaced it.
+        """
+        db_conn = global_deny
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (114, 'local', 'inherited.txt', '/Users/u/docs/inherited.txt', "
+            "'listed', 'text', 2200, '2026-01-15', 'full', 'inherit', "
+            "'GLOBALDENY payload that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["inherited"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 114][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "GLOBALDENY payload" not in value, f"content_preview leaked via field '{key}'"
+
+    def test_result_dict_emits_access_field(self, db_conn):
+        """The keyword result dict carries ``access`` (like every sibling path).
+
+        The downstream ``strip_content_for_denied('file', ...)`` net reads this
+        field; without it the net has nothing to gate on.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (115, 'local', 'governed.txt', '/Users/u/docs/governed.txt', "
+            "'listed', 'text', 1200, '2026-01-15', 'full', 'allow', 'governed content')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["governed"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 115][0]
+        assert "access" in match
+        assert match["access"] == "allow"
+
+    def test_inherit_under_global_allow_still_surfaces_content(self, db_conn):
+        """Regression guard: ``inherit`` under baseline/global-allow still shows content.
+
+        With no global-deny policy loaded, ``resolve_inherit_permission('inherit')``
+        resolves to the baseline allow, so the content_preview rung is used. Pins
+        that the canonical-resolver gate does not over-restrict the normal case.
+        """
+        from footprinter.services import access_service
+
+        prior = access_service._global_permission
+        access_service._global_permission = None  # no global policy → baseline allow
+        try:
+            db_conn.execute(
+                "INSERT INTO files (id, source, name, path, status, content_type, "
+                "size_bytes, modified_at, visibility, access, content_preview) "
+                "VALUES (116, 'local', 'normal.txt', '/Users/u/docs/normal.txt', "
+                "'listed', 'text', 1300, '2026-01-15', 'full', 'inherit', "
+                "'inherited content that should surface')"
+            )
+            db_conn.commit()
+            self._rebuild_fts(db_conn)
+            results = search_files_keyword(db_conn, terms=["normal"], has_query=True, limit=10)
+            match = [r for r in results if r["id"] == 116][0]
+            assert match["excerpt_source"] == "content_preview"
+            assert "inherited content" in match["excerpt"]
+        finally:
+            access_service._global_permission = prior
 
     def test_no_snippet_key(self, db_conn):
         results = search_files_keyword(db_conn, terms=[], has_query=False, limit=10)
@@ -548,6 +642,53 @@ class TestFileFts5Fallback:
         for key, value in match.items():
             if isinstance(value, str):
                 assert "CONFIDENTIAL DATA" not in value, f"content_preview leaked via field '{key}'"
+
+    def test_null_access_no_content_leak(self, db_conn):
+        """A NULL-access file must not leak content on the fallback path.
+
+        The old gate ``access != 'deny'`` treated NULL as not-deny and surfaced
+        the preview. ``resolve_inherit_permission(None)`` fails closed to deny,
+        so the excerpt falls back to the title rung.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (104, 'local', 'orphan.txt', '/Users/u/docs/orphan.txt', "
+            "'listed', 'text', 2100, '2026-01-15', 'full', NULL, "
+            "'NULLSECRET payload that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = file_fts5_fallback(db_conn, "orphan", 10)
+        match = [r for r in results if r["id"] == 104][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "NULLSECRET payload" not in value, f"content_preview leaked via field '{key}'"
+
+    def test_inherit_under_global_deny_no_content_leak(self, global_deny):
+        """An ``inherit``-access file under global-deny must not leak on fallback.
+
+        ``resolve_inherit_permission('inherit')`` resolves to the global deny,
+        so the excerpt falls back to the title rung. The old ``access != 'deny'``
+        gate surfaced it.
+        """
+        db_conn = global_deny
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (105, 'local', 'inherited.txt', '/Users/u/docs/inherited.txt', "
+            "'listed', 'text', 2300, '2026-01-15', 'full', 'inherit', "
+            "'FALLBACKDENY payload that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = file_fts5_fallback(db_conn, "inherited", 10)
+        match = [r for r in results if r["id"] == 105][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "FALLBACKDENY payload" not in value, f"content_preview leaked via field '{key}'"
 
     def test_short_query_returns_empty(self, db_conn):
         self._rebuild_fts(db_conn)

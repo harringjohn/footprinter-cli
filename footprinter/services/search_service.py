@@ -120,6 +120,10 @@ def search(
         if role.sees_all:
             results["files"] = file_results
         else:
+            # Strip denied content BEFORE filter_results_list — the latter
+            # removes the governance ``access`` field on full-visibility rows,
+            # which strip_content_for_denied reads to decide what to redact.
+            strip_content_for_denied("file", file_results)
             filtered, suppressed = filter_results_list("file", file_results)
             results["files"] = filtered
             total_suppressed += suppressed
