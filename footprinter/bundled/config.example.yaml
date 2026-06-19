@@ -89,10 +89,12 @@ indexing:
   # Cap on how many bytes the MCP read path (footprinter_read) pulls from a local
   # file before decode/extraction. MB; 0 = no cap (read the whole file).
   # Default 10 MB closes the old 500 KB silent-truncation gap so the read tool can
-  # return content the index already holds. Trade-off: a single MCP tool result has
-  # a protocol payload ceiling (~1 MB) — very large reads can exceed it and fail to
-  # return. Raise this only if you routinely read large files and accept that risk;
-  # prefer semantic/keyword search for large documents.
+  # return content the index already holds.
+  # The returned content is ALWAYS bounded to a payload-safe size regardless of
+  # this cap: a single MCP tool result has a ~1 MB protocol payload ceiling, so an
+  # oversized read returns a marked, in-budget slice (output_truncated) plus a
+  # pointer to semantic/keyword search — never a hard failure. Raise this cap to
+  # read more bytes from large files; for large documents, prefer search.
   max_read_size_mb: 10
   lookback_days: 14         # Browser history window (days back to index)
   content_snippets: false   # Extract file/email content previews for keyword search
