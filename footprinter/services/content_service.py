@@ -173,7 +173,9 @@ def read_file(
     # range is structurally incomplete and a raw decode would return unusable
     # binary while masquerading as a successful read. Signal the truncation
     # explicitly instead of falling back.
-    if _was_truncated(data, max_read_bytes, meta.get("size_bytes")):
+    if _was_truncated(
+        data, max_read_bytes, meta.get("size_bytes"), path=meta.get("path")
+    ):
         meta["extraction_method"] = extractor_type
         meta["extraction_success"] = False
         meta["extraction_error"] = error
@@ -233,26 +235,65 @@ def _validate_local_path(path: str) -> Path:
     return p
 
 
+def _file_exceeds_cap(path: str, max_read_bytes: int) -> Optional[bool]:
+    """Probe whether a local file has any bytes past ``max_read_bytes``.
+
+    Reads one byte past the cap via ``_read_local_file_bytes`` (which keeps the
+    path-containment guard) and reports ``True`` if at least one byte exists past
+    the cap, ``False`` if not. Returns ``None`` when it cannot tell — no path, or
+    the read returned ``None`` (missing file / containment violation / error) —
+    so the caller can apply a conservative default. The probe bytes are read
+    separately and discarded; the file's primary ``data`` is never altered.
+    """
+    if not path:
+        return None
+    probe = _read_local_file_bytes(path, max_bytes=max_read_bytes + 1)
+    if probe is None:
+        return None
+    return len(probe) > max_read_bytes
+
+
 def _was_truncated(
-    data: bytes, max_read_bytes: int, size_bytes: Optional[int] = None
+    data: bytes,
+    max_read_bytes: int,
+    size_bytes: Optional[int] = None,
+    path: Optional[str] = None,
 ) -> bool:
     """Decide whether ``data`` was truncated by the read cap.
 
     With a cap in effect (``max_read_bytes > 0``), a read that returns at least
-    ``max_read_bytes`` bytes means the file was cap-sized or larger and the
-    returned range is likely incomplete. The indexed ``size_bytes`` corroborates
-    when present but is not required (it can be stale).
+    ``max_read_bytes`` bytes *may* mean the file was cut off — but a complete file
+    that happens to be exactly cap-sized is not truncated. Corroborate the
+    boundary with the indexed ``size_bytes``:
+
+    - ``size_bytes > max_read_bytes`` → more bytes exist past the cap → truncated
+      (also covers under-cap reads with a stale-large indexed size).
+    - ``len(data) < max_read_bytes`` (and not flagged above) → under the cap →
+      not truncated.
+    - At the boundary with a known ``size_bytes`` (``<= cap`` here) → complete →
+      not truncated.
+    - At the boundary with an unknown ``size_bytes`` → probe one byte past the cap
+      for a local ``path``; if the probe is inconclusive (no path / remote /
+      read error) fall back to the conservative ``True`` default.
     """
     if max_read_bytes <= 0:
         return False
-    if len(data) >= max_read_bytes:
-        return True
     try:
         if size_bytes is not None and int(size_bytes) > max_read_bytes:
             return True
+        size_known = size_bytes is not None
     except (TypeError, ValueError):
-        pass
-    return False
+        size_known = False
+    if len(data) < max_read_bytes:
+        return False
+    # Boundary: len(data) >= max_read_bytes.
+    if size_known:
+        # size_bytes is not None and (after the guard above) <= cap → complete.
+        return False
+    probe = _file_exceeds_cap(path or "", max_read_bytes)
+    if probe is None:
+        return True
+    return probe
 
 
 def _read_local_file_bytes(path: str, max_bytes: int = 500_000) -> Optional[bytes]:
