@@ -197,7 +197,8 @@ def search_files_keyword(
         f"""
         SELECT file.id, file.source, file.name, file.path, file.content_type,
                file.size_bytes, file.modified_at, file.account, file.mime_type,
-               file.visibility, file.status, file.status_reason,
+               file.visibility, file.access, file.status, file.status_reason,
+               file.content_preview,
                project.name AS project_name, client.name AS client
         FROM files file
         {fts_join}
@@ -210,28 +211,38 @@ def search_files_keyword(
         params,
     ).fetchall()
 
-    return [
-        {
-            "id": r["id"],
-            "source": r["source"],
-            "name": r["name"],
-            "path": r["path"],
-            "content_type": r["content_type"],
-            "size_bytes": r["size_bytes"],
-            "modified_at": r["modified_at"],
-            "account": r["account"],
-            "mime_type": r["mime_type"],
-            "project": r["project_name"],
-            "client": r["client"],
-            "visibility": r["visibility"],
-            "status": r["status"],
-            "status_reason": r["status_reason"],
-            # Bottom rung of the file-excerpt precedence: name/path. The
-            # content_preview rung is added on the keyword path by a later issue.
-            **build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title"),
-        }
-        for r in rows
-    ]
+    results = []
+    for r in rows:
+        # File-excerpt precedence (mirrors file_fts5_fallback):
+        # content_preview when present and access-allowed, else name/path.
+        # Fail closed: surface content only on an explicit allow/inherit access
+        # (inherit follows the baseline-allow default the rest of the system
+        # uses); a NULL or unexpected value falls back to the title rung so a
+        # missing access value never leaks content.
+        if r["content_preview"] and r["access"] in ("allow", "inherit"):
+            excerpt_fields = build_excerpt(r["content_preview"], source="content_preview")
+        else:
+            excerpt_fields = build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title")
+        results.append(
+            {
+                "id": r["id"],
+                "source": r["source"],
+                "name": r["name"],
+                "path": r["path"],
+                "content_type": r["content_type"],
+                "size_bytes": r["size_bytes"],
+                "modified_at": r["modified_at"],
+                "account": r["account"],
+                "mime_type": r["mime_type"],
+                "project": r["project_name"],
+                "client": r["client"],
+                "visibility": r["visibility"],
+                "status": r["status"],
+                "status_reason": r["status_reason"],
+                **excerpt_fields,
+            }
+        )
+    return results
 
 
 def search_emails_keyword(

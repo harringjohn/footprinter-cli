@@ -61,6 +61,10 @@ class TestQueryHelpers:
 class TestSearchFilesKeyword:
     """Keyword search for files via db/search.py."""
 
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')")
+        conn.commit()
+
     def test_returns_list_of_dicts(self, db_conn):
         results = search_files_keyword(db_conn, terms=[], has_query=False, limit=10)
         assert isinstance(results, list)
@@ -69,20 +73,111 @@ class TestSearchFilesKeyword:
         assert "name" in results[0]
         assert "path" in results[0]
 
-    def test_excerpt_uses_name_path_fallback(self, db_conn):
-        """Keyword files carry a name/path excerpt with excerpt_source='title'.
+    def test_excerpt_uses_content_preview_when_populated(self, db_conn):
+        """Keyword files resolve to the content_preview rung when it is populated.
 
-        The content_preview rung is added on the keyword path by a later issue;
-        here the bottom (name/path) rung of the file-excerpt precedence applies.
+        File 1 (readme.md) carries content_preview='This is a readme' with
+        access='allow', so the file-excerpt precedence resolves to the
+        content_preview rung (excerpt_source='content_preview'), not the
+        name/path title fallback.
         """
         results = search_files_keyword(db_conn, terms=["readme"], has_query=True, limit=10)
         match = [r for r in results if r["name"] == "readme.md"][0]
-        assert match["excerpt_source"] == "title"
-        assert "readme.md" in match["excerpt"]
-        assert "/Users/u/Work/alpha/readme.md" in match["excerpt"]
+        assert match["excerpt_source"] == "content_preview"
+        assert "This is a readme" in match["excerpt"]
+        assert "snippet" not in match
         assert match["chars_returned"] == len(match["excerpt"])
-        assert match["chars_available"] == len(match["excerpt"])
+        assert match["chars_available"] == len("This is a readme")
         assert match["has_more"] is False
+
+    def test_excerpt_shows_content_when_populated(self, db_conn):
+        """A file hit with a populated content_preview returns it as the excerpt."""
+        results = search_files_keyword(db_conn, terms=["report"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 3][0]
+        assert match["excerpt_source"] == "content_preview"
+        assert "Report content" in match["excerpt"]
+        assert "snippet" not in match
+
+    def test_excerpt_falls_back_to_metadata_when_no_content(self, db_conn):
+        """Excerpt uses name — path (source='title') when content_preview is NULL.
+
+        Guards the bottom rung — the no-opt-in / NULL content_preview case.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (110, 'local', 'notes.txt', '/Users/u/docs/notes.txt', "
+            "'listed', 'text', 1000, '2026-01-15', 'full', 'allow', NULL)"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["notes"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 110][0]
+        assert match["excerpt_source"] == "title"
+        assert "notes.txt" in match["excerpt"]
+        assert "/Users/u/docs/notes.txt" in match["excerpt"]
+
+    def test_excerpt_respects_500_char_budget(self, db_conn):
+        """content_preview excerpts are sliced to the flat 500-char ceiling."""
+        long_preview = "report " + ("z" * 1000)
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (111, 'local', 'long.md', '/Users/u/docs/long.md', "
+            "'listed', 'markdown', 9000, '2026-01-15', 'full', 'allow', ?)",
+            (long_preview,),
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["report"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 111][0]
+        assert match["chars_returned"] == 500
+        assert match["chars_available"] == len(long_preview)
+        assert match["has_more"] is True
+
+    def test_denied_file_no_content_leak(self, db_conn):
+        """A file with access='deny' must not leak content_preview in any field.
+
+        The access gate must hold on the keyword path too: the excerpt falls
+        back to the name/path title rung.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (112, 'local', 'classified.docx', '/Users/u/docs/classified.docx', "
+            "'listed', 'document', 3000, '2026-01-15', 'full', 'deny', "
+            "'CONFIDENTIAL DATA that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["classified"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 112][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "CONFIDENTIAL DATA" not in value, f"content_preview leaked via field '{key}'"
+
+    def test_null_access_fails_closed_no_content_leak(self, db_conn):
+        """A file with a NULL access must not leak content_preview.
+
+        The gate fails closed on a missing access value: the excerpt falls
+        back to the name/path title rung rather than surfacing content.
+        """
+        db_conn.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (113, 'local', 'orphan.txt', '/Users/u/docs/orphan.txt', "
+            "'listed', 'text', 2000, '2026-01-15', 'full', NULL, "
+            "'SECRET payload that must not leak')"
+        )
+        db_conn.commit()
+        self._rebuild_fts(db_conn)
+        results = search_files_keyword(db_conn, terms=["orphan"], has_query=True, limit=10)
+        match = [r for r in results if r["id"] == 113][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "SECRET payload" not in value, f"content_preview leaked via field '{key}'"
 
     def test_no_snippet_key(self, db_conn):
         results = search_files_keyword(db_conn, terms=[], has_query=False, limit=10)

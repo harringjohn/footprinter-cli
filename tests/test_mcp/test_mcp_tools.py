@@ -1539,7 +1539,7 @@ class TestContexterSearchFTS5:
         conn.commit()
 
     def test_artifact_search_matches_content_preview(self, mcp_db):
-        """File with content_preview is found via FTS5; content not in metadata fields."""
+        """File found via FTS5 surfaces its content_preview as the excerpt when access allows."""
         cursor = mcp_db.cursor()
         cursor.execute(
             "INSERT INTO files (id, source, name, path, status, modified_at, "
@@ -1558,12 +1558,11 @@ class TestContexterSearchFTS5:
             result = footprinter_search("revenue", sources=["files"])
 
         assert len(result["files"]) == 1
-        assert result["files"][0]["name"] == "data.csv"
-        # MCP search returns metadata only — content_preview not in result fields
         hit = result["files"][0]
-        for key, value in hit.items():
-            if isinstance(value, str):
-                assert "quarterly revenue" not in value, f"content_preview leaked via field '{key}'"
+        assert hit["name"] == "data.csv"
+        # Access-allowed content_preview surfaces via the excerpt contract.
+        assert hit["excerpt_source"] == "content_preview"
+        assert "quarterly revenue breakdown by region" in hit["excerpt"]
 
     def test_artifact_search_matches_content_preview_visible(self, mcp_db):
         """Artifact with matching content_preview found via FTS5."""

@@ -123,7 +123,13 @@ def footprinter_search(
     include_unlisted: bool = False,
     include_removed: bool = False,
 ) -> dict:
-    """Search across indexed sources by keyword. Returns metadata only, no file content.
+    """Search across indexed sources by keyword.
+
+    Returns metadata plus a short excerpt per hit (the excerpt contract:
+    excerpt, excerpt_source, chars_returned, chars_available, has_more).
+    File hits surface their content_preview as the excerpt when access is
+    allowed, falling back to a name/path title excerpt otherwise; content is
+    stripped from access-denied items.
 
     SEARCH BEHAVIOR:
     - Matches against file names, email subjects/senders, chat titles, and
