@@ -1943,6 +1943,18 @@ class TestSemanticOptIn:
         assert config["semantic"]["file_vectorization"] is True
         assert config["semantic"]["chat_vectorization"] is False
 
+    def test_content_snippets_on_persists_through_generate_config(self):
+        """Choosing ON round-trips into indexing.content_snippets == True."""
+        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
+        config = generate_config(answers, semantic={"content_snippets": True})
+        assert config["indexing"]["content_snippets"] is True
+
+    def test_content_snippets_off_persists_through_generate_config(self):
+        """Choosing OFF round-trips into indexing.content_snippets == False."""
+        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
+        config = generate_config(answers, semantic={"content_snippets": False})
+        assert config["indexing"]["content_snippets"] is False
+
 
 # ---------------------------------------------------------------------------
 # Dead-code regression: PRESETS dict removed
@@ -2064,6 +2076,18 @@ class TestConfigPreservation:
         answers = {"directories": ["~/Work"], "browsers": ["safari"]}
         result = generate_config(answers, existing=existing)
         assert result["semantic"]["file_vectorization"] is True
+
+    def test_generate_config_existing_preserves_content_snippets_true(self):
+        """An existing content_snippets: True survives over the template's False.
+
+        The bundled template sets indexing.content_snippets: false, so this proves
+        the existing True overrides the template default via _deep_merge — not a
+        trivially-true assertion. No content_snippets in semantic (reconfigure path).
+        """
+        existing = {"indexing": {"content_snippets": True}}
+        answers = {"directories": ["~/Work"], "browsers": ["safari"]}
+        result = generate_config(answers, existing=existing)
+        assert result["indexing"]["content_snippets"] is True
 
     def test_generate_config_existing_preserves_domain(self):
         """Domain labels survive."""
