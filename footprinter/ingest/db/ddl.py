@@ -241,7 +241,10 @@ def init_schema(conn):
             access_source TEXT,
 
             -- Display
-            display_name TEXT
+            display_name TEXT,
+
+            -- Curated context (pointer to a Markdown file; nullable override)
+            context_path TEXT
         )
     """
     )
@@ -336,7 +339,10 @@ def init_schema(conn):
             visibility_source TEXT,
 
             -- Display
-            display_name TEXT
+            display_name TEXT,
+
+            -- Curated context (pointer to a Markdown file; nullable override)
+            context_path TEXT
         )
     """
     )
@@ -542,7 +548,10 @@ def init_schema(conn):
             visibility_source TEXT,
 
             -- Display
-            display_name TEXT
+            display_name TEXT,
+
+            -- Curated context (pointer to a Markdown file; nullable override)
+            context_path TEXT
         )
     """
     )
@@ -794,14 +803,25 @@ def _ensure_source_columns(conn):
 
 
 _SUPER_ENTITY_COLUMNS: dict[str, list[tuple[str, str]]] = {
-    "projects": [("slug", "TEXT"), ("status_changed_at", "DATETIME")],
-    "clients": [("slug", "TEXT"), ("status_changed_at", "DATETIME")],
-    "folders": [("status_changed_at", "DATETIME")],
+    "projects": [
+        ("slug", "TEXT"),
+        ("status_changed_at", "DATETIME"),
+        ("context_path", "TEXT"),
+    ],
+    "clients": [
+        ("slug", "TEXT"),
+        ("status_changed_at", "DATETIME"),
+        ("context_path", "TEXT"),
+    ],
+    "folders": [
+        ("status_changed_at", "DATETIME"),
+        ("context_path", "TEXT"),
+    ],
 }
 
 
 def _ensure_super_entity_columns(conn):
-    """Add slug/status_changed_at to super-entity tables (idempotent upgrade)."""
+    """Add slug/status_changed_at/context_path to super-entity tables (idempotent)."""
     for table, columns in _SUPER_ENTITY_COLUMNS.items():
         for col_name, col_type in columns:
             try:
