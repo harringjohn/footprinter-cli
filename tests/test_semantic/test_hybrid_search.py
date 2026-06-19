@@ -62,10 +62,12 @@ class TestExtractSnippet:
 
 
 class TestChatSnippet:
-    def test_returns_title_match(self):
+    def test_returns_plain_title(self):
+        """The title-echo prefix is retired; the snippet is the plain title."""
         row = {"chat_title": "My Chat"}
         result = chat_snippet(row)
-        assert result == "Title match: My Chat"
+        assert result == "My Chat"
+        assert "Title match:" not in result
 
 
 # ---------------------------------------------------------------------------

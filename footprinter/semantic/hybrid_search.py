@@ -62,8 +62,14 @@ def extract_snippet(content: str, query: str, window: int = 250) -> str:
 
 
 def chat_snippet(row: Dict) -> str:
-    """Build a display snippet from a keyword_search result row."""
-    return f"Title match: {row['chat_title']}"
+    """Build a display snippet from a keyword_search result row.
+
+    Keyword chat search matches the title, so the snippet is the chat title
+    plainly. The former ``"Title match: …"`` prefix was a scar from the
+    summary-column walk-back and has been retired to align with the
+    message-derived excerpt contract.
+    """
+    return row["chat_title"]
 
 
 def reciprocal_rank_fusion(semantic_results: List[Dict], keyword_results: List[Dict], k: int = 60) -> List[Dict]:

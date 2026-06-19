@@ -339,6 +339,47 @@ def search_emails_keyword(
     ]
 
 
+def chat_message_excerpt(
+    conn: sqlite3.Connection,
+    chat_id: int,
+    query: str,
+    title: str,
+    *,
+    status: "str | list[str] | None" = None,
+) -> dict:
+    """Re-derive a chat's excerpt from its message content at query time.
+
+    Keyword chat search matches the title only, so the re-derived excerpt is a
+    query-centered window over the conversation's message content (the opening
+    of the conversation when the hit was on the title). Falls back to the chat
+    ``title`` only when the chat has no listed message content. The excerpt
+    fields are built via the shared :func:`build_excerpt` so the size budget and
+    provenance match every other content-bearing source.
+    """
+    # Imported here to avoid a module-level dependency on the optional
+    # semantic package (chromadb/onnx) from the always-loaded db layer.
+    from footprinter.semantic.hybrid_search import extract_snippet
+
+    status_conds, status_params = _status_clause(status, column="status")
+    where = " AND ".join(["chat_id = ?", *status_conds])
+    rows = conn.execute(
+        f"""
+        SELECT content
+        FROM messages
+        WHERE {where}
+        ORDER BY id
+        """,
+        [chat_id, *status_params],
+    ).fetchall()
+
+    full_content = "\n".join(r["content"] for r in rows if r["content"]).strip()
+    if not full_content:
+        return build_excerpt(title or "", source="title")
+
+    window = extract_snippet(full_content, query)
+    return build_excerpt(window, source="message", chars_available=len(full_content))
+
+
 def search_chats_keyword(
     conn: sqlite3.Connection,
     *,
@@ -387,6 +428,8 @@ def search_chats_keyword(
 
     where_sql = (" AND ".join(where)) if where else "1=1"
 
+    query_text = " ".join(terms)
+
     rows = conn.execute(
         f"""
         SELECT chat.id, chat.external_id, chat.account, chat.title,
@@ -419,8 +462,9 @@ def search_chats_keyword(
             "visibility_source": r["visibility_source"],
             "access_source": r["access_source"],
             "status": r["status"],
-            # Title fallback rung; the message-derived excerpt is a later issue.
-            **build_excerpt(r["title"] or "", source="title"),
+            # Re-derive the excerpt from message content; fall back to the
+            # title only when the chat has no listed message content.
+            **chat_message_excerpt(conn, r["id"], query_text, r["title"] or ""),
         }
         for r in rows
     ]
