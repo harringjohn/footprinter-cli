@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from footprinter.paths import get_chroma_path
-from footprinter.utils.text import EXCERPT_BUDGET
 
 
 def _semantic_available() -> bool:
@@ -253,8 +252,9 @@ class VectorStore:
 
         Returns:
             List of dicts with file_id, file_path, chunk_index, total_chunks,
-            content_snippet (chunk text sliced to the excerpt budget),
-            content_length (full chunk length, for excerpt provenance), distance.
+            content_snippet (the full matched-chunk text — the service layer
+            owns the single excerpt cap via build_excerpt), content_length
+            (full chunk length, for excerpt provenance), distance.
         """
         query_embedding = self.ef([query])[0]
         results = self._files.query(
@@ -273,7 +273,7 @@ class VectorStore:
                         "file_path": results["metadatas"][0][i]["file_path"],
                         "chunk_index": results["metadatas"][0][i]["chunk_index"],
                         "total_chunks": results["metadatas"][0][i]["total_chunks"],
-                        "content_snippet": chunk_text[:EXCERPT_BUDGET],
+                        "content_snippet": chunk_text,
                         "content_length": len(chunk_text),
                         "distance": results["distances"][0][i] if "distances" in results else None,
                     }
