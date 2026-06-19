@@ -55,6 +55,8 @@ This is the safe-by-default tier. Everything that exists at Tier 0 is informatio
 
 Tier 1 ships in the base package — no extras, no extra dependencies. The `content_preview` column exists in the schema regardless; the flag just controls whether ingest populates it.
 
+Enabling `content_snippets` after the first ingest does **not** retroactively populate existing rows. Previews are written during ingest, so already-indexed files are backfilled only when ingest re-runs (`fp ingest`); new ingests populate previews automatically going forward.
+
 ---
 
 ## Tier 2 — Full content features (`[semantic]` / `[parse]` / `[full]` extras)
