@@ -233,17 +233,17 @@ def _handle_setup(args) -> None:
 
 def _add_mcp_parser(subparsers, *, formatter_class=None):
     """Add the MCP subparser with --claude flag."""
-    kwargs = {"help": "Show or install the MCP server snippet"}
+    kwargs = {"help": "Show or install the MCP server config block"}
     if formatter_class:
         kwargs.update(
             description=(
-                "Show the MCP server snippet for AI clients, or write it automatically.\n\n"
-                "Bare command prints the JSON snippet for manual copy/paste into any MCP client.\n"
+                "Show the MCP server config block for AI clients, or write it automatically.\n\n"
+                "Bare command prints the JSON config block for manual copy/paste into any MCP client.\n"
                 "Use --claude to write it directly to Claude Desktop config (creates a backup)."
             ),
             epilog=(
                 "examples:\n"
-                "  fp setup mcp               Print MCP snippet for manual config\n"
+                "  fp setup mcp               Print MCP config block for manual config\n"
                 "  fp setup mcp --claude      Write to Claude Desktop config (creates backup)"
             ),
             formatter_class=formatter_class,
@@ -252,7 +252,7 @@ def _add_mcp_parser(subparsers, *, formatter_class=None):
     parser.add_argument(
         "--claude",
         action="store_true",
-        help="Write/merge snippet into Claude Desktop config (creates backup)",
+        help="Write/merge config block into Claude Desktop config (creates backup)",
     )
     return parser
 
@@ -263,14 +263,14 @@ def _dispatch_mcp(args) -> None:
         console.print("[red]MCP protocol library not installed.[/red] Run: pip install mcp")
         sys.exit(1)
 
-    snippet = mcp_setup.generate_snippet()
+    config_block = mcp_setup.generate_config_block()
 
     if getattr(args, "claude", False):
-        ok = mcp_setup.write_config(snippet)
+        ok = mcp_setup.write_config(config_block)
         sys.exit(0 if ok else 1)
 
-    # Default: print snippet
-    mcp_setup.print_snippet(snippet)
+    # Default: print config block
+    mcp_setup.print_config_block(config_block)
 
 
 def _handle_setup_inner(args) -> None:
@@ -1336,25 +1336,25 @@ def offer_setup_claude() -> bool:
         return False
 
     try:
-        snippet = mcp_setup.generate_snippet()
+        config_block = mcp_setup.generate_config_block()
     except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised
         console.print(f"  [yellow]MCP setup failed: {e}[/yellow]")
         console.print("  [dim]Run manually: fp setup mcp --claude[/dim]")
         return False
 
-    # Offer snippet for manual copy/paste (Cursor, Windsurf, etc.)
+    # Offer config block for manual copy/paste (Cursor, Windsurf, etc.)
     if Confirm.ask(
-        "\nView MCP config snippet (for Claude Code, Cursor, VS Code, and other clients)?",
+        "\nView MCP config block (for Claude Code, Cursor, VS Code, and other clients)?",
         default=True,
     ):
-        mcp_setup.print_snippet(snippet)
+        mcp_setup.print_config_block(config_block)
 
     # Offer Claude Desktop auto-config
     if not Confirm.ask("\nConfigure Claude Desktop automatically?", default=False):
         return False
 
     try:
-        mcp_setup.write_config(snippet)
+        mcp_setup.write_config(config_block)
         console.print("  [green]Claude Desktop MCP configured.[/green]")
         return True
     except Exception as e:  # Intentional broad catch: user-facing CLI; errors shown to console, not re-raised

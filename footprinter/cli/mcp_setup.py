@@ -2,11 +2,11 @@
 MCP Configuration Helper for AI clients.
 
 Detects config paths for MCP clients, generates the correct
-MCP server snippet for this Footprinter installation, and optionally writes it.
+MCP server config block for this Footprinter installation, and optionally writes it.
 
 Usage:
-    fp setup mcp             # Print MCP snippet to paste
-    fp setup mcp --claude    # Write/merge snippet into Claude Desktop config (with backup)
+    fp setup mcp             # Print MCP config block to paste
+    fp setup mcp --claude    # Write/merge config block into Claude Desktop config (with backup)
 """
 
 import json
@@ -125,8 +125,8 @@ def get_mcp_command(project_root: Path = None) -> tuple[str, list[str]]:
     return sys.executable, ["-m", "footprinter.mcp"]
 
 
-def generate_snippet(project_root: Path = None) -> dict:
-    """Generate the MCP server config snippet as a dict.
+def generate_config_block(project_root: Path = None) -> dict:
+    """Generate the MCP server config block as a dict.
 
     Args:
         project_root: Override project root (default: auto-detected).
@@ -151,13 +151,13 @@ def generate_snippet(project_root: Path = None) -> dict:
     return {"mcpServers": {"footprinter": server_config}}
 
 
-def write_config(snippet: dict, config_path: Path = None) -> bool:
-    """Write or merge the MCP snippet into Claude Desktop config.
+def write_config(config_block: dict, config_path: Path = None) -> bool:
+    """Write or merge the MCP config block into Claude Desktop config.
 
     Creates a backup before modifying an existing file.
 
     Args:
-        snippet: The snippet dict from generate_snippet().
+        config_block: The config block dict from generate_config_block().
         config_path: Override config path (default: auto-detected).
 
     Returns:
@@ -182,7 +182,7 @@ def write_config(snippet: dict, config_path: Path = None) -> bool:
     # Merge: add/update mcpServers.footprinter
     if "mcpServers" not in existing:
         existing["mcpServers"] = {}
-    existing["mcpServers"]["footprinter"] = snippet["mcpServers"]["footprinter"]
+    existing["mcpServers"]["footprinter"] = config_block["mcpServers"]["footprinter"]
 
     # Backup existing file
     if path.exists():
@@ -298,13 +298,13 @@ def print_client_paths():
     console.print(table)
 
 
-def print_snippet(snippet: dict):
-    """Display the MCP snippet for manual pasting.
+def print_config_block(config_block: dict):
+    """Display the MCP config block for manual pasting.
 
     Args:
-        snippet: The snippet dict from generate_snippet().
+        config_block: The config block dict from generate_config_block().
     """
-    json_str = json.dumps(snippet, indent=2)
+    json_str = json.dumps(config_block, indent=2)
     console.print()
     console.print("Add this to your MCP client config:")
     console.print(Panel(json_str, title="MCP Config"))

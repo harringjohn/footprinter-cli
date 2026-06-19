@@ -25,36 +25,36 @@ from rich.console import Console
 class TestMcpSubcommandRouting:
     """fp setup mcp should delegate to mcp_setup functions."""
 
-    def test_mcp_bare_prints_snippet(self):
-        """fp setup mcp (no flags) → generate_snippet() + print_snippet()."""
+    def test_mcp_bare_prints_config_block(self):
+        """fp setup mcp (no flags) → generate_config_block() + print_config_block()."""
         with (
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
             patch("sys.argv", ["fp", "mcp"]),
         ):
-            mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
+            mock_mcp.generate_config_block.return_value = {"mcpServers": {}}
             from footprinter.cli.setup import main
 
             main()
 
-            mock_mcp.generate_snippet.assert_called_once()
-            mock_mcp.print_snippet.assert_called_once()
+            mock_mcp.generate_config_block.assert_called_once()
+            mock_mcp.print_config_block.assert_called_once()
 
     def test_mcp_claude_calls_write_config(self):
-        """fp setup mcp --claude → generate_snippet() + write_config(snippet)."""
+        """fp setup mcp --claude → generate_config_block() + write_config(config_block)."""
         with (
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
             patch("sys.argv", ["fp", "mcp", "--claude"]),
         ):
-            mock_snippet = {"mcpServers": {"footprinter": {}}}
-            mock_mcp.generate_snippet.return_value = mock_snippet
+            mock_config_block = {"mcpServers": {"footprinter": {}}}
+            mock_mcp.generate_config_block.return_value = mock_config_block
             mock_mcp.write_config.return_value = True
             from footprinter.cli.setup import main
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
-            mock_mcp.generate_snippet.assert_called_once()
-            mock_mcp.write_config.assert_called_once_with(mock_snippet)
+            mock_mcp.generate_config_block.assert_called_once()
+            mock_mcp.write_config.assert_called_once_with(mock_config_block)
 
     def test_mcp_claude_failure_exits_1(self):
         """fp setup mcp --claude → exit 1 when write_config returns False."""
@@ -62,7 +62,7 @@ class TestMcpSubcommandRouting:
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
             patch("sys.argv", ["fp", "mcp", "--claude"]),
         ):
-            mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
+            mock_mcp.generate_config_block.return_value = {"mcpServers": {}}
             mock_mcp.write_config.return_value = False
             from footprinter.cli.setup import main
 
@@ -164,7 +164,7 @@ class TestUserFacingStrings:
             patch("footprinter.cli.setup.console", test_console),
             patch("footprinter.cli.setup.Confirm") as mock_confirm,
             patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True),
-            patch("footprinter.cli.mcp_setup.generate_snippet", side_effect=Exception("test")),
+            patch("footprinter.cli.mcp_setup.generate_config_block", side_effect=Exception("test")),
         ):
             mock_confirm.ask.return_value = True
             offer_setup_claude()
@@ -179,7 +179,7 @@ class TestUserFacingStrings:
         mcp_setup_path = Path(__file__).parent.parent.parent / "footprinter" / "cli" / "mcp_setup.py"
         content = mcp_setup_path.read_text()
 
-        # The docstring and print_snippet should reference fp setup mcp
+        # The docstring and print_config_block should reference fp setup mcp
         assert "fp setup mcp" in content
 
         # check_config messages should reference fp setup mcp
@@ -221,39 +221,39 @@ class TestUserFacingStrings:
 
 
 class TestMcpSnippetDisplay:
-    """offer_setup_claude() should offer to display MCP snippet before auto-config."""
+    """offer_setup_claude() should offer to display MCP config_block before auto-config."""
 
-    def test_snippet_shown_when_accepted(self):
-        """Accepting snippet prompt should call print_snippet."""
+    def test_config_block_shown_when_accepted(self):
+        """Accepting config_block prompt should call print_config_block."""
         with (
             patch("footprinter.cli.setup.console"),
             patch("footprinter.cli.setup.Confirm") as mock_confirm,
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
         ):
             mock_mcp.is_mcp_available.return_value = True
-            mock_confirm.ask.side_effect = [True, False]  # view snippet=yes, auto-config=no
-            mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
+            mock_confirm.ask.side_effect = [True, False]  # view config block=yes, auto-config=no
+            mock_mcp.generate_config_block.return_value = {"mcpServers": {}}
             from footprinter.cli.setup import offer_setup_claude
 
             offer_setup_claude()
-            mock_mcp.print_snippet.assert_called_once()
+            mock_mcp.print_config_block.assert_called_once()
 
-    def test_snippet_skipped_when_declined(self):
-        """Declining snippet prompt should not call print_snippet."""
+    def test_config_block_skipped_when_declined(self):
+        """Declining config_block prompt should not call print_config_block."""
         with (
             patch("footprinter.cli.setup.console"),
             patch("footprinter.cli.setup.Confirm") as mock_confirm,
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
         ):
             mock_mcp.is_mcp_available.return_value = True
-            mock_confirm.ask.side_effect = [False, False]  # view snippet=no, auto-config=no
-            mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
+            mock_confirm.ask.side_effect = [False, False]  # view config block=no, auto-config=no
+            mock_mcp.generate_config_block.return_value = {"mcpServers": {}}
             from footprinter.cli.setup import offer_setup_claude
 
             offer_setup_claude()
-            mock_mcp.print_snippet.assert_not_called()
+            mock_mcp.print_config_block.assert_not_called()
 
-    def test_snippet_not_offered_when_mcp_unavailable(self):
+    def test_config_block_not_offered_when_mcp_unavailable(self):
         """When MCP is unavailable, no prompts should be shown."""
         with (
             patch("footprinter.cli.setup.console"),
@@ -319,7 +319,7 @@ class TestMcpDependencyGating:
         assert "pip install mcp" in output
 
     def test_mcp_bare_blocked_when_mcp_missing(self):
-        """fp setup mcp (bare) does NOT call print_snippet() when mcp missing."""
+        """fp setup mcp (bare) does NOT call print_config_block() when mcp missing."""
         buf = io.StringIO()
         test_console = Console(file=buf, force_terminal=False)
         with (
@@ -333,7 +333,7 @@ class TestMcpDependencyGating:
 
             with pytest.raises(SystemExit):
                 main()
-            mock_mcp.print_snippet.assert_not_called()
+            mock_mcp.print_config_block.assert_not_called()
 
         output = buf.getvalue()
         assert "pip install mcp" in output
@@ -350,7 +350,7 @@ class TestMcpDependencyGating:
             from footprinter.cli.setup import offer_setup_claude
 
             offer_setup_claude()
-            mock_mcp.generate_snippet.assert_not_called()
+            mock_mcp.generate_config_block.assert_not_called()
 
         output = buf.getvalue()
         assert "pip install mcp" in output
@@ -362,34 +362,34 @@ class TestMcpDependencyGating:
 class TestDispatchMcp:
     """_dispatch_mcp() should be used by both entry points."""
 
-    def test_dispatch_mcp_routes_bare_to_print_snippet(self):
-        """_dispatch_mcp(args) with no flags → generate_snippet() + print_snippet()."""
+    def test_dispatch_mcp_routes_bare_to_print_config_block(self):
+        """_dispatch_mcp(args) with no flags → generate_config_block() + print_config_block()."""
         from types import SimpleNamespace
 
         with patch("footprinter.cli.setup.mcp_setup") as mock_mcp:
             mock_mcp.is_mcp_available.return_value = True
-            mock_mcp.generate_snippet.return_value = {"mcpServers": {}}
+            mock_mcp.generate_config_block.return_value = {"mcpServers": {}}
             from footprinter.cli.setup import _dispatch_mcp
 
             _dispatch_mcp(SimpleNamespace(claude=False))
-            mock_mcp.generate_snippet.assert_called_once()
-            mock_mcp.print_snippet.assert_called_once()
+            mock_mcp.generate_config_block.assert_called_once()
+            mock_mcp.print_config_block.assert_called_once()
 
     def test_dispatch_mcp_routes_claude_to_write_config(self):
-        """_dispatch_mcp(args) with claude=True → write_config(snippet)."""
+        """_dispatch_mcp(args) with claude=True → write_config(config_block)."""
         from types import SimpleNamespace
 
         with patch("footprinter.cli.setup.mcp_setup") as mock_mcp:
             mock_mcp.is_mcp_available.return_value = True
-            mock_snippet = {"mcpServers": {"footprinter": {}}}
-            mock_mcp.generate_snippet.return_value = mock_snippet
+            mock_config_block = {"mcpServers": {"footprinter": {}}}
+            mock_mcp.generate_config_block.return_value = mock_config_block
             mock_mcp.write_config.return_value = True
             from footprinter.cli.setup import _dispatch_mcp
 
             with pytest.raises(SystemExit) as exc_info:
                 _dispatch_mcp(SimpleNamespace(claude=True))
             assert exc_info.value.code == 0
-            mock_mcp.write_config.assert_called_once_with(mock_snippet)
+            mock_mcp.write_config.assert_called_once_with(mock_config_block)
 
     def test_dispatch_mcp_exits_when_mcp_unavailable(self):
         """_dispatch_mcp(args) exits 1 when MCP package is not installed."""
@@ -419,16 +419,16 @@ class TestMcpDependencyGatingAvailability:
             patch("footprinter.cli.setup.mcp_setup") as mock_mcp,
         ):
             mock_mcp.is_mcp_available.return_value = True
-            # True for both prompts: view snippet + auto-config
+            # True for both prompts: view config block + auto-config
             mock_confirm.ask.return_value = True
-            snippet = {"mcpServers": {"footprinter": {}}}
-            mock_mcp.generate_snippet.return_value = snippet
+            config_block = {"mcpServers": {"footprinter": {}}}
+            mock_mcp.generate_config_block.return_value = config_block
             mock_mcp.write_config.return_value = True
             from footprinter.cli.setup import offer_setup_claude
 
             offer_setup_claude()
-            mock_mcp.generate_snippet.assert_called_once()
-            mock_mcp.print_snippet.assert_called_once_with(snippet)
+            mock_mcp.generate_config_block.assert_called_once()
+            mock_mcp.print_config_block.assert_called_once_with(config_block)
             mock_mcp.write_config.assert_called_once()
 
 

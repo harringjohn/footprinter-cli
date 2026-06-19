@@ -602,9 +602,9 @@ class TestOfferSetupClaude:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
-    @patch("footprinter.cli.mcp_setup.generate_snippet", side_effect=Exception("test"))
+    @patch("footprinter.cli.mcp_setup.generate_config_block", side_effect=Exception("test"))
     def test_handles_import_error(self, mock_gen, mock_confirm, mock_avail, mock_console):
-        """If mcp_setup.generate_snippet fails, error is handled gracefully."""
+        """If mcp_setup.generate_config_block fails, error is handled gracefully."""
         offer_setup_claude()  # Should not raise
         calls = [str(c) for c in mock_console.print.call_args_list]
         assert any("failed" in c.lower() or "manually" in c.lower() for c in calls)
@@ -626,7 +626,7 @@ class TestOfferSetupClaude:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
-    @patch("footprinter.cli.mcp_setup.generate_snippet", return_value={"mcpServers": {}})
+    @patch("footprinter.cli.mcp_setup.generate_config_block", return_value={"mcpServers": {}})
     @patch("footprinter.cli.mcp_setup.write_config", return_value=True)
     def test_returns_true_on_success(self, mock_write, mock_gen, mock_confirm, mock_avail, mock_console):
         """Successful MCP config should return True."""
@@ -636,7 +636,7 @@ class TestOfferSetupClaude:
     @patch("footprinter.cli.setup.console")
     @patch("footprinter.cli.mcp_setup.is_mcp_available", return_value=True)
     @patch("footprinter.cli.setup.Confirm.ask", return_value=True)
-    @patch("footprinter.cli.mcp_setup.generate_snippet", side_effect=Exception("fail"))
+    @patch("footprinter.cli.mcp_setup.generate_config_block", side_effect=Exception("fail"))
     def test_returns_false_on_failure(self, mock_gen, mock_confirm, mock_avail, mock_console):
         """Exception during MCP config should return False."""
         result = offer_setup_claude()
