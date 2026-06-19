@@ -134,7 +134,7 @@ def get_by_path(
     # Fetch navigation data (files, subfolders, recursive count)
     nav = db.get_folder_navigation(conn, row["id"], path, status=status_arg)
     result = {**row, **nav}
-    attach_curated_context(result, "folder")
+    attach_curated_context(result, "folder", role=role)
 
     if role.sees_all:
         return result

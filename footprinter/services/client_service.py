@@ -211,7 +211,7 @@ def _build_client_navigation(conn: sqlite3.Connection, row: dict, *, role: Role)
 
     result = {**row}
     result["projects"] = projects
-    attach_curated_context(result, "client")
+    attach_curated_context(result, "client", role=role)
 
     # VIEWER: unlisted projects are collapsed to a count, not enumerated.
     # Computed unconditionally — a client with only unlisted projects has no
