@@ -410,8 +410,11 @@ class VectorStore:
         Hybrid search combining semantic + FTS5 keyword search via RRF.
 
         Returns:
-            List of result dicts with chat_id, chat_title,
-            relevance_score, snippet, etc.
+            List of result dicts with chat_id, chat_title, relevance_score,
+            chunk_index, total_chunks, a ``snippet`` staging field (the
+            query-centered window the service converts into the excerpt
+            contract), and ``content_length`` (full matched-chunk length, used
+            for the excerpt's ``chars_available``).
         """
         if not query or len(query) < 3:
             return []

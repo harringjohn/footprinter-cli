@@ -439,7 +439,7 @@ Semantic search requires both `visibility = 'full'` **and** `access = 'allow'`. 
 | `hidden`            | (any)             | Excluded        | Excluded        |
 | `opaque`            | (not evaluated)   | Minimal metadata | Excluded       |
 | `full`              | `deny`            | Full metadata, no content | Excluded |
-| `full`              | `allow`           | Full metadata + content | Full result + snippet |
+| `full`              | `allow`           | Full metadata + excerpt | Full result + excerpt |
 
 ---
 

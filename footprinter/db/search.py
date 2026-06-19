@@ -512,7 +512,9 @@ def chat_fts5_fallback(
     """FTS5 keyword fallback for chat search.
 
     Returns dicts shaped for semantic_service consumption: chat_id, chat_title,
-    snippet, relevance_score, source, created_at, message_id.
+    relevance_score, source, created_at, message_id, plus a ``snippet`` staging
+    field (the chat title) that ``semantic_service`` converts into the excerpt
+    contract (``excerpt_source="title"``) and removes before returning results.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     safe_query = query.replace('"', '""')

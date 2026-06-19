@@ -275,7 +275,7 @@ class TestToolDescriptions:
         assert "semantic" in doc.lower(), "Should explain semantic matching"
         assert "WHEN TO USE" in doc, "Should have a WHEN TO USE section"
         assert "footprinter_search" in doc, "Should cross-reference keyword search"
-        assert "snippet" in doc, "Should document the snippet return key"
+        assert "excerpt" in doc, "Should document the excerpt return key"
 
     def test_docstrings_are_substantial(self):
         """Search and semantic tool docstrings should be at least 400 chars."""

@@ -133,23 +133,25 @@ class TestEndToEnd:
         assert filtered["path"] == "/test"
 
     def test_strip_content_with_inherit_and_global_allow(self, conn):
-        """Content preserved when access=inherit and global=allow."""
+        """Excerpt content preserved when access=inherit and global=allow."""
         conn.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'allow')")
         conn.commit()
         vf.load_globals(conn)
 
-        results = [{"id": 1, "snippet": "hello", "access": "inherit"}]
+        results = [{"id": 1, "excerpt": "hello", "excerpt_source": "title", "access": "inherit"}]
         from footprinter.services.access_service import strip_content_for_denied
 
         stripped = strip_content_for_denied("chat", results)
-        assert stripped[0]["snippet"] == "hello"
+        assert stripped[0]["excerpt"] == "hello"
+        assert stripped[0]["excerpt_source"] == "title"
 
     def test_strip_content_with_inherit_and_no_global(self, conn):
-        """Content preserved when access=inherit and no global policy (baseline allow)."""
+        """Excerpt content preserved when access=inherit and no global policy (baseline allow)."""
         vf.load_globals(conn)
 
-        results = [{"id": 1, "snippet": "hello", "access": "inherit"}]
+        results = [{"id": 1, "excerpt": "hello", "excerpt_source": "title", "access": "inherit"}]
         from footprinter.services.access_service import strip_content_for_denied
 
         stripped = strip_content_for_denied("chat", results)
-        assert stripped[0]["snippet"] == "hello"
+        assert stripped[0]["excerpt"] == "hello"
+        assert stripped[0]["excerpt_source"] == "title"

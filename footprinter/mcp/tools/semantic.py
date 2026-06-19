@@ -60,10 +60,12 @@ def footprinter_semantic(
         based on the source parameter. Only items with both visible access AND
         read permission appear (semantic matches are content-derived, so
         presence in results reveals content — per decision D2). Visible+allowed
-        chats have: chat_id, chat_title, snippet (text excerpt showing why it
-        matched), relevance_score, source, created_at, message_id.
+        chats have: chat_id, chat_title, the excerpt contract (excerpt,
+        excerpt_source, chars_returned, chars_available, has_more) plus
+        chunk_index/total_chunks, relevance_score, source, created_at, message_id.
         Visible+allowed files have: id, name, path, content_type, size_bytes,
-        modified_at, relevance_score, snippet (from best-matching chunk).
+        modified_at, relevance_score, the same excerpt contract, and
+        chunk_index/total_chunks.
         Opaque items have minimal fields only. Hidden and permission-denied
         items are excluded. Includes "summary" with a human-readable overview.
     """
