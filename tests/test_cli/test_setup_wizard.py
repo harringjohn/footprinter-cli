@@ -2605,7 +2605,7 @@ class TestContentSnippetsDefault:
 
         printed = _extract_printed_text(mock_console).lower()
         # Mentions re-running ingest to populate
-        assert "re-ingest" in printed or "re-run" in printed or ("re-run" in printed and "ingest" in printed), (
+        assert "re-ingest" in printed or ("re-run" in printed and "ingest" in printed), (
             "Snippets language should mention re-ingesting / re-running ingest to backfill"
         )
         # Mentions that the backfill targets already-indexed/existing files
