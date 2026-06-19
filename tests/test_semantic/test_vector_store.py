@@ -480,6 +480,34 @@ class TestSearchFiles:
         assert r["content_length"] == len("Doc content")
         assert "distance" in r
 
+    def test_full_chunk_not_sliced(self, store, mock_chroma):
+        """search_files carries the full chunk text — no 500-char pre-slice.
+
+        The service layer owns the one-and-only excerpt cap (via build_excerpt),
+        so the store must hand it the whole chunk.
+        """
+        files_col, _, _ = mock_chroma
+        long_chunk = "y" * 1200
+        files_col.query.return_value = {
+            "ids": [["file_1_chunk_0"]],
+            "metadatas": [
+                [
+                    {
+                        "file_id": 1,
+                        "file_path": "/big.txt",
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                    }
+                ]
+            ],
+            "documents": [[long_chunk]],
+            "distances": [[0.1]],
+        }
+        results = store.search_files("query")
+        r = results[0]
+        assert r["content_snippet"] == long_chunk
+        assert r["content_length"] == 1200
+
     def test_filter_metadata_forwarded(self, store, mock_chroma):
         files_col, _, _ = mock_chroma
         store.search_files("test", filter_metadata={"file_type": ".pdf"})
