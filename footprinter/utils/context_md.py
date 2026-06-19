@@ -26,10 +26,14 @@ folder auto-detect being confined to the indexed folder's own README):
   file is never fully loaded into memory on an orientation-tool call. The decoded
   text — and therefore ``chars_available`` — reflects the bounded read.
 - **Home confinement.** The candidate is resolved (collapsing symlinks) and must
-  lie under ``Path.home()``; a path or symlink whose target escapes home resolves
-  to ``None`` (treated like a missing file). Home is the defense-in-depth root:
-  every indexed entity already lives under it, and the project override has no
-  natural entity root.
+  lie under a confinement root; a path or symlink whose target escapes every root
+  resolves to ``None`` (treated like a missing file). The roots are ``Path.home()``
+  (the defense-in-depth default — every indexed entity lives under it, and the
+  project override has no natural entity root) **and** the caller-supplied
+  ``context_root`` when given. Including ``context_root`` keeps the client
+  convention reachable when the home root the caller wires in
+  (``$FOOTPRINTER_HOME``) is relocated outside ``Path.home()`` — otherwise the
+  convention path would silently fail confinement and never fire.
 - **Error logging.** Permission/decode failures (``OSError``) are logged at debug
   with the path before returning ``None``, so they are diagnosable rather than
   silently dropped. A genuinely missing file stays silent (not an error).
@@ -59,19 +63,30 @@ logger = logging.getLogger(__name__)
 _MAX_CONTEXT_BYTES = 1 * 1024 * 1024
 
 
-def _confine_to_home(candidate: Path) -> Optional[Path]:
-    """Return ``candidate`` resolved, only if it lies under ``Path.home()``.
+def _confine_to_roots(
+    candidate: Path, extra_root: Optional[Path] = None
+) -> Optional[Path]:
+    """Return ``candidate`` resolved, only if it lies under a confinement root.
+
+    The roots are ``Path.home()`` (the defense-in-depth default) and, when given,
+    ``extra_root`` — the caller-supplied ``context_root``. Including ``extra_root``
+    keeps the client convention reachable when that root (``$FOOTPRINTER_HOME``) is
+    relocated outside ``Path.home()``; without it the convention path would
+    silently fail confinement and the documented convention would never fire.
 
     Mirrors ``content_service._validate_local_path`` (``Path.resolve()`` +
-    ``startswith(str(home) + os.sep)``), but returns ``None`` rather than raising
+    ``startswith(str(root) + os.sep)``), but returns ``None`` rather than raising
     — the curated resolver is missing-file tolerant, so a confinement failure is
     treated like an absent file. ``.resolve()`` collapses symlinks, so a symlink
-    whose target escapes home is rejected.
+    whose target escapes every root is rejected.
     """
     resolved = candidate.resolve()
-    home = Path.home().resolve()
-    if str(resolved).startswith(str(home) + os.sep) or resolved == home:
-        return resolved
+    roots = [Path.home().resolve()]
+    if extra_root is not None:
+        roots.append(Path(extra_root).expanduser().resolve())
+    for root in roots:
+        if str(resolved).startswith(str(root) + os.sep) or resolved == root:
+            return resolved
     return None
 
 
@@ -120,8 +135,10 @@ def resolve_curated_context(
         (``access_service.attach_curated_context``) passes
         ``footprinter.paths.get_home()`` — i.e. ``$FOOTPRINTER_HOME`` (default
         ``~/.footprinter/``) — so the convention resolves to
-        ``~/.footprinter/context/client-<slug>.md``. ``None`` disables the client
-        convention (only tests omit it).
+        ``~/.footprinter/context/client-<slug>.md``. It also serves as an extra
+        confinement root alongside ``Path.home()``, so the convention stays
+        reachable when ``$FOOTPRINTER_HOME`` is relocated outside ``Path.home()``.
+        ``None`` disables the client convention (only tests omit it).
 
     Returns
     -------
@@ -134,7 +151,7 @@ def resolve_curated_context(
     if candidate is None:
         return None
 
-    confined = _confine_to_home(candidate)
+    confined = _confine_to_roots(candidate, extra_root=context_root)
     if confined is None:
         logger.debug("curated context outside confinement root: %s", candidate)
         return None

@@ -1398,6 +1398,39 @@ class TestCuratedContext:
         assert block["context_path"] == str(convention)
         assert block["context_path"].endswith("context/client-acme.md")
 
+    def test_client_convention_surfaces_when_home_relocated_outside_user_home(
+        self, service_db, tmp_path, monkeypatch
+    ):
+        """The convention fires when ``FOOTPRINTER_HOME`` is outside ``HOME``.
+
+        The class fixture points ``HOME`` at ``tmp_path``; here ``FOOTPRINTER_HOME``
+        is relocated to a *sibling* directory that is **not** under that ``HOME``
+        (an isolated/relocated home, as the test harness's ``cli-verify`` uses).
+        Confinement honours the caller's ``context_root`` as well as ``Path.home()``,
+        so the convention path under the relocated home still passes confinement and
+        surfaces the block. Without that, the path would silently fail confinement
+        and the documented convention would never fire under a relocated home.
+        """
+        relocated_home = tmp_path.parent / "fp-relocated-home"
+        context_dir = relocated_home / "context"
+        context_dir.mkdir(parents=True)
+        convention = context_dir / "client-acme.md"
+        convention.write_text("Acme context under a relocated home.")
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(relocated_home))
+
+        # FOOTPRINTER_HOME must not be under HOME, or the test would not exercise
+        # the divergent-root path.
+        assert not str(relocated_home.resolve()).startswith(
+            str(tmp_path.resolve()) + "/"
+        )
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
+        assert result is not None
+        block = result["curated_context"]
+        assert block["excerpt"] == "Acme context under a relocated home."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(convention)
+
     def test_folder_readme_auto_detect_surfaces_block(self, service_db, tmp_path):
         folder = tmp_path / "alpha-src"
         folder.mkdir()
