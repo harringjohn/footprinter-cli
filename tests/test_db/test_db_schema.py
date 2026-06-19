@@ -71,6 +71,7 @@ EXPECTED_COLUMNS = {
         "access_source",
         "visibility_source",
         "display_name",
+        "context_path",
     },
     "clients": {
         "id",
@@ -87,6 +88,7 @@ EXPECTED_COLUMNS = {
         "access_source",
         "visibility_source",
         "display_name",
+        "context_path",
     },
     "folders": {
         "id",
@@ -116,6 +118,7 @@ EXPECTED_COLUMNS = {
         "indexed_at",
         "updated_at",
         "display_name",
+        "context_path",
     },
     "chats": {
         "id",
@@ -432,6 +435,32 @@ class TestSuperEntityColumnMigration:
         cursor.execute("PRAGMA table_info(folders)")
         cols = {row[1] for row in cursor.fetchall()}
         assert "status_changed_at" in cols, "status_changed_at not added to folders"
+        db2.close()
+
+    def test_context_path_added_on_old_db(self, temp_db):
+        """Legacy DBs missing context_path on projects/clients/folders get it back.
+
+        Mirrors the slug/status_changed_at upgrades: drop the column from a fresh
+        DB, re-open via Database, and assert the idempotent upgrade re-adds it on
+        all three super-entity tables.
+        """
+        import sqlite3 as _sqlite3
+
+        from footprinter.ingest.database import Database
+
+        Database(temp_db).close()
+
+        conn = _sqlite3.connect(temp_db)
+        conn.execute("ALTER TABLE projects DROP COLUMN context_path")
+        conn.execute("ALTER TABLE clients DROP COLUMN context_path")
+        conn.execute("ALTER TABLE folders DROP COLUMN context_path")
+        conn.commit()
+        conn.close()
+
+        db2 = Database(temp_db)
+        for table in ("projects", "clients", "folders"):
+            cols = {row[1] for row in db2.conn.execute(f"PRAGMA table_info({table})")}
+            assert "context_path" in cols, f"context_path not re-added to {table}"
         db2.close()
 
 

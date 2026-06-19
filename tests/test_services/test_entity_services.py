@@ -1266,3 +1266,134 @@ class TestListContentStripOrdering:
         row = result["emails"][0]
         assert "excerpt" not in row  # content stripped for denied
         assert "access" not in row  # governance denylist applied
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Curated context (context_path → Markdown) on the orientation tools
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestCuratedContext:
+    """The orientation tools surface curated Markdown context on demand.
+
+    Each test inserts a fresh super-entity row pointing at a real Markdown file
+    (column override) or a folder containing a README (auto-detect), then asserts
+    the navigation result carries a ``curated_context`` block with the FPR-2025
+    excerpt contract: ``excerpt_source == "context_md"``, ``chars_available``,
+    ``has_more``, plus the resolved ``context_path``. The unset case carries no
+    block.
+    """
+
+    _CONTRACT_KEYS = {
+        "excerpt",
+        "excerpt_source",
+        "chars_returned",
+        "chars_available",
+        "has_more",
+        "context_path",
+    }
+
+    def test_project_column_override_surfaces_block(self, service_db, tmp_path):
+        md = tmp_path / "alpha-context.md"
+        md.write_text("Curated Alpha context.")
+        service_db.execute(
+            "UPDATE projects SET context_path = ? WHERE id = 1", (str(md),)
+        )
+        service_db.commit()
+
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Curated Alpha context."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(md)
+        assert block["has_more"] is False
+
+    def test_project_admin_also_surfaces_block(self, service_db, tmp_path):
+        md = tmp_path / "alpha-admin.md"
+        md.write_text("Admin Alpha context.")
+        service_db.execute(
+            "UPDATE projects SET context_path = ? WHERE id = 1", (str(md),)
+        )
+        service_db.commit()
+
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.ADMIN)
+        assert result is not None
+        assert result["curated_context"]["excerpt_source"] == "context_md"
+
+    def test_project_unset_has_no_block(self, service_db):
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
+        assert result is not None
+        assert "curated_context" not in result
+
+    def test_client_column_override_surfaces_block(self, service_db, tmp_path):
+        md = tmp_path / "acme-context.md"
+        md.write_text("Acme client background.")
+        service_db.execute(
+            "UPDATE clients SET context_path = ? WHERE id = 1", (str(md),)
+        )
+        service_db.commit()
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.VIEWER)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Acme client background."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(md)
+
+    def test_client_unset_has_no_block(self, service_db):
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.VIEWER)
+        assert result is not None
+        assert "curated_context" not in result
+
+    def test_folder_readme_auto_detect_surfaces_block(self, service_db, tmp_path):
+        folder = tmp_path / "alpha-src"
+        folder.mkdir()
+        readme = folder / "README.md"
+        readme.write_text("Folder-level curated notes.")
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source, project_id,
+                                    direct_file_count, total_size_bytes, status,
+                                    visibility, access)
+               VALUES (40, ?, '/Work/alpha/alpha-src', 'alpha-src', 'local', 1, 1, 100,
+                       'listed', 'full', 'allow')""",
+            (str(folder),),
+        )
+        service_db.commit()
+
+        result = folder_service.get_by_path(service_db, str(folder), role=Role.VIEWER)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Folder-level curated notes."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(readme)
+
+    def test_folder_column_override_surfaces_block(self, service_db, tmp_path):
+        md = tmp_path / "folder-override.md"
+        md.write_text("Explicit folder context.")
+        service_db.execute(
+            """INSERT INTO folders (id, path, relative_path, name, source, project_id,
+                                    direct_file_count, total_size_bytes, status,
+                                    visibility, access, context_path)
+               VALUES (41, '/Users/u/Work/alpha/configured', '/Work/alpha/configured',
+                       'configured', 'local', 1, 1, 100, 'listed', 'full', 'allow', ?)""",
+            (str(md),),
+        )
+        service_db.commit()
+
+        result = folder_service.get_by_path(
+            service_db, "/Users/u/Work/alpha/configured", role=Role.VIEWER
+        )
+        assert result is not None
+        assert result["curated_context"]["context_path"] == str(md)
+        assert result["curated_context"]["excerpt"] == "Explicit folder context."
+
+    def test_folder_unset_has_no_block(self, service_db):
+        result = folder_service.get_by_path(
+            service_db, "/Users/u/Work/alpha/src", role=Role.VIEWER
+        )
+        assert result is not None
+        assert "curated_context" not in result
