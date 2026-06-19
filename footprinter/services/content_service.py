@@ -19,15 +19,28 @@ logger = logging.getLogger(__name__)
 # payload ceiling. Overridable via indexing.max_read_size_mb; 0 = no cap.
 _DEFAULT_MAX_READ_MB = 10
 
-# Ceiling on the text returned in a single read result. A single MCP tool result
-# has a ~1 MB payload protocol wall (the same limit search.py caps result counts
-# against — see footprinter/mcp/tools/search.py). The read cap above bounds the
-# bytes pulled from disk, but a mid-size file (e.g. a multi-MB PDF) can extract to
-# text larger than that wall and fail to return entirely. This ceiling bounds the
-# returned content independently of the input read cap so a read always returns a
-# usable, in-budget result. Held conservatively under 1 MB so the JSON-serialized
-# result (content + metadata) stays under the wall.
-_MAX_OUTPUT_CHARS = 800_000
+# Ceiling on the text returned in a single read result, measured in UTF-8 *bytes*.
+# A single MCP tool result has a ~1 MB payload protocol wall (the same limit
+# search.py caps result counts against — see footprinter/mcp/tools/search.py). The
+# read cap above bounds the bytes pulled from disk, but a mid-size file (e.g. a
+# multi-MB PDF) can extract to text larger than that wall and fail to return
+# entirely. This ceiling bounds the returned content independently of the input
+# read cap so a read always returns a usable, in-budget result.
+#
+# The wall is bytes, not characters: a char-count bound let multibyte UTF-8 content
+# (CJK, emoji) through — 800k CJK chars is ~2.4 MB raw and more once JSON-escaped,
+# still over the wall. The budget below is a UTF-8 byte budget derived from the
+# ~1 MB wall with two reservations:
+#   - JSON-escape expansion of the *serialized* result. Under ensure_ascii=True a
+#     3-byte CJK code point escapes to "\uXXXX" (6 bytes, ~2x) and a 4-byte non-BMP
+#     code point to a surrogate pair "\uXXXX\uXXXX" (12 bytes, ~3x). Sizing the
+#     budget at 300 KB keeps even the non-BMP worst case (3x -> ~900 KB) under the
+#     wall.
+#   - Headroom for the JSON envelope, the per-type identity fields, and the
+#     metadata dict that travel alongside the content.
+# Slicing happens on a code-point boundary so the returned string is always valid
+# UTF-8 and re-encodes within budget.
+_MAX_OUTPUT_BYTES = 300_000
 
 # Message attached when the output bound trips, pointing callers at search for
 # large documents (mirrors search.py's protocol-limit phrasing).
@@ -38,29 +51,36 @@ _OUTPUT_TRUNCATED_MESSAGE = (
 
 
 def _bound_output(content: str) -> tuple[str, bool]:
-    """Bound returned content to the payload-safe output ceiling.
+    """Bound returned content to the payload-safe output byte budget.
 
-    Returns ``(content, False)`` unchanged when within budget, or a sliced
-    ``(content[:_MAX_OUTPUT_CHARS], True)`` when it would exceed the ceiling.
+    Returns ``(content, False)`` unchanged when its UTF-8 encoding is within
+    ``_MAX_OUTPUT_BYTES``. Otherwise truncates the UTF-8 bytes to the budget and
+    backs off to the last whole code point (``decode(..., "ignore")`` drops a
+    trailing partial code point), returning ``(sliced, True)``. The returned
+    string is always valid UTF-8 and re-encodes within budget.
     """
-    if len(content) <= _MAX_OUTPUT_CHARS:
+    encoded = content.encode("utf-8")
+    if len(encoded) <= _MAX_OUTPUT_BYTES:
         return content, False
-    return content[:_MAX_OUTPUT_CHARS], True
+    sliced = encoded[:_MAX_OUTPUT_BYTES].decode("utf-8", "ignore")
+    return sliced, True
 
 
 def _ok_result(content: str, meta: dict) -> dict:
-    """Build an ``ok`` read result, bounding content to the output ceiling.
+    """Build an ``ok`` read result, bounding content to the output byte budget.
 
-    When the bound trips, marks ``meta["output_truncated"] = True`` and attaches
-    a message pointing at search for large documents, so the result is always
-    in-budget and usable rather than an oversized payload that fails to return.
+    When the bound trips, marks ``meta["output_truncated"] = True`` and records a
+    pointer to search for large documents in ``meta["output_truncated_message"]``,
+    so the result is always in-budget and usable rather than an oversized payload
+    that fails to return. The pointer reaches the MCP client via ``metadata`` —
+    ``read.py``'s ``_with_identity`` rebuilds the result as
+    ``{identity, content, metadata}`` and forwards no top-level fields.
     """
     bounded, was_bounded = _bound_output(content)
     result: dict = {"status": "ok", "content": bounded, "metadata": meta}
     if was_bounded:
         meta["output_truncated"] = True
         meta["output_truncated_message"] = _OUTPUT_TRUNCATED_MESSAGE
-        result["message"] = f"file:{meta.get('id')} {_OUTPUT_TRUNCATED_MESSAGE}"
     return result
 
 

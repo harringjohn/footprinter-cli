@@ -93,8 +93,12 @@ indexing:
   # The returned content is ALWAYS bounded to a payload-safe size regardless of
   # this cap: a single MCP tool result has a ~1 MB protocol payload ceiling, so an
   # oversized read returns a marked, in-budget slice (output_truncated) plus a
-  # pointer to semantic/keyword search — never a hard failure. Raise this cap to
-  # read more bytes from large files; for large documents, prefer search.
+  # pointer to semantic/keyword search — never a hard failure. That bound is a
+  # UTF-8 BYTE budget (sliced on a code-point boundary) sized under the ~1 MB JSON
+  # wall with headroom for JSON-escape expansion of multibyte content (CJK/emoji)
+  # and the result envelope — not a character count, so non-Latin scripts stay
+  # safe. Raise this cap to read more bytes from large files; for large documents,
+  # prefer search.
   max_read_size_mb: 10
   lookback_days: 14         # Browser history window (days back to index)
   # Opt-in (default off). When true, ingest reads each file/email and stores a

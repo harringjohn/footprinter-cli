@@ -1,6 +1,7 @@
 """Tests for content_service — file I/O (disk, Drive, text extraction)."""
 
 import inspect
+import json
 from unittest.mock import MagicMock, patch
 
 from footprinter.services import content_service
@@ -570,21 +571,24 @@ class TestOutputPayloadBound:
 
         return result
 
-    def test_oversized_extraction_is_bounded_and_marked(self):
-        from footprinter.services.content_service import _MAX_OUTPUT_CHARS
+    # The ~1 MB tool-result protocol wall is measured in bytes, not characters.
+    # A serialized result (content + envelope + metadata) must stay under it even
+    # for multibyte content that JSON-escape-expands. Conservative ceiling so the
+    # worst-case escaped serialization (non-BMP -> surrogate pair, ~3x) fits.
+    _WALL_BYTES = 1_000_000
 
-        oversized = "A" * (_MAX_OUTPUT_CHARS + 100_000)
+    def test_oversized_extraction_is_bounded_and_marked(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_BYTES
+
+        oversized = "A" * (_MAX_OUTPUT_BYTES + 100_000)
         result = self._run(extracted_text=oversized)
 
         assert result["status"] == "ok"
-        assert len(result["content"]) <= _MAX_OUTPUT_CHARS
+        assert len(result["content"].encode("utf-8")) <= _MAX_OUTPUT_BYTES
         assert result["content"] != oversized
         assert result["metadata"].get("output_truncated") is True
-        # A pointer to search for large documents must be present somewhere.
-        msg = (result.get("message") or "") + (
-            result["metadata"].get("output_truncated_message") or ""
-        )
-        assert "search" in msg.lower()
+        # The pointer to search for large documents reaches the client via metadata.
+        assert "search" in result["metadata"].get("output_truncated_message", "").lower()
 
     def test_in_budget_extraction_unmarked(self):
         result = self._run(extracted_text="# Hello")
@@ -594,14 +598,81 @@ class TestOutputPayloadBound:
         assert not result["metadata"].get("output_truncated")
 
     def test_raw_mode_output_also_bounded(self):
-        from footprinter.services.content_service import _MAX_OUTPUT_CHARS
+        from footprinter.services.content_service import _MAX_OUTPUT_BYTES
 
-        oversized = b"B" * (_MAX_OUTPUT_CHARS + 100_000)
+        oversized = b"B" * (_MAX_OUTPUT_BYTES + 100_000)
         result = self._run(raw_bytes=oversized, format="raw")
 
         assert result["status"] == "ok"
-        assert len(result["content"]) <= _MAX_OUTPUT_CHARS
+        assert len(result["content"].encode("utf-8")) <= _MAX_OUTPUT_BYTES
         assert result["metadata"].get("output_truncated") is True
+
+    def test_multibyte_extraction_bounded_under_byte_budget(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_BYTES
+
+        # "中" is 3 UTF-8 bytes; pick N so raw UTF-8 comfortably exceeds the wall.
+        text = "中" * 500_000  # 1.5 MB raw UTF-8, well over ~1 MB
+        assert len(text.encode("utf-8")) > self._WALL_BYTES
+        result = self._run(extracted_text=text)
+
+        assert result["status"] == "ok"
+        content = result["content"]
+        # Content is byte-bounded to the budget.
+        encoded = content.encode("utf-8")
+        assert len(encoded) <= _MAX_OUTPUT_BYTES
+        # Slice is valid UTF-8 — no partial code point at the boundary.
+        assert encoded.decode("utf-8") == content
+        # Serialized result (worst-case ensure_ascii escaping) stays under the wall.
+        assert len(json.dumps(result)) <= self._WALL_BYTES
+        assert result["metadata"].get("output_truncated") is True
+
+    def test_content_exactly_at_byte_budget_unmarked(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_BYTES
+
+        # ASCII so char count == byte count: content exactly at the byte budget.
+        text = "A" * _MAX_OUTPUT_BYTES
+        assert len(text.encode("utf-8")) == _MAX_OUTPUT_BYTES
+        result = self._run(extracted_text=text)
+
+        assert result["status"] == "ok"
+        assert result["content"] == text
+        assert not result["metadata"].get("output_truncated")
+
+    def test_byte_safe_with_large_read_cap(self):
+        # _run already configures max_read_size_mb: 10. The output bound is
+        # independent of the input read cap, so a multibyte extraction larger than
+        # the budget still serializes under the wall.
+        text = "中" * 500_000
+        result = self._run(extracted_text=text)
+
+        assert result["status"] == "ok"
+        assert len(json.dumps(result)) <= self._WALL_BYTES
+        assert result["metadata"].get("output_truncated") is True
+
+    def test_raw_mode_multibyte_bounded(self):
+        from footprinter.services.content_service import _MAX_OUTPUT_BYTES
+
+        raw = ("中" * 500_000).encode("utf-8")  # 1.5 MB of valid UTF-8 bytes
+        assert len(raw) > self._WALL_BYTES
+        result = self._run(raw_bytes=raw, format="raw")
+
+        assert result["status"] == "ok"
+        content = result["content"]
+        encoded = content.encode("utf-8")
+        assert len(encoded) <= _MAX_OUTPUT_BYTES
+        assert encoded.decode("utf-8") == content  # valid UTF-8, no partial point
+        assert len(json.dumps(result)) <= self._WALL_BYTES
+        assert result["metadata"].get("output_truncated") is True
+
+    def test_no_dead_top_level_message(self):
+        # An oversized bound must not leave a dead top-level "message" (dropped by
+        # read.py's _with_identity); the pointer-to-search reaches the client only
+        # via metadata.
+        result = self._run(extracted_text="中" * 500_000)
+
+        assert "message" not in result
+        assert result["metadata"].get("output_truncated") is True
+        assert "search" in result["metadata"].get("output_truncated_message", "").lower()
 
 
 # ---------------------------------------------------------------------------
