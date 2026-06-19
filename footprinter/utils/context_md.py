@@ -7,7 +7,11 @@ plus the resolved ``context_path``. Convention-first, column as override:
 
 - any type with ``context_path`` set → that file wins (explicit override);
 - ``folder`` → auto-detect ``README.md`` in the folder's ``path``;
-- ``client`` → convention ``<context_root>/context/client-<slug>.md``;
+- ``client`` → convention ``<context_root>/context/client-<slug>.md``. In
+  production the caller (``access_service.attach_curated_context``) supplies
+  ``context_root = footprinter.paths.get_home()``, so the convention resolves
+  under ``$FOOTPRINTER_HOME`` (default ``~/.footprinter/``) →
+  ``~/.footprinter/context/client-<slug>.md``;
 - ``project`` → no convention (no path column) — override only.
 
 The resolver is missing-file tolerant: an unset pointer, an absent file, or an
@@ -112,7 +116,12 @@ def resolve_curated_context(
         One of ``"project"``, ``"client"``, ``"folder"``.
     context_root:
         Root under which the client ``context/client-<slug>.md`` convention is
-        resolved. ``None`` disables the client convention.
+        resolved. The production caller
+        (``access_service.attach_curated_context``) passes
+        ``footprinter.paths.get_home()`` — i.e. ``$FOOTPRINTER_HOME`` (default
+        ``~/.footprinter/``) — so the convention resolves to
+        ``~/.footprinter/context/client-<slug>.md``. ``None`` disables the client
+        convention (only tests omit it).
 
     Returns
     -------

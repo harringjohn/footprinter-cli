@@ -210,10 +210,18 @@ def attach_curated_context(
     exists, where it lives, and how big it is, without the body being quoted. The
     ``role`` keyword defaults to ADMIN so callers that don't pass it keep the
     full-block behavior.
+
+    Convention root: the client ``context/client-<slug>.md`` convention is resolved
+    under ``get_home()`` (``$FOOTPRINTER_HOME``, default ``~/.footprinter/``) — the
+    existing single source of truth for Footprinter's home directory. This makes
+    the documented client convention reachable in production. ``context_root`` is
+    ignored by the resolver for folder (uses ``path``) and project (override-only)
+    types, so passing it unconditionally is safe for all entity types.
     """
+    from footprinter.paths import get_home
     from footprinter.utils.context_md import resolve_curated_context
 
-    block = resolve_curated_context(result, entity_type)
+    block = resolve_curated_context(result, entity_type, context_root=get_home())
     result.pop("context_path", None)
     if block is not None:
         if not role.sees_all:

@@ -1371,6 +1371,33 @@ class TestCuratedContext:
         assert result is not None
         assert "curated_context" not in result
 
+    def test_client_convention_surfaces_block_via_home(
+        self, service_db, tmp_path, monkeypatch
+    ):
+        """A client with only the conventional file (no override) surfaces context.
+
+        Drives the production path: ``attach_curated_context`` resolves the client
+        convention under ``get_home()``. Pointing ``FOOTPRINTER_HOME`` at
+        ``tmp_path`` (the class fixture already points ``HOME`` there for
+        confinement) places ``context/client-acme.md`` under the resolved home, so
+        the convention fires without any injected ``context_root`` and without the
+        ``context_path`` override column being set.
+        """
+        monkeypatch.setenv("FOOTPRINTER_HOME", str(tmp_path))
+        context_dir = tmp_path / "context"
+        context_dir.mkdir()
+        convention = context_dir / "client-acme.md"
+        convention.write_text("Acme curated context via convention.")
+
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Acme curated context via convention."
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(convention)
+        assert block["context_path"].endswith("context/client-acme.md")
+
     def test_folder_readme_auto_detect_surfaces_block(self, service_db, tmp_path):
         folder = tmp_path / "alpha-src"
         folder.mkdir()
