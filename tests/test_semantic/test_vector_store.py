@@ -520,6 +520,79 @@ class TestSearchFiles:
 
 
 # ---------------------------------------------------------------------------
+# TestGetFileChunks — fetch + reassemble a file's chunks by chunk id
+# ---------------------------------------------------------------------------
+
+
+class TestGetFileChunks:
+    def test_reassembles_in_chunk_index_order(self, store, mock_chroma):
+        """get_file_chunks returns a file's chunks sorted by chunk_index even
+        when ChromaDB hands them back out of order."""
+        files_col, _, _ = mock_chroma
+        files_col.get.return_value = {
+            "ids": ["file_1_chunk_2", "file_1_chunk_0", "file_1_chunk_1"],
+            "documents": ["third", "first", "second"],
+            "metadatas": [
+                {"file_id": 1, "chunk_index": 2, "total_chunks": 3},
+                {"file_id": 1, "chunk_index": 0, "total_chunks": 3},
+                {"file_id": 1, "chunk_index": 1, "total_chunks": 3},
+            ],
+        }
+        chunks = store.get_file_chunks(1)
+        assert [c["chunk_index"] for c in chunks] == [0, 1, 2]
+        assert [c["content"] for c in chunks] == ["first", "second", "third"]
+        assert all(c["total_chunks"] == 3 for c in chunks)
+
+    def test_get_chunks_by_ids_reassembles_in_order(self, store, mock_chroma):
+        """get_chunks_by_ids fetches the exact ids and returns them sorted by
+        chunk_index, carrying content + index/totals."""
+        files_col, _, _ = mock_chroma
+        files_col.get.return_value = {
+            "ids": ["file_1_chunk_6", "file_1_chunk_4", "file_1_chunk_5"],
+            "documents": ["c6", "c4", "c5"],
+            "metadatas": [
+                {"file_id": 1, "chunk_index": 6, "total_chunks": 9},
+                {"file_id": 1, "chunk_index": 4, "total_chunks": 9},
+                {"file_id": 1, "chunk_index": 5, "total_chunks": 9},
+            ],
+        }
+        chunks = store.get_chunks_by_ids(
+            ["file_1_chunk_4", "file_1_chunk_5", "file_1_chunk_6"]
+        )
+        assert [c["chunk_index"] for c in chunks] == [4, 5, 6]
+        assert [c["content"] for c in chunks] == ["c4", "c5", "c6"]
+        files_col.get.assert_called_once()
+        assert files_col.get.call_args[1]["ids"] == [
+            "file_1_chunk_4",
+            "file_1_chunk_5",
+            "file_1_chunk_6",
+        ]
+
+    def test_get_chunks_by_ids_empty(self, store, mock_chroma):
+        """An empty id list short-circuits without hitting ChromaDB."""
+        files_col, _, _ = mock_chroma
+        assert store.get_chunks_by_ids([]) == []
+        files_col.get.assert_not_called()
+
+    def test_get_file_chunks_enumerates_by_file_id(self, store, mock_chroma):
+        """get_file_chunks enumerates a file's chunks via where={'file_id'}."""
+        files_col, _, _ = mock_chroma
+        files_col.get.return_value = {
+            "ids": ["file_7_chunk_0"],
+            "documents": ["only"],
+            "metadatas": [{"file_id": 7, "chunk_index": 0, "total_chunks": 1}],
+        }
+        store.get_file_chunks(7)
+        assert files_col.get.call_args[1]["where"] == {"file_id": 7}
+
+    def test_get_file_chunks_empty_result(self, store, mock_chroma):
+        """No chunks for the file → empty list, not an error."""
+        files_col, _, _ = mock_chroma
+        files_col.get.return_value = {"ids": [], "documents": [], "metadatas": []}
+        assert store.get_file_chunks(999) == []
+
+
+# ---------------------------------------------------------------------------
 # TestDeleteFile
 # ---------------------------------------------------------------------------
 

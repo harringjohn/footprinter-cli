@@ -280,6 +280,56 @@ class VectorStore:
                 )
         return formatted
 
+    def get_chunks_by_ids(self, ids: List[str]) -> List[Dict]:
+        """Fetch specific chunks by their document ids and reassemble in order.
+
+        Fetches via ChromaDB ``get(ids=[…])`` — a flat ~0.2 ms lookup regardless
+        of file size — and returns chunk dicts (``chunk_index``, ``total_chunks``,
+        ``content``) sorted ascending by ``chunk_index``. An empty id list
+        short-circuits without touching the collection.
+        """
+        if not ids:
+            return []
+        results = self._files.get(ids=list(ids))
+        return self._shape_chunks(results)
+
+    def get_file_chunks(self, file_id: int, *, where: Optional[Dict] = None) -> List[Dict]:
+        """Fetch all of a file's chunks and reassemble in ``chunk_index`` order.
+
+        Enumerates a file's chunks via ``get(where={"file_id": file_id})`` (or a
+        caller-supplied ``where`` filter) and returns chunk dicts
+        (``chunk_index``, ``total_chunks``, ``content``) sorted ascending by
+        ``chunk_index``. Scales with the file's chunk count — prefer
+        ``get_chunks_by_ids`` when the needed ids are already known.
+        """
+        results = self._files.get(where=where or {"file_id": file_id})
+        return self._shape_chunks(results)
+
+    @staticmethod
+    def _shape_chunks(results: Optional[Dict]) -> List[Dict]:
+        """Project a ChromaDB ``get`` result into chunk dicts sorted by index.
+
+        Each dict carries ``chunk_index``, ``total_chunks``, and ``content``.
+        Tolerates missing keys (empty result) by returning an empty list.
+        """
+        if not results:
+            return []
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+        chunks: List[Dict] = []
+        for i in range(len(metadatas)):
+            meta = metadatas[i] or {}
+            content = documents[i] if i < len(documents) else ""
+            chunks.append(
+                {
+                    "chunk_index": meta.get("chunk_index", 0),
+                    "total_chunks": meta.get("total_chunks", 1),
+                    "content": content,
+                }
+            )
+        chunks.sort(key=lambda c: c["chunk_index"])
+        return chunks
+
     def delete_file(self, file_id: int) -> None:
         """Delete all chunks for a given file_id."""
         self._files.delete(where={"file_id": file_id})
