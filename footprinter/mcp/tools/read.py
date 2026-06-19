@@ -39,6 +39,8 @@ def footprinter_read(
     item_type: str,
     item_id: int,
     format: Literal["text", "raw"] = "text",
+    source: Literal["disk", "vectors"] = "disk",
+    query: str = "",
 ) -> dict:
     """Read content for a file, email, or chat if the MCP client has permission.
 
@@ -47,6 +49,11 @@ def footprinter_read(
         item_id: Row ID of the item.
         format: 'text' (default) extracts plaintext from documents,
                 'raw' returns raw decoded content without extraction.
+        source: 'disk' (default) reads file content from disk; 'vectors' (files
+                only) reassembles the matched chunk + neighbors straight from the
+                indexed vectors — a far smaller token payload, usable where the
+                disk read truncates. Requires ``query`` to locate the chunk(s).
+        query: Query used to rank a file's chunks when ``source='vectors'``.
 
     Returns:
         Dict with per-type identity fields, 'content', and 'metadata' on success,
@@ -72,8 +79,14 @@ def footprinter_read(
         if item_type != "file":
             return _with_identity(item_type, result.get("content", ""), result["metadata"])
 
-        # File: read content via service I/O
-        file_result = content_service.read_file(conn, result["metadata"], format=format)
+        # File: read content via service I/O. The D2 gate above runs first for
+        # both paths — the vector branch only executes after gate_access == ok.
+        if source == "vectors":
+            file_result = content_service.read_file_from_vectors(
+                conn, result["metadata"], query
+            )
+        else:
+            file_result = content_service.read_file(conn, result["metadata"], format=format)
         if file_result.get("status") != "ok":
             return mcp_error(
                 _STATUS_TO_MCP.get(file_result["status"], "READ_FAILED"),

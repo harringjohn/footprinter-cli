@@ -217,6 +217,55 @@ def read_file(
     return _ok_result(content, meta)
 
 
+def read_file_from_vectors(
+    conn: sqlite3.Connection,
+    metadata: dict,
+    query: str,
+) -> dict:
+    """Read file content from indexed vector chunks instead of disk.
+
+    Parallels :func:`read_file`'s dispatch so the MCP layer stays
+    source-agnostic: requires ``metadata`` from a prior ``gate_access()`` call
+    (status ``ok``), reassembles the matched chunk + neighbors via
+    ``semantic_service.read_file_chunks``, and returns the uniform
+    ``{status, content, metadata}`` shape.
+
+    On success the returned ``metadata`` carries ``source="vectors"`` provenance
+    plus the reassembly caveats (``from_vectors`` / ``reassembled`` /
+    ``incomplete`` / ``chunk_indices``) and the excerpt-contract fields. Returns
+    ``read_failed`` when the file has no indexed chunks matching ``query`` or the
+    vector store is unavailable.
+    """
+    from footprinter.services import semantic_service
+
+    meta = dict(metadata)
+    file_id = meta.get("id")
+    if file_id is None:
+        return {
+            "status": "read_failed",
+            "metadata": meta,
+            "message": "file: missing id for vector read",
+        }
+
+    chunk_result = semantic_service.read_file_chunks(conn, file_id, query or "")
+    status = chunk_result.get("status")
+    if status in ("no_match", "unavailable"):
+        return {
+            "status": "read_failed",
+            "metadata": meta,
+            "message": f"file:{file_id} no indexed chunks for vector read ({status})",
+        }
+
+    content = chunk_result.pop("excerpt", "")
+    # Stamp source provenance + carry the reassembly caveats and excerpt contract.
+    meta["source"] = "vectors"
+    meta["extraction_method"] = "vectors"
+    meta["extraction_success"] = True
+    meta["extraction_error"] = None
+    meta.update(chunk_result)
+    return _ok_result(content, meta)
+
+
 # ---------------------------------------------------------------------------
 # File I/O helpers
 # ---------------------------------------------------------------------------

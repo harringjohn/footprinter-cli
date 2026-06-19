@@ -4580,6 +4580,122 @@ class TestContexterRead:
         for field in expected_leading:
             assert field in result["metadata"]
 
+    def test_read_file_from_vectors_returns_reassembled_content(self, mcp_db):
+        """source='vectors' returns reassembled chunk content + provenance for a
+        full/allow file, dispatching to content_service.read_file_from_vectors."""
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, visibility, access) "
+            "VALUES (1, 'doc.md', '/Users/u/doc.md', 'local', 'listed',"
+            " 'markdown', 100, 'full', 'allow')"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('source:local', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('source:local', 'allow')")
+        mcp_db.commit()
+
+        with (
+            patch("footprinter.mcp.tools.read.get_db") as mock_get_db,
+            patch(
+                "footprinter.mcp.tools.read.content_service.read_file_from_vectors"
+            ) as mock_vec,
+            patch("footprinter.mcp.tools.read.content_service.read_file") as mock_disk,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+            mock_vec.return_value = {
+                "status": "ok",
+                "content": "chunk four\n\nchunk five\n\nchunk six",
+                "metadata": {
+                    "id": 1,
+                    "name": "doc.md",
+                    "path": "/Users/u/doc.md",
+                    "source": "vectors",
+                    "from_vectors": True,
+                    "reassembled": True,
+                    "incomplete": True,
+                    "chunk_indices": [4, 5, 6],
+                    "excerpt_source": "vector_chunks",
+                },
+            }
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1, source="vectors", query="something")
+
+        assert "error" not in result
+        # Vector branch was taken, disk read was not.
+        mock_vec.assert_called_once()
+        mock_disk.assert_not_called()
+        # query forwarded to the vector reader.
+        assert mock_vec.call_args[0][2] == "something"
+        assert result["content"] == "chunk four\n\nchunk five\n\nchunk six"
+        assert result["metadata"]["source"] == "vectors"
+        assert result["metadata"]["from_vectors"] is True
+        assert result["metadata"]["chunk_indices"] == [4, 5, 6]
+
+    def test_read_vectors_hidden_file_not_found(self, mcp_db):
+        """A hidden file returns NOT_FOUND even with source='vectors' — the D2
+        gate runs before the vector branch."""
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, visibility, access) "
+            "VALUES (1, 'secret.md', '/Users/u/secret.md', 'local', 'listed',"
+            " 'markdown', 100, 'hidden', 'allow')"
+        )
+        mcp_db.commit()
+
+        with (
+            patch("footprinter.mcp.tools.read.get_db") as mock_get_db,
+            patch(
+                "footprinter.mcp.tools.read.content_service.read_file_from_vectors"
+            ) as mock_vec,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1, source="vectors", query="x")
+
+        assert result["error_code"] == "NOT_FOUND"
+        # Vector branch must NOT run for a gated-out file.
+        mock_vec.assert_not_called()
+
+    def test_read_vectors_denied_file_permission_denied(self, mcp_db):
+        """A visible+deny file returns PERMISSION_DENIED with source='vectors';
+        the vector branch never runs."""
+        from footprinter.services.access_service import load_globals
+
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO files (id, name, path, source, status, content_type,"
+            " size_bytes, visibility, access) "
+            "VALUES (1, 'denied.md', '/Users/u/denied.md', 'local', 'listed',"
+            " 'markdown', 100, 'full', 'deny')"
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('global', 'full')")
+        cursor.execute("INSERT INTO permission_policies (scope, setting) VALUES ('global', 'allow')")
+        mcp_db.commit()
+        load_globals(mcp_db)
+
+        with (
+            patch("footprinter.mcp.tools.read.get_db") as mock_get_db,
+            patch(
+                "footprinter.mcp.tools.read.content_service.read_file_from_vectors"
+            ) as mock_vec,
+        ):
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.read import footprinter_read
+
+            result = footprinter_read("file", 1, source="vectors", query="x")
+
+        assert result["error_code"] == "PERMISSION_DENIED"
+        mock_vec.assert_not_called()
+
     def test_read_email_hoists_identity_fields(self, mcp_db):
         """Email read should hoist subject/from_address/from_name/account/received_at/project_name."""
         cursor = mcp_db.cursor()
