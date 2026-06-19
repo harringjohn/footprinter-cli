@@ -1282,6 +1282,13 @@ class TestCuratedContext:
     excerpt contract: ``excerpt_source == "context_md"``, ``chars_available``,
     ``has_more``, plus the resolved ``context_path``. The unset case carries no
     block.
+
+    Exposure policy (enforced in ``attach_curated_context``): ADMIN sees the full
+    block including the ``excerpt`` body; VIEWER sees pointer + provenance only
+    (``context_path`` / ``excerpt_source`` / ``chars_available``) — no ``excerpt``,
+    ``chars_returned``, or ``has_more``. The block-resolution tests below run as
+    ADMIN so they can assert the excerpt body; the dedicated VIEWER/ADMIN tests
+    pin the exposure split.
     """
 
     _CONTRACT_KEYS = {
@@ -1293,6 +1300,22 @@ class TestCuratedContext:
         "context_path",
     }
 
+    # Content-bearing keys stripped from the block for VIEWER (pointer-only).
+    _VIEWER_STRIPPED_KEYS = {"excerpt", "chars_returned", "has_more"}
+    # Pointer + provenance keys VIEWER must still see.
+    _VIEWER_KEPT_KEYS = {"context_path", "excerpt_source", "chars_available"}
+
+    @pytest.fixture(autouse=True)
+    def _home_is_tmp(self, tmp_path, monkeypatch):
+        """Confine the curated-context home root to ``tmp_path`` for this class.
+
+        ``resolve_curated_context`` rejects candidates outside ``Path.home()``;
+        the curated fixture files here live under ``tmp_path`` (the system temp
+        root, not the real home). ``Path.home()`` honours ``$HOME``, so pointing
+        ``HOME`` at ``tmp_path`` lets these files pass confinement.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+
     def test_project_column_override_surfaces_block(self, service_db, tmp_path):
         md = tmp_path / "alpha-context.md"
         md.write_text("Curated Alpha context.")
@@ -1301,7 +1324,7 @@ class TestCuratedContext:
         )
         service_db.commit()
 
-        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.ADMIN)
         assert result is not None
         block = result["curated_context"]
         assert self._CONTRACT_KEYS <= set(block)
@@ -1335,7 +1358,7 @@ class TestCuratedContext:
         )
         service_db.commit()
 
-        result = client_service.resolve_by_name(service_db, "Acme", role=Role.VIEWER)
+        result = client_service.resolve_by_name(service_db, "Acme", role=Role.ADMIN)
         assert result is not None
         block = result["curated_context"]
         assert self._CONTRACT_KEYS <= set(block)
@@ -1363,7 +1386,7 @@ class TestCuratedContext:
         )
         service_db.commit()
 
-        result = folder_service.get_by_path(service_db, str(folder), role=Role.VIEWER)
+        result = folder_service.get_by_path(service_db, str(folder), role=Role.ADMIN)
         assert result is not None
         block = result["curated_context"]
         assert self._CONTRACT_KEYS <= set(block)
@@ -1385,7 +1408,7 @@ class TestCuratedContext:
         service_db.commit()
 
         result = folder_service.get_by_path(
-            service_db, "/Users/u/Work/alpha/configured", role=Role.VIEWER
+            service_db, "/Users/u/Work/alpha/configured", role=Role.ADMIN
         )
         assert result is not None
         assert result["curated_context"]["context_path"] == str(md)
@@ -1397,3 +1420,35 @@ class TestCuratedContext:
         )
         assert result is not None
         assert "curated_context" not in result
+
+    def test_viewer_curated_block_is_pointer_only(self, service_db, tmp_path):
+        """VIEWER gets pointer + provenance, never the excerpt body."""
+        md = tmp_path / "viewer-context.md"
+        md.write_text("Sensitive curated body that VIEWER must not see.")
+        service_db.execute(
+            "UPDATE projects SET context_path = ? WHERE id = 1", (str(md),)
+        )
+        service_db.commit()
+
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.VIEWER)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._VIEWER_KEPT_KEYS <= set(block)
+        assert self._VIEWER_STRIPPED_KEYS.isdisjoint(set(block))
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(md)
+
+    def test_admin_curated_block_is_full(self, service_db, tmp_path):
+        """ADMIN keeps the full block, excerpt body included."""
+        md = tmp_path / "admin-full.md"
+        md.write_text("Full curated body for ADMIN.")
+        service_db.execute(
+            "UPDATE projects SET context_path = ? WHERE id = 1", (str(md),)
+        )
+        service_db.commit()
+
+        result = project_service.resolve_by_name(service_db, "Alpha", role=Role.ADMIN)
+        assert result is not None
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == "Full curated body for ADMIN."

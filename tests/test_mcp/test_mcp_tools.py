@@ -2586,6 +2586,44 @@ class TestContexterFolder:
         assert block["context_path"] == "~/Work/demo/README.md"
         assert str(tmp_path) not in block["context_path"]
 
+    def test_curated_context_viewer_has_no_excerpt_body(self, mcp_db, tmp_path, monkeypatch):
+        """The VIEWER-facing nav tool surfaces pointer + provenance, not the body.
+
+        VIEWER (the MCP default role) must see that a curated note exists, where
+        it lives (home-abbreviated ``context_path``), and its provenance
+        (``excerpt_source``) — but never the ``excerpt`` body or the
+        body-describing ``chars_returned`` / ``has_more`` fields.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        folder = tmp_path / "Work" / "demo"
+        folder.mkdir(parents=True)
+        (folder / "README.md").write_text("sensitive curated body")
+
+        cursor = mcp_db.cursor()
+        cursor.execute(
+            "INSERT INTO folders (id, name, path, relative_path, source,"
+            " direct_file_count, total_size_bytes, visibility) "
+            "VALUES (1, 'demo', ?, 'Work/demo', 'local', 0, 0, 'full')",
+            (str(folder),),
+        )
+        cursor.execute("INSERT INTO visibility_policies (scope, setting) VALUES ('folder:1', 'full')")
+        mcp_db.commit()
+
+        with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mcp_db
+            mock_get_db.return_value.__exit__ = lambda s, *args: None
+
+            from footprinter.mcp.tools.navigation import footprinter_folder
+
+            result = footprinter_folder(str(folder))
+
+        block = result["curated_context"]
+        assert block["context_path"] == "~/Work/demo/README.md"
+        assert block["excerpt_source"] == "context_md"
+        assert "excerpt" not in block
+        assert "chars_returned" not in block
+        assert "has_more" not in block
+
     def test_folder_not_found(self, mcp_db):
         with patch("footprinter.mcp.tools.navigation.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__ = lambda s: mcp_db

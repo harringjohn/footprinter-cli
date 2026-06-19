@@ -183,8 +183,16 @@ def strip_governance_fields(result: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in result.items() if k not in GOVERNANCE_FIELDS}
 
 
+# Content-bearing keys of the curated-context block. VIEWER sees pointer +
+# provenance only (context_path / excerpt_source / chars_available — "a note
+# exists here, this big"); these keys quote or describe the body and are stripped
+# for non-ADMIN roles, mirroring strip_content_for_denied's "keep the signal, drop
+# the content" precedent. ADMIN keeps the full block.
+_CURATED_CONTENT_KEYS = ("excerpt", "chars_returned", "has_more")
+
+
 def attach_curated_context(
-    result: Dict[str, Any], entity_type: str
+    result: Dict[str, Any], entity_type: str, *, role: Role = Role.ADMIN
 ) -> Dict[str, Any]:
     """Resolve curated Markdown context for a nav result and attach it in place.
 
@@ -194,12 +202,23 @@ def attach_curated_context(
     carrying ``excerpt_source == "context_md"`` plus ``chars_available`` /
     ``has_more``. Missing/unset pointers leave the result unchanged. Returns the
     same dict for convenience.
+
+    Exposure policy (role-aware): ADMIN sees the full block. For non-ADMIN roles
+    (VIEWER) the content-bearing keys (``excerpt`` / ``chars_returned`` /
+    ``has_more``) are stripped, leaving pointer + provenance only (``context_path``
+    / ``excerpt_source`` / ``chars_available``) — the agent learns a curated note
+    exists, where it lives, and how big it is, without the body being quoted. The
+    ``role`` keyword defaults to ADMIN so callers that don't pass it keep the
+    full-block behavior.
     """
     from footprinter.utils.context_md import resolve_curated_context
 
     block = resolve_curated_context(result, entity_type)
     result.pop("context_path", None)
     if block is not None:
+        if not role.sees_all:
+            for key in _CURATED_CONTENT_KEYS:
+                block.pop(key, None)
         result["curated_context"] = block
     return result
 

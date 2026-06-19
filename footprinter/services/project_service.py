@@ -150,7 +150,7 @@ def _build_project_navigation(conn: sqlite3.Connection, row: dict, *, role: Role
 
     nav = db.get_project_navigation(conn, row["id"])
     result = {**row, **nav}
-    attach_curated_context(result, "project")
+    attach_curated_context(result, "project", role=role)
 
     if role.sees_all:
         return result
