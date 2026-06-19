@@ -64,15 +64,21 @@ def verify_harness(tmp_path):
     scripts_dir.mkdir(parents=True)
     shutil.copy2(VERIFY_SCRIPT, scripts_dir / "verify_install.sh")
 
-    # Neutralise the Rosetta re-exec guard — it hangs when /usr/local/bin/bash
-    # is x86-only (Homebrew) because arch -arm64 can't re-exec an x86 binary.
+    # Neutralise the Rosetta re-exec guard so this harness's tests do not depend
+    # on host arch behaviour. The exec lives inside the loop-guarded `if` block
+    # (8-space indent); assert the substitution lands so a future re-indentation
+    # cannot silently turn this back into a no-op.
     script = scripts_dir / "verify_install.sh"
-    script.write_text(
-        script.read_text().replace(
-            '    exec arch -arm64 "$0" "$@"\n',
-            "    true\n",
-        )
+    original = script.read_text()
+    neutralised = original.replace(
+        '        exec arch -arm64 "$0" "$@"\n',
+        "        true\n",
     )
+    assert neutralised != original, (
+        "verify_install.sh re-exec guard not neutralised — the exec line "
+        "no longer matches the expected text; update this fixture."
+    )
+    script.write_text(neutralised)
 
     stubs_dir = tmp_path / "stubs"
     stubs_dir.mkdir()
