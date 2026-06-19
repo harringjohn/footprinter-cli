@@ -667,6 +667,171 @@ class TestSemanticGovernanceStripped:
             assert field not in matches[0]
 
 
+class TestReadFileChunks:
+    """Vector read path: matched chunk + neighbors, reassembled by chunk_index."""
+
+    def _mock_vs_module(self, *, search=None, file_chunks=None):
+        """Build a mock vector_store module.
+
+        ``search`` → search_files (ranked matched chunks for the query);
+        ``file_chunks`` → both get_file_chunks and get_chunks_by_ids return the
+        file's full chunk set (the service picks the needed slice by id).
+        """
+        mock_store = MagicMock()
+        mock_store.search_files.return_value = search or []
+        all_chunks = file_chunks or []
+        mock_store.get_file_chunks.return_value = all_chunks
+
+        def _by_ids(ids):
+            wanted = set(ids)
+            return [
+                c
+                for c in all_chunks
+                if f"file_{c.get('file_id', 1)}_chunk_{c['chunk_index']}" in wanted
+                or f"file_1_chunk_{c['chunk_index']}" in wanted
+            ]
+
+        mock_store.get_chunks_by_ids.side_effect = _by_ids
+        mock_module = MagicMock()
+        mock_module.VectorStore.get_instance.return_value = mock_store
+        return mock_module
+
+    @staticmethod
+    def _match(file_id, chunk_index, total_chunks, distance):
+        return {
+            "file_id": file_id,
+            "chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+            "distance": distance,
+            "content_snippet": f"match chunk {chunk_index}",
+            "content_length": 20,
+        }
+
+    @staticmethod
+    def _chunk(chunk_index, total_chunks, content, file_id=1):
+        return {
+            "chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+            "content": content,
+            "file_id": file_id,
+        }
+
+    def test_isolated_match_returns_chunk_plus_neighbors(self, service_db):
+        """An isolated top match at chunk 5 returns chunks {4,5,6} reassembled
+        in chunk_index order with the matched chunk present."""
+        search = [self._match(1, 5, 9, 0.2)]
+        file_chunks = [
+            self._chunk(i, 9, f"body of chunk {i}") for i in range(9)
+        ]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["chunk_indices"] == [4, 5, 6]
+        # Reassembled content is the three chunks joined in order.
+        assert "body of chunk 4" in result["excerpt"]
+        assert "body of chunk 5" in result["excerpt"]
+        assert "body of chunk 6" in result["excerpt"]
+        # Order preserved.
+        assert result["excerpt"].index("chunk 4") < result["excerpt"].index("chunk 5")
+        assert result["excerpt"].index("chunk 5") < result["excerpt"].index("chunk 6")
+
+    def test_first_chunk_match_has_no_left_neighbor(self, service_db):
+        """A match at chunk 0 expands to {0,1} — no negative neighbor."""
+        search = [self._match(1, 0, 9, 0.2)]
+        file_chunks = [self._chunk(i, 9, f"c{i}") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["chunk_indices"] == [0, 1]
+
+    def test_whole_set_when_total_chunks_small(self, service_db):
+        """total_chunks <= 2 returns the whole available chunk set."""
+        search = [self._match(1, 1, 2, 0.2)]
+        file_chunks = [self._chunk(0, 2, "alpha"), self._chunk(1, 2, "beta")]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["chunk_indices"] == [0, 1]
+        assert "alpha" in result["excerpt"]
+        assert "beta" in result["excerpt"]
+
+    def test_scattered_matches_return_whole_set(self, service_db):
+        """Matches far apart (chunks 1 and 7) widen to the whole available set."""
+        search = [self._match(1, 1, 9, 0.2), self._match(1, 7, 9, 0.3)]
+        file_chunks = [self._chunk(i, 9, f"c{i}") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["chunk_indices"] == list(range(9))
+
+    def test_adjacent_matches_form_contiguous_span(self, service_db):
+        """Adjacent matches (chunks 3 and 4) yield a contiguous span incl. neighbors."""
+        search = [self._match(1, 3, 9, 0.2), self._match(1, 4, 9, 0.25)]
+        file_chunks = [self._chunk(i, 9, f"c{i}") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        # {3,4} ± 1 → {2,3,4,5}, contiguous.
+        assert result["chunk_indices"] == [2, 3, 4, 5]
+
+    def test_provenance_and_caveats(self, service_db):
+        """Result carries the excerpt contract + vector-read provenance + the
+        staleness/completeness caveats, and no governance fields ride along."""
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        search = [self._match(1, 5, 9, 0.2)]
+        file_chunks = [self._chunk(i, 9, f"chunk {i} text") for i in range(9)]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        # Excerpt contract.
+        for field in ("excerpt", "excerpt_source", "chars_returned",
+                      "chars_available", "has_more"):
+            assert field in result
+        # Provenance: a vector-read excerpt_source value.
+        assert "vector" in result["excerpt_source"]
+        # Staleness / completeness caveats (note §5.2).
+        assert result["from_vectors"] is True
+        assert result["reassembled"] is True
+        # Partial read (3 of 9 chunks) → flagged incomplete.
+        assert result["incomplete"] is True
+        # No governance fields leak.
+        for field in GOVERNANCE_FIELDS:
+            assert field not in result
+
+    def test_whole_set_not_marked_incomplete(self, service_db):
+        """When the whole chunk set is returned, the result is not incomplete."""
+        search = [self._match(1, 0, 2, 0.2)]
+        file_chunks = [self._chunk(0, 2, "a"), self._chunk(1, 2, "b")]
+        mock_module = self._mock_vs_module(search=search, file_chunks=file_chunks)
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result["incomplete"] is False
+
+    def test_no_matches_returns_status(self, service_db):
+        """No matched chunks for the query → a no_match status, not a crash."""
+        mock_module = self._mock_vs_module(search=[], file_chunks=[])
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.read_file_chunks(
+                service_db, 1, "anything", role=Role.VIEWER
+            )
+        assert result.get("status") == "no_match"
+
+
 class TestSemanticServiceD2Access:
     """D2: semantic matches are content-derived — visible items need read access."""
 

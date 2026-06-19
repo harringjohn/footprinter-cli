@@ -72,6 +72,20 @@ _CHUNK_FIELDS = {
     *_EXCERPT_FIELDS,
 }
 
+# Vector-read provenance (note §5.2): the excerpt was reassembled from indexed
+# chunks straight out of ChromaDB, not re-read from disk.
+_VECTOR_READ_SOURCE = "vector_chunks"
+
+# Keep-allowlist for the vector-read result: the excerpt contract + the
+# reassembly provenance/caveat fields. No governance data rides along.
+_VECTOR_READ_FIELDS = {
+    "chunk_indices",
+    "from_vectors",
+    "reassembled",
+    "incomplete",
+    *_EXCERPT_FIELDS,
+}
+
 # Search outcome: ok (vector worked), degraded (FTS5 fallback), failed (both crashed)
 _OK = "ok"
 _DEGRADED = "degraded"
@@ -217,6 +231,132 @@ def semantic_search(
         result["note"] = " ".join(dict.fromkeys(all_notes))
 
     return result
+
+
+def read_file_chunks(
+    conn: sqlite3.Connection,
+    file_id: int,
+    query: str,
+    *,
+    role: Role = Role.ADMIN,
+) -> dict:
+    """Read a file's content straight from indexed chunks (note §5, §5.1).
+
+    Ranks the file's chunks for ``query``, applies the §5.1 reassembly heuristic
+    (isolated match → matched chunk ± 1 neighbors; adjacent matches → contiguous
+    span; scattered matches or ``total_chunks <= 2`` → whole available chunk
+    set), fetches the needed chunks from the vector store by chunk id, and
+    reassembles them in ``chunk_index`` order.
+
+    Returns the uniform excerpt contract plus the vector-read provenance /
+    completeness caveats (``from_vectors``, ``reassembled``, ``incomplete``,
+    ``chunk_indices``). On no match returns ``{"status": "no_match"}``; on
+    vector-store unavailability returns ``{"status": "unavailable"}``.
+
+    The caller is responsible for the D2 visible-AND-allowed gate — this
+    function does not re-check access (it operates on an already-gated file id).
+    No governance fields are surfaced.
+    """
+    try:
+        from footprinter.semantic.vector_store import VectorStore
+
+        store = VectorStore.get_instance()
+    except Exception as e:  # noqa: BLE001 — broad: import + init both realistic
+        logger.warning("Vector read unavailable (%s)", e)
+        return {"status": "unavailable"}
+
+    # Rank the file's chunks for the query, scoped to this file id.
+    matches = store.search_files(
+        query=query,
+        n_results=_get_max_chunks_per_file() * 3,
+        filter_metadata={"file_id": file_id},
+    )
+    matches = [m for m in matches if m.get("file_id") == file_id]
+    if not matches:
+        return {"status": "no_match"}
+
+    total_chunks = matches[0].get("total_chunks") or 1
+    matched_indices = sorted({m.get("chunk_index", 0) for m in matches})
+
+    selected, incomplete = _select_chunk_span(matched_indices, total_chunks)
+
+    chunks = _fetch_selected_chunks(store, file_id, selected, total_chunks)
+    if not chunks:
+        return {"status": "no_match"}
+
+    selected_present = [c["chunk_index"] for c in chunks]
+    reassembled = "\n\n".join(c.get("content", "") for c in chunks)
+
+    result = build_excerpt(
+        reassembled,
+        source=_VECTOR_READ_SOURCE,
+        budget=len(reassembled),  # whole reassembled span — no further slicing
+        chars_available=len(reassembled),
+    )
+    result["chunk_indices"] = selected_present
+    result["from_vectors"] = True
+    result["reassembled"] = True
+    # Incomplete when fewer than the file's full chunk set was returned.
+    result["incomplete"] = incomplete or len(selected_present) < total_chunks
+    return {k: v for k, v in result.items() if k in _VECTOR_READ_FIELDS}
+
+
+def _select_chunk_span(
+    matched_indices: List[int], total_chunks: int
+) -> tuple[List[int], bool]:
+    """Apply the §5.1 reassembly heuristic to pick which chunk indices to return.
+
+    Returns ``(indices, incomplete)`` where ``incomplete`` is ``True`` when only a
+    neighborhood span (not the whole file) was selected.
+
+    - ``total_chunks <= 2`` → whole set (complete).
+    - Expand each matched index to ``± 1`` neighbors (clamped to range) and union.
+      Contiguous union → that span (a neighborhood; incomplete unless it covers
+      the whole file). Gapped union (scattered matches) → whole set (complete).
+    """
+    last = total_chunks - 1
+    if total_chunks <= 2:
+        return list(range(total_chunks)), False
+
+    expanded: set[int] = set()
+    for idx in matched_indices:
+        for n in (idx - 1, idx, idx + 1):
+            if 0 <= n <= last:
+                expanded.add(n)
+
+    span = sorted(expanded)
+    is_contiguous = span == list(range(span[0], span[-1] + 1))
+    if not is_contiguous:
+        # Scattered matches → fall back to the whole available set.
+        return list(range(total_chunks)), False
+
+    incomplete = len(span) < total_chunks
+    return span, incomplete
+
+
+def _fetch_selected_chunks(
+    store, file_id: int, selected: List[int], total_chunks: int
+) -> List[dict]:
+    """Fetch the selected chunk indices for a file, reassembled by index.
+
+    Prefers the flat ``get_chunks_by_ids`` lookup (note §7: ~0.2 ms regardless of
+    file size); falls back to enumerating the file's chunks via
+    ``get_file_chunks`` and filtering to the selected indices.
+    """
+    wanted = set(selected)
+    ids = [f"file_{file_id}_chunk_{i}" for i in selected]
+    try:
+        chunks = store.get_chunks_by_ids(ids)
+    except Exception as e:  # noqa: BLE001 — broad: ChromaDB lookup is best-effort
+        logger.warning("get_chunks_by_ids failed (%s), enumerating file chunks", e)
+        chunks = []
+    if not chunks:
+        chunks = [
+            c
+            for c in store.get_file_chunks(file_id)
+            if c.get("chunk_index") in wanted
+        ]
+    return sorted(chunks, key=lambda c: c.get("chunk_index", 0))
 
 
 # ---------------------------------------------------------------------------
