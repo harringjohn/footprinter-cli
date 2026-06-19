@@ -19,7 +19,16 @@ set -euo pipefail
 if [ "$(uname -s)" = "Darwin" ] \
     && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = "1" ] \
     && [ "$(arch)" != "arm64" ]; then
-    exec arch -arm64 "$0" "$@"
+    if [ -z "${FPR_ARCH_REEXEC:-}" ]; then
+        # Re-exec once to force native arm64. The sentinel is exported BEFORE
+        # the exec so the re-exec'd process inherits it and the guard below
+        # cannot fire a second time — making the loop structurally impossible
+        # under a single-arch x86_64 bash (e.g. Intel Homebrew under Rosetta).
+        export FPR_ARCH_REEXEC=1
+        exec arch -arm64 "$0" "$@"
+    else
+        echo "WARN: could not obtain a native arm64 bash (current bash is x86_64-only, e.g. Intel Homebrew); continuing under the current interpreter. Install an arm64 bash or run under /bin/bash for native execution." >&2
+    fi
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
