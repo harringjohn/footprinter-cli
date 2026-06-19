@@ -235,17 +235,30 @@ class TestSearchChatsKeyword:
         assert "id" in results[0]
         assert "title" in results[0]
 
-    def test_excerpt_from_title(self, db_conn):
-        """Keyword chats carry a title excerpt with excerpt_source='title'.
+    def test_excerpt_from_message(self, db_conn):
+        """Chat hits carry a content excerpt re-derived from messages.
 
-        The message-derived excerpt is the job of a later issue; here the
-        title fallback applies.
+        The keyword match is on the title, but the excerpt is sourced from the
+        chat's message content (excerpt_source='message'), not a title echo.
         """
         results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
         match = [r for r in results if r["title"] == "Visible Chat"][0]
-        assert match["excerpt"] == "Visible Chat"
+        assert match["excerpt_source"] == "message"
+        # Not a bare title echo; carries a token from the seeded message content.
+        assert match["excerpt"] != "Visible Chat"
+        assert "roadmap" in match["excerpt"]
+        # Contract fields are coherent.
+        assert match["chars_returned"] == len(match["excerpt"])
+        assert match["chars_available"] >= match["chars_returned"]
+        assert match["has_more"] == (match["chars_available"] > match["chars_returned"])
+
+    def test_excerpt_title_fallback_when_no_messages(self, db_conn):
+        """A chat with no message content falls back to a title excerpt."""
+        results = search_chats_keyword(db_conn, terms=["Opaque"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Opaque Chat"][0]
         assert match["excerpt_source"] == "title"
-        assert match["chars_returned"] == len("Visible Chat")
+        assert match["excerpt"] == "Opaque Chat"
+        assert match["chars_returned"] == len("Opaque Chat")
         assert match["has_more"] is False
 
     def test_no_snippet_key(self, db_conn):
