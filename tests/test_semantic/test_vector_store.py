@@ -476,6 +476,8 @@ class TestSearchFiles:
         assert "chunk_index" in r
         assert "total_chunks" in r
         assert "content_snippet" in r
+        # Full chunk length carried for excerpt provenance at the service layer.
+        assert r["content_length"] == len("Doc content")
         assert "distance" in r
 
     def test_filter_metadata_forwarded(self, store, mock_chroma):

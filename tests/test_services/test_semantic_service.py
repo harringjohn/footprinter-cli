@@ -118,8 +118,8 @@ class TestSemanticServiceFiles:
         file_names = [f.get("name") for f in result["files"]]
         assert "readme.md" in file_names
 
-    def test_fts5_fallback_snippet_shows_content_when_allowed(self, service_db):
-        """FTS5 fallback snippets show content_preview when access allows."""
+    def test_fts5_fallback_excerpt_shows_content_when_allowed(self, service_db):
+        """FTS5 fallback excerpt is sourced from content_preview when access allows."""
         service_db.execute(
             "INSERT INTO files (id, source, name, path, status, content_type, "
             "size_bytes, modified_at, visibility, access, content_preview) "
@@ -138,8 +138,11 @@ class TestSemanticServiceFiles:
         assert "files" in result
         matches = [f for f in result["files"] if f.get("name") == "budget.xlsx"]
         assert len(matches) == 1
-        snippet = matches[0].get("snippet", "")
-        assert "revenue figures" in snippet
+        match = matches[0]
+        assert "revenue figures" in match["excerpt"]
+        assert match["excerpt_source"] == "content_preview"
+        assert match["chars_returned"] == len(match["excerpt"])
+        assert "snippet" not in match
 
     def test_hidden_file_excluded(self, service_db):
         """Hidden files excluded from results."""
@@ -152,6 +155,117 @@ class TestSemanticServiceFiles:
         )
         file_names = [f.get("name") for f in result.get("files", [])]
         assert "secret.py" not in file_names
+
+
+class TestSemanticExcerptContract:
+    """Every content-bearing semantic result carries the uniform excerpt contract."""
+
+    def _rebuild_fts(self, conn):
+        conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO chats_fts(chats_fts) VALUES('rebuild')")
+        conn.commit()
+
+    def _mock_vs_module(self, *, files=None, chats=None):
+        mock_store = MagicMock()
+        mock_store.search_files.return_value = files or []
+        mock_store.search_chats.return_value = chats or []
+        mock_module = MagicMock()
+        mock_module.VectorStore.get_instance.return_value = mock_store
+        return mock_module
+
+    def test_vector_file_excerpt_is_chunk_with_provenance(self, service_db):
+        """Vector file hits carry excerpt_source='chunk' + chunk index/totals."""
+        long_chunk = "x" * 500  # vector store slices the chunk to the budget
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 1,
+                    "distance": 0.2,
+                    "content_snippet": long_chunk,
+                    "content_length": 1800,
+                    "chunk_index": 2,
+                    "total_chunks": 9,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 1][0]
+        assert match["excerpt"] == long_chunk
+        assert match["excerpt_source"] == "chunk"
+        assert match["chars_returned"] == 500
+        assert match["chars_available"] == 1800
+        assert match["has_more"] is True
+        assert match["chunk_index"] == 2
+        assert match["total_chunks"] == 9
+        assert "snippet" not in match
+        assert "content_snippet" not in match
+
+    def test_vector_chat_excerpt_is_chunk_with_provenance(self, service_db):
+        """Vector chat hits carry excerpt_source='chunk' + chunk index/totals."""
+        window = "...the matched conversation window..."
+        mock_module = self._mock_vs_module(
+            chats=[
+                {
+                    "chat_id": 1,
+                    "chat_title": "Visible Chat",
+                    "snippet": window,
+                    "content_length": 1200,
+                    "chunk_index": 0,
+                    "total_chunks": 3,
+                    "relevance_score": 0.9,
+                    "source": "claude",
+                    "created_at": "",
+                    "message_id": 11,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "conversation", role=Role.VIEWER, source="chats"
+            )
+        match = [c for c in result["chats"] if c.get("chat_id") == 1][0]
+        assert match["excerpt"] == window
+        assert match["excerpt_source"] == "chunk"
+        assert match["chars_available"] == 1200
+        assert match["has_more"] is True
+        assert match["chunk_index"] == 0
+        assert match["total_chunks"] == 3
+        assert "snippet" not in match
+
+    def test_file_fallback_excerpt_falls_back_to_name_path(self, service_db):
+        """A file with no content_preview falls back to a name/path excerpt."""
+        service_db.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access, content_preview) "
+            "VALUES (60, 'local', 'plan.md', '/Users/u/docs/plan.md', "
+            "'listed', 'markdown', 400, '2026-01-15', 'full', 'allow', NULL)"
+        )
+        service_db.commit()
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db, "plan", role=Role.VIEWER, source="files"
+        )
+        match = [f for f in result["files"] if f.get("name") == "plan.md"][0]
+        assert match["excerpt_source"] == "title"
+        assert "plan.md" in match["excerpt"]
+        assert "/Users/u/docs/plan.md" in match["excerpt"]
+        assert "snippet" not in match
+
+    def test_chat_fallback_excerpt_is_title(self, service_db):
+        """Degraded (FTS5) chat results carry a title excerpt."""
+        self._rebuild_fts(service_db)
+        result = semantic_service.semantic_search(
+            service_db, "Visible Chat", role=Role.VIEWER, source="chats"
+        )
+        matches = [c for c in result["chats"] if "Visible" in (c.get("chat_title") or "")]
+        assert len(matches) >= 1
+        match = matches[0]
+        assert match["excerpt_source"] == "title"
+        assert "Visible Chat" in match["excerpt"]
+        assert "snippet" not in match
 
 
 class TestSemanticServiceD2Access:

@@ -18,6 +18,7 @@ from footprinter.db.sql_utils import (
     paginated_response,
     split_query_terms,
 )
+from footprinter.utils.text import build_excerpt
 
 
 def _status_clause(
@@ -225,6 +226,9 @@ def search_files_keyword(
             "visibility": r["visibility"],
             "status": r["status"],
             "status_reason": r["status_reason"],
+            # Bottom rung of the file-excerpt precedence: name/path. The
+            # content_preview rung is added on the keyword path by a later issue.
+            **build_excerpt(f"{r['name']} — {r['path'] or ''}", source="title"),
         }
         for r in rows
     ]
@@ -322,7 +326,7 @@ def search_emails_keyword(
             "received_at": r["received_at"],
             "account": r["account"],
             "labels": r["labels"],
-            "snippet": r["body_preview"],
+            **build_excerpt(r["body_preview"] or "", source="body_preview"),
             "project_name": r["project_name"],
             "client_name": r["client_name"],
             "visibility": r["visibility"],
@@ -415,6 +419,8 @@ def search_chats_keyword(
             "visibility_source": r["visibility_source"],
             "access_source": r["access_source"],
             "status": r["status"],
+            # Title fallback rung; the message-derived excerpt is a later issue.
+            **build_excerpt(r["title"] or "", source="title"),
         }
         for r in rows
     ]
@@ -506,7 +512,9 @@ def chat_fts5_fallback(
     """FTS5 keyword fallback for chat search.
 
     Returns dicts shaped for semantic_service consumption: chat_id, chat_title,
-    snippet, relevance_score, source, created_at, message_id.
+    relevance_score, source, created_at, message_id, plus a ``snippet`` staging
+    field (the chat title) that ``semantic_service`` converts into the excerpt
+    contract (``excerpt_source="title"``) and removes before returning results.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     safe_query = query.replace('"', '""')
@@ -554,8 +562,9 @@ def file_fts5_fallback(
     """FTS5 keyword fallback for file search.
 
     Returns dicts shaped for semantic_service consumption: id, source, name,
-    path, content_type, size_bytes, modified_at, relevance_score, snippet,
-    visibility, access.
+    path, content_type, size_bytes, modified_at, relevance_score, the excerpt
+    contract (excerpt, excerpt_source, chars_returned, chars_available,
+    has_more), visibility, access.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     terms = split_query_terms(query)
@@ -581,10 +590,12 @@ def file_fts5_fallback(
 
     results = []
     for row in rows:
+        # File-excerpt precedence on the keyword fallback path:
+        # content_preview when present (and not access-denied), else name/path.
         if row["content_preview"] and row["access"] != "deny":
-            snippet = row["content_preview"][:200]
+            excerpt_fields = build_excerpt(row["content_preview"], source="content_preview")
         else:
-            snippet = f"{row['name']} — {row['path']}"
+            excerpt_fields = build_excerpt(f"{row['name']} — {row['path'] or ''}", source="title")
         results.append(
             {
                 "id": row["id"],
@@ -595,7 +606,7 @@ def file_fts5_fallback(
                 "size_bytes": row["size_bytes"],
                 "modified_at": row["modified_at"],
                 "relevance_score": 0.5,
-                "snippet": snippet,
+                **excerpt_fields,
                 "visibility": row["visibility"],
                 "access": row["access"],
                 "visibility_source": row["visibility_source"],

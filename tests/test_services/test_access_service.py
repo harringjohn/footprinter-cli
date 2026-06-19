@@ -494,22 +494,34 @@ def test_filter_results_list_removes_hidden_counts_suppressed():
 
 def test_strip_content_for_denied():
     items = [
-        {"id": 1, "snippet": "some content", "access": "allow"},
-        {"id": 2, "snippet": "secret stuff", "access": "deny"},
-        {"id": 3, "snippet": "inherit content", "access": "inherit"},
+        {"id": 1, "excerpt": "some content", "excerpt_source": "content_preview", "access": "allow"},
+        {"id": 2, "excerpt": "secret stuff", "excerpt_source": "content_preview", "access": "deny"},
+        {"id": 3, "excerpt": "inherit content", "excerpt_source": "content_preview", "access": "inherit"},
     ]
     result = strip_content_for_denied("file", items)
-    assert "snippet" in result[0]
-    assert "snippet" not in result[1]
-    assert "snippet" in result[2]
+    assert "excerpt" in result[0]
+    assert "excerpt_source" in result[0]
+    assert "excerpt" not in result[1]
+    assert "excerpt_source" not in result[1]
+    assert "excerpt" in result[2]
 
 
 def test_strip_content_for_denied_chat_fields():
     items = [
-        {"id": 1, "snippet": "text", "access": "deny"},
+        {
+            "id": 1,
+            "excerpt": "text",
+            "excerpt_source": "title",
+            "chars_returned": 4,
+            "chars_available": 4,
+            "has_more": False,
+            "access": "deny",
+        },
     ]
     result = strip_content_for_denied("chat", items)
-    assert "snippet" not in result[0]
+    # Excerpt and every provenance field are stripped together.
+    for field in ("excerpt", "excerpt_source", "chars_returned", "chars_available", "has_more"):
+        assert field not in result[0]
 
 
 # ---------------------------------------------------------------------------
