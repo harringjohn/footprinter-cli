@@ -13,12 +13,62 @@ plus the resolved ``context_path``. Convention-first, column as override:
 The resolver is missing-file tolerant: an unset pointer, an absent file, or an
 unreadable file yields ``None`` (no curated-context block) rather than raising,
 so orientation tools never fail because a README was deleted.
+
+Hardening (defense-in-depth on top of the ADMIN-written ``context_path`` and the
+folder auto-detect being confined to the indexed folder's own README):
+
+- **Size cap.** The candidate is read with a bounded ``read(_MAX_CONTEXT_BYTES)``
+  (1 MB) rather than an unbounded ``read_text()``, so a very large or multi-GB
+  file is never fully loaded into memory on an orientation-tool call. The decoded
+  text — and therefore ``chars_available`` — reflects the bounded read.
+- **Home confinement.** The candidate is resolved (collapsing symlinks) and must
+  lie under ``Path.home()``; a path or symlink whose target escapes home resolves
+  to ``None`` (treated like a missing file). Home is the defense-in-depth root:
+  every indexed entity already lives under it, and the project override has no
+  natural entity root.
+- **Error logging.** Permission/decode failures (``OSError``) are logged at debug
+  with the path before returning ``None``, so they are diagnosable rather than
+  silently dropped. A genuinely missing file stays silent (not an error).
+
+**VIEWER exposure policy.** This resolver always returns the full block (excerpt
+included). The role-aware gating — VIEWER sees pointer + provenance only
+(``context_path`` / ``excerpt_source`` / ``chars_available``), ADMIN sees the
+excerpt body — is applied downstream in
+``footprinter.services.access_service.attach_curated_context``, which knows the
+caller's role.
 """
 
+import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 from footprinter.utils.text import build_excerpt
+
+logger = logging.getLogger(__name__)
+
+# Upper bound on bytes read from a curated-context file. Curated notes are small
+# Markdown (the excerpt budget is 500 chars, two orders of magnitude under this
+# cap), so 1 MB bounds the read without ever truncating a realistic note. Mirrors
+# the bounded-read idiom in ``content_service`` (``open(p, "rb").read(max_bytes)``)
+# while staying well under that path's 10 MB general read cap.
+_MAX_CONTEXT_BYTES = 1 * 1024 * 1024
+
+
+def _confine_to_home(candidate: Path) -> Optional[Path]:
+    """Return ``candidate`` resolved, only if it lies under ``Path.home()``.
+
+    Mirrors ``content_service._validate_local_path`` (``Path.resolve()`` +
+    ``startswith(str(home) + os.sep)``), but returns ``None`` rather than raising
+    — the curated resolver is missing-file tolerant, so a confinement failure is
+    treated like an absent file. ``.resolve()`` collapses symlinks, so a symlink
+    whose target escapes home is rejected.
+    """
+    resolved = candidate.resolve()
+    home = Path.home().resolve()
+    if str(resolved).startswith(str(home) + os.sep) or resolved == home:
+        return resolved
+    return None
 
 
 def _candidate_path(
@@ -75,11 +125,19 @@ def resolve_curated_context(
     if candidate is None:
         return None
 
+    confined = _confine_to_home(candidate)
+    if confined is None:
+        logger.debug("curated context outside confinement root: %s", candidate)
+        return None
+
     try:
-        if not candidate.is_file():
+        if not confined.is_file():
             return None
-        text = candidate.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        with open(confined, "rb") as f:
+            raw = f.read(_MAX_CONTEXT_BYTES)
+        text = raw.decode("utf-8", errors="replace")
+    except OSError as e:
+        logger.debug("curated context read failed for %s: %s", confined, e)
         return None
 
     return {

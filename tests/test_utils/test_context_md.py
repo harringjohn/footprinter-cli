@@ -6,8 +6,26 @@ chars_available / has_more) plus the resolved context_path, or None when no
 readable Markdown file is found.
 """
 
-from footprinter.utils.context_md import resolve_curated_context
+import logging
+
+import pytest
+
+from footprinter.utils.context_md import _MAX_CONTEXT_BYTES, resolve_curated_context
 from footprinter.utils.text import EXCERPT_BUDGET
+
+
+@pytest.fixture(autouse=True)
+def _home_is_tmp(tmp_path, monkeypatch):
+    """Confine the home-containment root to ``tmp_path`` for every test here.
+
+    ``resolve_curated_context`` rejects candidates outside ``Path.home()``.
+    Pytest's ``tmp_path`` lives under the system temp root, not the real home,
+    so without this every fixture file would fail confinement. ``Path.home()``
+    honours ``$HOME`` on this platform, so pointing ``HOME`` at ``tmp_path``
+    makes the curated files written under it pass confinement, while files
+    written *outside* ``tmp_path`` (the confinement RED cases) still escape.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
 
 
 class TestFolderReadmeAutoDetect:
@@ -119,3 +137,74 @@ class TestMissingAndUnset:
     def test_unset_folder_returns_none(self, tmp_path):
         # No path, no context_path → nothing to resolve.
         assert resolve_curated_context({}, "folder") is None
+
+
+class TestSizeCap:
+    """The read is bounded by ``_MAX_CONTEXT_BYTES`` — never the full file."""
+
+    def test_oversized_file_is_bounded(self, tmp_path):
+        md = tmp_path / "huge.md"
+        # Write a file comfortably larger than the read cap.
+        md.write_text("x" * (_MAX_CONTEXT_BYTES + 4096))
+
+        block = resolve_curated_context({"context_path": str(md)}, "project")
+
+        assert block is not None
+        # chars_available reflects the bounded-decoded length, not the on-disk
+        # length, so a multi-MB note never loads fully into memory.
+        assert block["chars_available"] <= _MAX_CONTEXT_BYTES
+
+
+class TestConfinement:
+    """Candidates resolving outside the home root are rejected (defense-in-depth)."""
+
+    def test_context_path_outside_home_returns_none(self, tmp_path):
+        # tmp_path is home (autouse fixture); a sibling dir escapes it.
+        outside = tmp_path.parent / "fpr2050-outside"
+        outside.mkdir(exist_ok=True)
+        md = outside / "escape.md"
+        md.write_text("Should never be read.")
+
+        assert resolve_curated_context({"context_path": str(md)}, "project") is None
+
+    def test_symlink_escaping_root_returns_none(self, tmp_path):
+        # A real file outside home, reached via a symlink that lives inside home.
+        outside = tmp_path.parent / "fpr2050-symlink-target"
+        outside.mkdir(exist_ok=True)
+        target = outside / "secret.md"
+        target.write_text("Symlink target outside home.")
+
+        link = tmp_path / "link.md"
+        link.symlink_to(target)
+
+        # The symlink itself is under home, but .resolve() follows it to the
+        # escaping target, so confinement must still reject it.
+        assert resolve_curated_context({"context_path": str(link)}, "project") is None
+
+
+class TestErrorLogging:
+    """Permission/decode failures log at debug instead of dropping silently."""
+
+    def test_oserror_is_logged(self, tmp_path, caplog, monkeypatch):
+        md = tmp_path / "blocked.md"
+        md.write_text("unreadable")
+
+        real_open = open
+
+        def _raising_open(file, *args, **kwargs):
+            if str(file) == str(md):
+                raise PermissionError("permission denied")
+            return real_open(file, *args, **kwargs)
+
+        # Confinement and is_file() both pass for this real path; the bounded
+        # read raises OSError (PermissionError) — that must be logged.
+        monkeypatch.setattr("footprinter.utils.context_md.open", _raising_open, raising=False)
+
+        with caplog.at_level(logging.DEBUG, logger="footprinter.utils.context_md"):
+            result = resolve_curated_context({"context_path": str(md)}, "project")
+
+        assert result is None
+        assert any(
+            "blocked.md" in r.getMessage() and r.levelno == logging.DEBUG
+            for r in caplog.records
+        )
