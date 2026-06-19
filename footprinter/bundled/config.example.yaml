@@ -86,6 +86,14 @@ exclusions:
 indexing:
   supported_extensions: []  # Empty = index ALL file types
   max_file_size_mb: 50      # MB; 0 = no size limit. 50 is generous for prose/docs.
+  # Cap on how many bytes the MCP read path (footprinter_read) pulls from a local
+  # file before decode/extraction. MB; 0 = no cap (read the whole file).
+  # Default 10 MB closes the old 500 KB silent-truncation gap so the read tool can
+  # return content the index already holds. Trade-off: a single MCP tool result has
+  # a protocol payload ceiling (~1 MB) — very large reads can exceed it and fail to
+  # return. Raise this only if you routinely read large files and accept that risk;
+  # prefer semantic/keyword search for large documents.
+  max_read_size_mb: 10
   lookback_days: 14         # Browser history window (days back to index)
   content_snippets: false   # Extract file/email content previews for keyword search
 
