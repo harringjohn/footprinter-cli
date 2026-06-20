@@ -11,17 +11,69 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERIFY_SCRIPT = REPO_ROOT / "scripts" / "release" / "verify_install.sh"
 VERIFY_UPGRADE_SCRIPT = REPO_ROOT / "scripts" / "release" / "verify_upgrade.sh"
+SMOKE_SCRIPT = REPO_ROOT / "scripts" / "snapshot-qa" / "smoke.sh"
+CLI_VERIFY_SCRIPT = REPO_ROOT / "scripts" / "cli_verify.sh"
 
-# Single source of truth for the parameterized loop-guard tests: the two release
+# Single source of truth for the parameterized loop-guard tests: all four QA
 # scripts carry a byte-identical arch re-exec guard, so the guard-specific
-# assertions run against both. Each entry maps a script name to its path and the
-# CLI args that satisfy its arg parser past the guard region.
+# assertions run against every one. Each entry maps a script name to its path,
+# the CLI args that satisfy its arg parser past the guard region, the script's
+# real relative dir from the repo root (the harness copies each script there so
+# `"$(dirname "$0")"` resolution stays correct), and whether the copy must be
+# truncated to the guard region before running (``truncate_body``).
 #   - verify_install.sh:  <version> [--with-pytest]
 #   - verify_upgrade.sh:  <target-version> --from <base-version>  (Phase 0 needs >= 3 args)
+#   - smoke.sh:           no positional args
+#   - cli_verify.sh:      no positional args
+#
+# ``truncate_body`` is True for scripts whose body has real machine-level side
+# effects that the loop-guard test must never trigger: cli_verify.sh's body runs
+# `rm -rf /tmp/footprinter-cli-verify` (a HARDCODED host path) then clones+venvs,
+# and smoke.sh's body invokes the host `fp` binary. The guard region itself —
+# everything the loop-guard tests assert (re-exec count + the x86_64-only WARN) —
+# lives entirely above the body, so truncating after the guard keeps full guard
+# coverage while letting the script exit cleanly without touching the host. The
+# release scripts (verify_install/verify_upgrade) keep their full bodies: the
+# former is fully stubbed, the latter uses mktemp -d, so both are host-safe.
 LOOPGUARD_SCRIPTS = {
-    "verify_install.sh": (VERIFY_SCRIPT, ["9.9.9", "--with-pytest"]),
-    "verify_upgrade.sh": (VERIFY_UPGRADE_SCRIPT, ["9.9.9", "--from", "9.9.8"]),
+    "verify_install.sh": (
+        VERIFY_SCRIPT,
+        ["9.9.9", "--with-pytest"],
+        "scripts/release",
+        False,
+    ),
+    "verify_upgrade.sh": (
+        VERIFY_UPGRADE_SCRIPT,
+        ["9.9.9", "--from", "9.9.8"],
+        "scripts/release",
+        False,
+    ),
+    "smoke.sh": (SMOKE_SCRIPT, [], "scripts/snapshot-qa", True),
+    "cli_verify.sh": (CLI_VERIFY_SCRIPT, [], "scripts", True),
 }
+
+# The byte-identical arch re-exec guard block shared by all four QA scripts ends
+# with the inner `fi` (closing the sentinel check) immediately followed by the
+# outer `fi` (closing the Darwin/arm64 check). Truncating a copied script right
+# after this marker keeps the full guard intact while dropping the body — so a
+# loop-guard test can exercise the guard without running the script's real
+# side-effecting body. The marker is unique to the guard region.
+GUARD_END_MARKER = "    fi\nfi\n"
+
+
+def _truncate_to_guard(script_text: str, script_name: str) -> str:
+    """Return only the arch guard region of ``script_text``, plus a clean exit.
+
+    Splits on the guard's terminal `fi`/`fi` marker so the script's body never
+    runs. Fails loudly if the marker is absent (e.g. the guard was re-indented or
+    removed) so this helper can never silently fall through to running the body."""
+    head, marker, _rest = script_text.partition(GUARD_END_MARKER)
+    assert marker, (
+        f"{script_name}: arch guard end marker not found — the guard region may "
+        "have changed shape; update GUARD_END_MARKER so the loop-guard test does "
+        "not run the script's side-effecting body."
+    )
+    return head + marker + "exit 0\n"
 
 INSTALL_COMMON_STUB = """\
 #!/usr/bin/env bash
@@ -200,16 +252,26 @@ echo "1"
 
 class LoopguardHarness:
     """Bundle of everything a loop-guard test needs for one script: the harness
-    root, the script's name, and the CLI args that carry it past the guard."""
+    root, the script's name, the CLI args that carry it past the guard, and the
+    script's real relative dir (so it is placed where its own pathing expects)."""
 
-    def __init__(self, root: Path, script_name: str, invocation_args: list[str]):
+    def __init__(
+        self,
+        root: Path,
+        script_name: str,
+        invocation_args: list[str],
+        rel_dir: str,
+        truncate_body: bool = False,
+    ):
         self.root = root
         self.script_name = script_name
         self.invocation_args = invocation_args
+        self.rel_dir = rel_dir
+        self.truncate_body = truncate_body
 
     @property
     def script(self) -> Path:
-        return self.root / "scripts" / "release" / self.script_name
+        return self.root / self.rel_dir / self.script_name
 
     @property
     def counter_file(self) -> Path:
@@ -241,16 +303,29 @@ def loopguard_harness(request, tmp_path):
     drive the guard's preconditions true on any host (Darwin + arm64 hw + a
     non-arm64 `arch`), so the real guard can be exercised.
 
-    Parameterized over both release scripts from a single source of truth
+    Parameterized over all four QA scripts from a single source of truth
     (``LOOPGUARD_SCRIPTS``) so the byte-identical guard in each stays covered
-    together and cannot silently drift apart."""
+    together and cannot silently drift apart. Each script is placed under its
+    real relative dir so its own ``"$(dirname "$0")"`` resolution stays correct."""
     script_name = request.param
-    script_path, invocation_args = LOOPGUARD_SCRIPTS[script_name]
+    script_path, invocation_args, rel_dir, truncate_body = LOOPGUARD_SCRIPTS[script_name]
 
-    scripts_dir = tmp_path / "scripts" / "release"
-    scripts_dir.mkdir(parents=True)
-    # Copy the script UNMODIFIED — the guard stays in place (unlike verify_harness).
-    shutil.copy2(script_path, scripts_dir / script_name)
+    # Place the script under its real relative path so the script's own pathing
+    # (e.g. resolving REPO_ROOT or sibling files via "$(dirname "$0")") holds.
+    script_dir = tmp_path / rel_dir
+    script_dir.mkdir(parents=True, exist_ok=True)
+    dest = script_dir / script_name
+    if truncate_body:
+        # Scripts with side-effecting bodies (cli_verify.sh's hardcoded
+        # `rm -rf /tmp/footprinter-cli-verify` + clone, smoke.sh's host `fp`
+        # calls) are copied with the body removed: only the arch guard region
+        # the test asserts survives, so running pytest never touches the host.
+        dest.write_text(_truncate_to_guard(script_path.read_text(), script_name))
+        shutil.copymode(script_path, dest)
+    else:
+        # Copy UNMODIFIED — the guard stays in place AND the (host-safe) body
+        # runs, so the strict whole-script exit-0 assertion stays meaningful.
+        shutil.copy2(script_path, dest)
 
     stubs_dir = tmp_path / "stubs"
     stubs_dir.mkdir()
@@ -264,7 +339,11 @@ def loopguard_harness(request, tmp_path):
         stub.write_text(body)
         stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
 
-    (scripts_dir / "_install_common.sh").write_text(
+    # The release scripts source _install_common.sh from scripts/release/. Keep
+    # writing the stub there unconditionally — the new QA scripts don't source it.
+    release_dir = tmp_path / "scripts" / "release"
+    release_dir.mkdir(parents=True, exist_ok=True)
+    (release_dir / "_install_common.sh").write_text(
         INSTALL_COMMON_STUB.format(python3_stub=stubs_dir / "python3")
     )
 
@@ -279,7 +358,9 @@ def loopguard_harness(request, tmp_path):
     installed_dir.mkdir()
     (installed_dir / "config.example.yaml").write_text("# bundled config stub")
 
-    return LoopguardHarness(tmp_path, script_name, invocation_args)
+    return LoopguardHarness(
+        tmp_path, script_name, invocation_args, rel_dir, truncate_body
+    )
 
 
 class TestArchReexecLoopGuard:
@@ -289,13 +370,18 @@ class TestArchReexecLoopGuard:
         unguarded re-exec loops forever; the sentinel-gated guard fires once,
         then proceeds under the current interpreter.
 
-        Runs against both release scripts. The re-exec cap (<= 1) and the
-        safety-cap-not-reached invariant hold for both. The strict whole-script
-        ``returncode == 0`` is asserted only for ``verify_install.sh``, whose
-        stubbed body completes; ``verify_upgrade.sh``'s post-upgrade sqlite
-        assertions are not stubbed, so for it the exit-0 intent is satisfied
-        indirectly by proving the guard did not loop (counter <= 1, well under
-        the arch-stub safety cap)."""
+        Runs against all four QA scripts. The re-exec cap (<= 1) and the
+        safety-cap-not-reached invariant hold for every one. The strict whole-script
+        ``returncode == 0`` is asserted for every script EXCEPT ``verify_upgrade.sh``:
+        ``verify_install.sh`` runs a fully stubbed body that completes, and
+        ``smoke.sh`` / ``cli_verify.sh`` are copied truncated to the guard region
+        (their real bodies have host side effects — smoke.sh's host ``fp`` calls,
+        cli_verify.sh's hardcoded ``rm -rf /tmp/footprinter-cli-verify`` + clone — so
+        the harness drops the body and the truncated copy exits 0 after the guard).
+        ``verify_upgrade.sh`` keeps its unstubbed (host-safe, mktemp -d) body whose
+        post-upgrade sqlite asserts make whole-script exit 0 out of scope, so its
+        exit-0 intent is satisfied indirectly by proving the guard did not loop
+        (counter <= 1, well under the arch-stub safety cap)."""
         result = subprocess.run(
             loopguard_harness.command(),
             capture_output=True,
@@ -306,25 +392,27 @@ class TestArchReexecLoopGuard:
         )
 
         reexec_count = loopguard_harness.reexec_count()
-        # Loop-guard holds for both scripts: the re-exec fires at most once.
+        # Loop-guard holds for all four QA scripts: the re-exec fires at most once.
         assert reexec_count <= 1, (
             f"[{loopguard_harness.script_name}] re-exec fired {reexec_count} times "
             f"(expected <= 1) — loop guard failed\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
-        if loopguard_harness.script_name == "verify_install.sh":
-            # The stubbed body completes, so the whole script must exit 0.
+        if loopguard_harness.script_name != "verify_upgrade.sh":
+            # verify_install.sh (stubbed body) and the truncated smoke.sh /
+            # cli_verify.sh copies all complete cleanly, so the whole script
+            # must exit 0.
             assert result.returncode == 0, (
                 f"[{loopguard_harness.script_name}] script did not exit 0 "
                 f"(got {result.returncode})\n"
                 f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
             )
         else:
-            # verify_upgrade.sh: the body's sqlite assertions are unstubbed, so
-            # whole-script exit 0 is out of scope. The guard invariant we DO
-            # assert is that it did not spin: the arch stub's safety cap was
-            # never reached.
+            # verify_upgrade.sh keeps its unstubbed body (post-upgrade sqlite
+            # asserts), so whole-script exit 0 is out of scope. The guard
+            # invariant we DO assert is that it did not spin: the arch stub's
+            # safety cap was never reached.
             safety_cap = int(loopguard_harness.env().get("ARCH_REEXEC_CAP", "8"))
             assert reexec_count < safety_cap, (
                 f"[{loopguard_harness.script_name}] re-exec reached the arch-stub "
@@ -336,9 +424,9 @@ class TestArchReexecLoopGuard:
         """When the guard cannot obtain a native arm64 bash, it warns to stderr
         naming the cause (x86_64-only bash) before continuing.
 
-        Asserted for both release scripts: because both guards emit the identical
-        WARN, this is the assertion that pins the pair together — a divergence in
-        either guard's warning text fails here."""
+        Asserted for all four QA scripts: because every guard emits the identical
+        WARN, this is the assertion that pins the set together — a divergence in
+        any guard's warning text fails here."""
         result = subprocess.run(
             loopguard_harness.command(),
             capture_output=True,
