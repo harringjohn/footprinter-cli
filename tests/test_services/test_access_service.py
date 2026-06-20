@@ -678,6 +678,27 @@ def test_strip_content_for_denied_chat_fields():
         assert field not in result[0]
 
 
+def test_strip_content_for_denied_chat_legacy_snippet():
+    """A denied chat carrying the legacy raw ``snippet`` field has it stripped.
+
+    ``snippet`` is the raw chat-fallback content key (emitted by
+    ``chat_fts5_fallback``, popped in-line by ``_search_chats``). Denylisting it
+    belt-and-suspenders means restricted content can't leak if that in-line pop
+    is ever removed by a future refactor.
+    """
+    items = [
+        {
+            "id": 1,
+            "snippet": "raw restricted conversation text",
+            "excerpt": "text",
+            "access": "deny",
+        },
+    ]
+    result = strip_content_for_denied("chat", items)
+    assert "snippet" not in result[0]
+    assert "excerpt" not in result[0]
+
+
 # ---------------------------------------------------------------------------
 # resolve_inherit_visibility
 # ---------------------------------------------------------------------------

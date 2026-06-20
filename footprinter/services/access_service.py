@@ -317,7 +317,11 @@ _EXCERPT_FIELDS = [
     "has_more",
 ]
 _CONTENT_FIELDS: Dict[str, List[str]] = {
-    "chat": list(_EXCERPT_FIELDS),
+    # ``snippet`` is the legacy raw chat-fallback content key (emitted by
+    # ``chat_fts5_fallback``, popped in-line by ``_search_chats``). Denylisted
+    # belt-and-suspenders so restricted content can't leak if that in-line pop is
+    # ever removed. email/file never emit ``snippet``.
+    "chat": [*_EXCERPT_FIELDS, "snippet"],
     "email": list(_EXCERPT_FIELDS),
     "file": list(_EXCERPT_FIELDS),
 }

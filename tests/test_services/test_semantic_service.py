@@ -826,6 +826,109 @@ class TestSemanticGovernanceStripped:
         for field in GOVERNANCE_FIELDS:
             assert field not in matches[0]
 
+    def test_vector_inherit_file_result_excludes_governance(self, service_db):
+        """A file stored ``visibility='inherit'`` (resolving to full) carries no
+        governance fields and keeps the excerpt contract + per-chunk dicts.
+
+        This is the production-universal case (~99.6% of files are ``inherit``):
+        a literal-``full`` trim check leaves these un-trimmed, leaking all six
+        file governance fields.
+        """
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        service_db.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access) "
+            "VALUES (91, 'local', 'inherit.md', '/Users/u/Work/alpha/inherit.md', "
+            "'listed', 'markdown', 800, '2026-01-15', 'inherit', 'inherit')"
+        )
+        service_db.commit()
+        mock_module = self._mock_vs_module(
+            files=[
+                {
+                    "file_id": 91,
+                    "distance": 0.2,
+                    "content_snippet": "matched chunk",
+                    "content_length": 100,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        match = [f for f in result["files"] if f.get("id") == 91][0]
+        for field in GOVERNANCE_FIELDS:
+            assert field not in match
+        # Excerpt contract + chunks survive the trim.
+        assert match["excerpt"] == "matched chunk"
+        assert match["excerpt_source"] == "chunk"
+        assert "chunks" in match
+        for chunk in match["chunks"]:
+            for field in GOVERNANCE_FIELDS:
+                assert field not in chunk
+
+    def test_vector_inherit_chat_result_excludes_governance(self, service_db):
+        """A chat stored ``visibility='inherit'`` (resolving to full) carries no
+        governance fields and keeps its identity + excerpt fields.
+
+        Production-universal for chats (100% are stored ``inherit``).
+        """
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        service_db.execute(
+            "INSERT INTO chats (id, external_id, account, title, message_count, "
+            "visibility, access) "
+            "VALUES (91, 'conv-inherit', 'claude', 'Inherit Chat', 2, "
+            "'inherit', 'inherit')"
+        )
+        service_db.commit()
+        mock_module = self._mock_vs_module(
+            chats=[
+                {
+                    "chat_id": 91,
+                    "chat_title": "Inherit Chat",
+                    "snippet": "matched window",
+                    "content_length": 100,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "relevance_score": 0.9,
+                    "source": "claude",
+                    "created_at": "",
+                    "message_id": 91,
+                }
+            ]
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}):
+            result = semantic_service.semantic_search(
+                service_db, "conversation", role=Role.VIEWER, source="chats"
+            )
+        match = [c for c in result["chats"] if c.get("chat_id") == 91][0]
+        for field in GOVERNANCE_FIELDS:
+            assert field not in match
+        # Identity + excerpt fields survive the trim.
+        assert match["chat_id"] == 91
+        assert match["chat_title"] == "Inherit Chat"
+        assert match["excerpt"] == "matched window"
+
+    def test_allowlist_disjoint_from_governance_fields(self):
+        """The semantic keep-allowlists must never intersect ``GOVERNANCE_FIELDS``.
+
+        Locks the "single source of truth / can't drift" intent structurally: if
+        a future edit adds a governance key to any allowlist, this fails. Keyed
+        off the canonical denylist constant so the two paths stay in lockstep.
+        """
+        from footprinter.services.access_service import GOVERNANCE_FIELDS
+
+        allowlist = (
+            semantic_service._CHAT_FIELDS
+            | semantic_service._FILE_FIELDS
+            | semantic_service._CHUNK_FIELDS
+        )
+        assert allowlist & GOVERNANCE_FIELDS == set()
+
 
 class TestReadFileChunks:
     """Vector read path: matched chunk + neighbors, reassembled by chunk_index."""

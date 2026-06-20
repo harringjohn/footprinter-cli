@@ -475,8 +475,12 @@ def _search_chats(
         ]
         suppressed = len(results) - len(filtered)
 
-    # Trim visible results to presentation fields
-    trimmed = [_trim_chat_result(r) if r.get("visibility") == "full" else r for r in filtered]
+    # Trim visible results to presentation fields. After the VIEWER filter every
+    # surviving row is already visible+allowed, so trimming is unconditional —
+    # the stored ``visibility`` may be ``inherit`` (resolving to full), so a
+    # literal-``full`` check would skip the trim and leak governance fields.
+    # ADMIN never reaches here (``filtered`` is the untrimmed ``results``).
+    trimmed = [_trim_chat_result(r) for r in filtered]
 
     if status == _DEGRADED:
         notes.append("Results are keyword-based (semantic search unavailable)")
@@ -570,7 +574,12 @@ def _search_files(
         ]
         suppressed = len(enriched) - len(filtered)
 
-    trimmed = [_trim_file_result(r) if r.get("visibility") == "full" else r for r in filtered]
+    # Trim unconditionally: after the VIEWER filter every surviving row is
+    # already visible+allowed, and the stored ``visibility`` may be ``inherit``
+    # (resolving to full), so a literal-``full`` check would skip the trim and
+    # leak governance fields. ADMIN never reaches here (``filtered`` is the
+    # untrimmed ``enriched``).
+    trimmed = [_trim_file_result(r) for r in filtered]
     trimmed = trimmed[:limit]
 
     if status == _DEGRADED:

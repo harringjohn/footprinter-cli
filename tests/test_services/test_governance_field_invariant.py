@@ -65,21 +65,52 @@ class TestGovernanceFieldInvariant:
         _assert_no_governance(rows, label="semantic-fts5")
 
     def test_semantic_vector_path_strips_governance(self, service_db):
-        """semantic_search vector path — files + chats, including nested ``chunks``."""
+        """semantic_search vector path — files + chats, including nested ``chunks``.
+
+        Covers BOTH a literal ``visibility='full'`` row (file/chat 1 from the
+        fixture) and a stored ``visibility='inherit'`` row (resolving to full via
+        the global policy). The inherit case is the production-universal one: a
+        literal-``full`` trim check leaves inherit rows un-trimmed, leaking
+        governance fields, so it is the regression this guard must catch.
+        """
+        # Seed an inherit-stored file + chat (allowed; resolve to full). These
+        # pass the D2 visible-AND-allowed filter yet fail a literal-"full" trim.
+        service_db.execute(
+            "INSERT INTO files (id, source, name, path, status, content_type, "
+            "size_bytes, modified_at, visibility, access) "
+            "VALUES (90, 'local', 'inherit.md', '/Users/u/Work/alpha/inherit.md', "
+            "'listed', 'markdown', 800, '2026-01-15', 'inherit', 'inherit')"
+        )
+        service_db.execute(
+            "INSERT INTO chats (id, external_id, account, title, message_count, "
+            "visibility, access) "
+            "VALUES (90, 'conv-inherit', 'claude', 'Inherit Chat', 2, "
+            "'inherit', 'inherit')"
+        )
+        service_db.commit()
+
         mock_store = MagicMock()
         mock_store.search_files.return_value = [
             {
-                "file_id": 1,  # the fixture's visible+allowed file
+                "file_id": 1,  # the fixture's visible+allowed file (literal full)
                 "distance": 0.2,
                 "content_snippet": "x" * 500,
                 "content_length": 1800,
                 "chunk_index": 2,
                 "total_chunks": 9,
-            }
+            },
+            {
+                "file_id": 90,  # stored visibility='inherit' (resolves to full)
+                "distance": 0.3,
+                "content_snippet": "y" * 500,
+                "content_length": 1600,
+                "chunk_index": 0,
+                "total_chunks": 4,
+            },
         ]
         mock_store.search_chats.return_value = [
             {
-                "chat_id": 1,  # the fixture's visible+allowed chat
+                "chat_id": 1,  # the fixture's visible+allowed chat (literal full)
                 "chat_title": "Visible Chat",
                 "snippet": "the matched conversation window",
                 "content_length": 1200,
@@ -89,7 +120,19 @@ class TestGovernanceFieldInvariant:
                 "source": "claude",
                 "created_at": "",
                 "message_id": 11,
-            }
+            },
+            {
+                "chat_id": 90,  # stored visibility='inherit' (resolves to full)
+                "chat_title": "Inherit Chat",
+                "snippet": "an inherit-stored conversation window",
+                "content_length": 1100,
+                "chunk_index": 0,
+                "total_chunks": 2,
+                "relevance_score": 0.85,
+                "source": "claude",
+                "created_at": "",
+                "message_id": 91,
+            },
         ]
         mock_module = MagicMock()
         mock_module.VectorStore.get_instance.return_value = mock_store
@@ -99,6 +142,12 @@ class TestGovernanceFieldInvariant:
             result = semantic_service.semantic_search(
                 service_db, "anything", role=Role.VIEWER, source="all"
             )
-        rows = result.get("files", []) + result.get("chats", [])
+        files = result.get("files", [])
+        chats = result.get("chats", [])
+        rows = files + chats
         assert rows, "expected vector results to check"
+        # Guard the guard: the inherit-stored rows must actually survive the D2
+        # filter, else the inherit branch of this assertion passes vacuously.
+        assert any(f.get("id") == 90 for f in files), "expected inherit file row"
+        assert any(c.get("chat_id") == 90 for c in chats), "expected inherit chat row"
         _assert_no_governance(rows, label="semantic-vector")
