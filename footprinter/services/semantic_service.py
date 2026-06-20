@@ -97,6 +97,12 @@ _FAILED = "failed"
 _DEFAULT_MAX_CHUNK_CHARS = 1000
 _DEFAULT_MAX_CHUNKS_PER_FILE = 3
 
+# Upper bound on max_chunks_per_file. The per-file ``chunks`` payload is roughly
+# ``cap × max_chunk_chars``; this caps that product so a misconfigured large
+# value can't inflate results without limit. Generous headroom over the default
+# of 3 while keeping the worst-case payload bounded.
+_MAX_CHUNKS_PER_FILE_CAP = 20
+
 
 def _get_max_chunk_chars() -> int:
     """Per-chunk excerpt cap (chars). ``0`` means no cap — return whole chunk.
@@ -124,10 +130,12 @@ def _get_max_chunk_chars() -> int:
 
 
 def _get_max_chunks_per_file() -> int:
-    """Number of matched chunks to return per file (≥1).
+    """Number of matched chunks to return per file (clamped to ``[1, cap]``).
 
-    Lazy config resolver: reads ``semantic.max_chunks_per_file``, clamps to at
-    least 1, and falls back to the module default on any failure.
+    Lazy config resolver: reads ``semantic.max_chunks_per_file``, clamps to the
+    ``[1, _MAX_CHUNKS_PER_FILE_CAP]`` range so a misconfigured large value can't
+    inflate the per-file ``chunks`` payload, and falls back to the module default
+    on any failure.
     """
     try:
         from footprinter.source_registry import get_config
@@ -136,7 +144,7 @@ def _get_max_chunks_per_file() -> int:
             "max_chunks_per_file", _DEFAULT_MAX_CHUNKS_PER_FILE
         )
         if isinstance(val, int) and not isinstance(val, bool):
-            return max(1, val)
+            return min(_MAX_CHUNKS_PER_FILE_CAP, max(1, val))
         logger.warning(
             "semantic.max_chunks_per_file: expected int, using default %d",
             _DEFAULT_MAX_CHUNKS_PER_FILE,
@@ -504,6 +512,8 @@ def _search_files(
         logger.warning("Vector search unavailable (%s), falling back to FTS5", e)
         status = _DEGRADED
         try:
+            # Shape divergence: the fallback path returns no per-file ``chunks``
+            # list — that enrichment is vector-path-only (see _top_chunks_by_file).
             enriched = file_fts5_fallback(conn, query, limit, status=status_arg)
         except Exception as fallback_err:
             logger.warning("File FTS5 fallback failed: %s", fallback_err)
@@ -595,6 +605,9 @@ def _top_chunks_by_file(results: List[Dict], n: int) -> tuple[List[Dict], int]:
     relevance descending (stable on ties by ``chunk_index`` ascending). The
     first ``chunks`` entry mirrors the row's top-level excerpt. Results with a
     missing ``file_id`` are dropped and counted.
+
+    The ``chunks`` list is a vector-path-only enrichment: the FTS5 keyword
+    fallback (``file_fts5_fallback``) returns rows with no ``chunks`` key.
     """
     groups: Dict[int, List[Dict]] = {}
     dropped = 0
