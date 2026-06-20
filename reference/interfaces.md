@@ -325,6 +325,7 @@ Embedding-based semantic search with FTS5 keyword fallback.
 
 - `source` — `"all"`, `"chats"`, or `"files"`
 - Returns `{"query": str, "chats": [...], "files": [...], "summary": str}`
+- Vector file results include a relevance-ordered `chunks` list — the top-N matched chunks per file (N = `semantic.max_chunks_per_file`, clamped to `[1, 20]`). The FTS5 keyword fallback path omits the `chunks` key (vector-path-only enrichment)
 - Falls back to FTS5 keyword search if the vector store is unavailable (returns `note` field explaining degraded results)
 
 ### Infrastructure Services
