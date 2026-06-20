@@ -482,6 +482,109 @@ class TestSearchChatsKeyword:
         assert results[0]["title"] == "Visible Chat"
 
 
+class TestChatExcerptMessageGating:
+    """The chat excerpt must exclude individually-private messages.
+
+    ``chat_message_excerpt`` re-derives the excerpt from the messages table.
+    A message marked private per-row (visibility hidden/opaque, or access deny)
+    inside an otherwise-visible chat must not contribute its content to the
+    excerpt, while visible ``inherit`` messages still drive it.
+    """
+
+    def test_hidden_message_excluded_from_excerpt(self, db_conn):
+        """A visibility='hidden' message must not leak content into the excerpt."""
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (1, 'user', 'PRIVATEHIDDEN payload that must not leak',
+                       '2026-01-10T10:02:00', 'listed', 'hidden', 'allow')"""
+        )
+        db_conn.commit()
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt_source"] == "message"
+        assert "roadmap" in match["excerpt"]
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "PRIVATEHIDDEN payload" not in value, (
+                    f"hidden message content leaked via field '{key}'"
+                )
+
+    def test_denied_message_excluded_from_excerpt(self, db_conn):
+        """An access='deny' message must not leak content into the excerpt."""
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (1, 'user', 'DENIED payload that must not leak',
+                       '2026-01-10T10:02:00', 'listed', 'full', 'deny')"""
+        )
+        db_conn.commit()
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt_source"] == "message"
+        assert "roadmap" in match["excerpt"]
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "DENIED payload" not in value, (
+                    f"denied message content leaked via field '{key}'"
+                )
+
+    def test_opaque_message_excluded_from_excerpt(self, db_conn):
+        """A visibility='opaque' message must not leak content into the excerpt."""
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (1, 'user', 'OPAQUE payload that must not leak',
+                       '2026-01-10T10:02:00', 'listed', 'opaque', 'allow')"""
+        )
+        db_conn.commit()
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt_source"] == "message"
+        assert "roadmap" in match["excerpt"]
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "OPAQUE payload" not in value, (
+                    f"opaque message content leaked via field '{key}'"
+                )
+
+    def test_title_fallback_when_only_private_messages(self, db_conn):
+        """A chat whose only message is private falls back to the title excerpt."""
+        db_conn.execute(
+            """INSERT INTO chats (id, external_id, account, title, message_count,
+                                  created_at, visibility, access, status)
+               VALUES (4, 'conv-allpriv', 'claude', 'All Private Chat', 1,
+                       '2026-01-13', 'full', 'allow', 'listed')"""
+        )
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (4, 'user', 'ALLPRIVATE payload that must not leak',
+                       '2026-01-13T10:00:00', 'listed', 'hidden', 'deny')"""
+        )
+        db_conn.commit()
+        results = search_chats_keyword(db_conn, terms=["Private"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "All Private Chat"][0]
+        assert match["excerpt_source"] == "title"
+        assert match["excerpt"] == "All Private Chat"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "ALLPRIVATE payload" not in value, (
+                    f"private message content leaked via field '{key}'"
+                )
+
+    def test_visible_inherit_messages_still_contribute(self, db_conn):
+        """Regression guard: ``inherit``/``inherit`` messages still drive the excerpt.
+
+        The new predicate must admit the visible+allowed combination and not
+        drop the existing seeded ``inherit`` messages.
+        """
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt_source"] == "message"
+        assert "roadmap" in match["excerpt"]
+
+
 class TestSearchBrowserKeyword:
     """Keyword search for browser visits via db/search.py."""
 

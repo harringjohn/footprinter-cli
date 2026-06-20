@@ -378,7 +378,13 @@ def chat_message_excerpt(
     from footprinter.semantic.hybrid_search import extract_snippet
 
     status_conds, status_params = _status_clause(status, column="status")
-    where = " AND ".join(["chat_id = ?", *status_conds])
+    # Per-row content gating: a message contributes to the excerpt only on the
+    # visible+allowed combination (visibility full/inherit AND access
+    # allow/inherit). Mirrors the keyword-file precedence's fail-closed posture
+    # via direct column checks — an explicit hidden/opaque visibility or a deny
+    # access drops the row, and an unexpected/NULL value never admits content.
+    access_conds = ["access IN ('allow', 'inherit')", "visibility IN ('full', 'inherit')"]
+    where = " AND ".join(["chat_id = ?", *status_conds, *access_conds])
     rows = conn.execute(
         f"""
         SELECT content
