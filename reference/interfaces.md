@@ -84,7 +84,7 @@ fp setup mcp --claude    # Write MCP config into Claude Desktop
 | `footprinter_project` | Project metadata and linked entities |
 | `footprinter_client` | Client metadata and linked projects |
 | `footprinter_folder` | Folder metadata and contents |
-| `footprinter_read` | Read file content (subject to permission checks) |
+| `footprinter_read` | Read file content from disk (`source="disk"`) or the vector index (`source="vectors"`), subject to permission checks |
 
 All tools respect the two-layer access control model (visibility + access). See [permission-policies-and-access-control.md](permission-policies-and-access-control.md) for the full security model.
 
@@ -185,6 +185,59 @@ Items also have a `access` column for content access:
 | `deny` | Content fields stripped; item still appears in results |
 
 The special value `inherit` resolves to the global policy at query time. See [permission-policies-and-access-control.md](permission-policies-and-access-control.md) for the full model.
+
+---
+
+## Context Contract
+
+Footprinter's MCP tools are rungs on a single **context-admission ladder** — they govern how much content enters an AI client's context window, cheapest rung first:
+
+```
+metadata  →  excerpt  →  [curated context]  →  relevant chunk(s) + neighbors  →  whole file
+```
+
+- **Discovery** (`footprinter_search`, `footprinter_semantic`) — locate candidates cheaply: identity metadata plus a short `excerpt` on content-bearing results.
+- **Orientation** (`footprinter_project`, `footprinter_client`, `footprinter_folder`) — resolve a name/path to structure, aggregate stats, and child IDs, plus optional curated context (a pointer to a Markdown note; the body is ADMIN-only, VIEWER sees pointer + provenance). No file content.
+- **Admission** (`footprinter_read`) — the only tool that pulls full content, one item at a time, from disk (`source="disk"`) or reassembled from the vector index (`source="vectors"`).
+
+The point of the ladder is that the model climbs only as far as the task needs. The provenance fields below are what let it decide how far to climb.
+
+### Excerpt contract
+
+Every content-bearing search result (keyword and semantic) carries a uniform excerpt shape, regardless of which tool or source produced it:
+
+| Field | Meaning |
+|-------|---------|
+| `excerpt` | Best-matching text, trimmed to a single shared budget (`EXCERPT_BUDGET`, 500 chars) on a word boundary |
+| `excerpt_source` | Provenance: `chunk` \| `content_preview` \| `body_preview` \| `context_md` \| `title` |
+| `chars_returned` | Length of `excerpt` |
+| `chars_available` | Total content available behind it (full file/chunk/body length) |
+| `has_more` | Whether more content exists beyond the excerpt |
+| `chunk_index` / `total_chunks` | Present when the source is a vector chunk |
+
+The field is named `excerpt`, deliberately **not** `snippet`, to avoid collision with `content_snippets` (the ingest opt-in that populates the `content_preview` column) and the MCP config block. A result with no captured content (e.g. browser history) falls back to a `title`-sourced excerpt rather than omitting the fields.
+
+### Choosing chunks vs. whole file
+
+`footprinter_semantic` returns the top matched chunks per file (`chunks`, N = `semantic.max_chunks_per_file`, clamped to `[1, 20]`); the provenance lets the model decide whether to expand:
+
+| Signal | Likely move |
+|--------|-------------|
+| One isolated chunk matched | `footprinter_read(source="vectors")` — matched chunk + neighbors |
+| Several adjacent chunks matched | read the contiguous span from vectors |
+| Matches scattered across many chunks | `footprinter_read(source="disk")` — the answer isn't local |
+| `total_chunks` ≤ 2, or structure matters (tables/code) | read the whole file from disk |
+
+A vector read returns reassembled chunk text (matched chunk + its neighbors, fetched by chunk id) without touching disk or re-extracting. Its win is **payload size** (a chunk is ~240 tokens regardless of file size) and **completeness on large or parse-heavy files** — not raw speed, since a warm disk read of plain text is sub-millisecond. Vector content can be **stale** (it reflects the file at vectorization time) and **lossy** (extraction may have dropped tables/images); treat it as good-enough context, not ground truth.
+
+### Read-path output bound
+
+`footprinter_read` always returns a payload-safe result. Two independent limits apply:
+
+- **Input cap** — `indexing.max_read_size_mb` (default 10 MB; `0` = no cap) bounds how many bytes are pulled from disk before decode/extraction.
+- **Output bound** — the returned content is capped at a ~300 KB UTF-8 **byte** budget (sliced on a code-point boundary) so the JSON result stays under the ~1 MB MCP tool-result protocol ceiling, even for multibyte (CJK/emoji) content.
+
+When the output bound trips, the result is **marked** — `metadata.output_truncated = true` with `metadata.output_truncated_message` pointing at search — never a silent cut. This closes the historical 500 KB truncation gap by making truncation *visible*, not by returning more bytes: the returned ceiling is intentionally below the old 500 KB so the payload is always safe and the model is told when content was cut.
 
 ---
 
@@ -313,6 +366,7 @@ Multi-source keyword search. Searches across files, emails, chats, and browser h
 - `sources` — list of source names to search. Defaults to `["files", "emails", "chats", "browser"]`
 - `include_unlisted` / `include_removed` — by default results are limited to `listed` items; set these to surface `unlisted` or `removed` records respectively
 - Returns `{"files": [...], "emails": [...], "chats": [...], "browser": [...], "suppressed": int}`
+- Content-bearing results carry the uniform excerpt contract (`excerpt`, `excerpt_source`, `chars_returned`, `chars_available`, `has_more`). See [Context Contract](#context-contract)
 - VIEWER: hidden items excluded, content stripped for permission-denied items
 
 #### semantic_service
@@ -325,6 +379,7 @@ Embedding-based semantic search with FTS5 keyword fallback.
 
 - `source` — `"all"`, `"chats"`, or `"files"`
 - Returns `{"query": str, "chats": [...], "files": [...], "summary": str}`
+- Results carry the uniform excerpt contract (`excerpt`, `excerpt_source`, `chars_returned`, `chars_available`, `has_more`, plus `chunk_index`/`total_chunks` for chunk-sourced excerpts). See [Context Contract](#context-contract)
 - Vector file results include a relevance-ordered `chunks` list — the top-N matched chunks per file (N = `semantic.max_chunks_per_file`, clamped to `[1, 20]`). The FTS5 keyword fallback path omits the `chunks` key (vector-path-only enrichment)
 - Falls back to FTS5 keyword search if the vector store is unavailable (returns `note` field explaining degraded results)
 
@@ -364,12 +419,15 @@ Four-stage access gating for a single item. Used internally by MCP tools before 
 
 ```python
 content_service.read_file(conn, metadata: dict, *, format="text") -> dict
+content_service.read_file_from_vectors(conn, metadata: dict, query: str) -> dict
 ```
 
-Read file content from local disk or remote storage. Requires metadata from a prior `gate_access()` call.
+Read file content from local disk/remote storage (`read_file`) or reassembled from the vector index (`read_file_from_vectors`). Both require metadata from a prior `gate_access()` call.
 
 - `format` — `"text"` (with extraction for PDF, DOCX, etc.) or `"raw"`
 - Returns `{"status": "ok", "content": str, "metadata": {...}}` on success
+- Output is always bounded to a payload-safe ~300 KB UTF-8 byte budget; when it trips, `metadata.output_truncated` is `true` with `metadata.output_truncated_message`. The disk read also honors the `indexing.max_read_size_mb` input cap (default 10 MB). See [Context Contract](#context-contract)
+- `read_file_from_vectors` reassembles the query-matched chunk + neighbors by chunk id; the result carries `metadata.source = "vectors"` plus reassembly caveats (`reassembled` / `incomplete` / `chunk_indices`)
 
 #### ingest_service (class-based)
 
