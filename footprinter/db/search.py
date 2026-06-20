@@ -414,17 +414,29 @@ def chat_message_excerpt(
     # semantic package (chromadb/onnx) from the always-loaded db layer.
     from footprinter.semantic.hybrid_search import extract_snippet
 
+    # Function-local import: services.access_service pulls in db.chats/files,
+    # which load this module via db/__init__, so a module-level import here
+    # would close an import cycle. Deferring to call time breaks the loop while
+    # still using the one canonical resolver. (Same pattern as the file paths.)
+    from footprinter.services.access_service import (
+        resolve_inherit_permission,
+        resolve_inherit_visibility,
+    )
+
     status_conds, status_params = _status_clause(status, column="status")
-    # Per-row content gating: a message contributes to the excerpt only on the
-    # visible+allowed combination (visibility full/inherit AND access
-    # allow/inherit). Mirrors the keyword-file precedence's fail-closed posture
-    # via direct column checks — an explicit hidden/opaque visibility or a deny
-    # access drops the row, and an unexpected/NULL value never admits content.
-    access_conds = ["access IN ('allow', 'inherit')", "visibility IN ('full', 'inherit')"]
-    where = " AND ".join(["chat_id = ?", *status_conds, *access_conds])
+    # Per-row content gating now defers to the canonical resolvers rather than an
+    # inline ``access IN (...)`` / ``visibility IN (...)`` SQL predicate. The old
+    # predicate admitted ``inherit`` unconditionally; the resolvers map
+    # ``inherit`` to the cached global policy, so an ``inherit`` row resolves to
+    # deny/hidden under a global-deny/hidden policy and is dropped here — the SQL
+    # only bounds and orders the candidate rows, the visibility/access decision
+    # runs in Python below. Status filtering stays in SQL (global policy does not
+    # affect it). The resolvers carry the fail-closed posture: NULL access →
+    # deny, NULL visibility → opaque, and explicit hidden/opaque/deny still drop.
+    where = " AND ".join(["chat_id = ?", *status_conds])
     rows = conn.execute(
         f"""
-        SELECT content
+        SELECT content, access, visibility
         FROM messages
         WHERE {where}
         ORDER BY id
@@ -434,12 +446,19 @@ def chat_message_excerpt(
     ).fetchall()
 
     # Accumulate leading message content only until the char budget is reached,
-    # then stop — so even a single enormous message is sliced to the budget.
+    # then stop — so even a single enormous message is sliced to the budget. The
+    # per-row visibility/access gate runs before accumulation, so the budget
+    # bounds only admitted content.
     pieces: list[str] = []
     accumulated = 0
     for r in rows:
         content = r["content"]
         if not content:
+            continue
+        if (
+            resolve_inherit_permission(r["access"]) != "allow"
+            or resolve_inherit_visibility(r["visibility"]) != "full"
+        ):
             continue
         pieces.append(content)
         accumulated += len(content) + 1  # +1 for the "\n" join separator

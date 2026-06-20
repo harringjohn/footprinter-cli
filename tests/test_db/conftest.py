@@ -96,15 +96,19 @@ def db_conn(tmp_path):
     # -- Messages --------------------------------------------------------------
     # Chat 1 ("Visible Chat") has listed message content so the chat excerpt is
     # re-derived from messages; chat 3 ("Opaque Chat") is left message-less so
-    # the title-fallback path is exercised.
+    # the title-fallback path is exercised. The messages carry an explicit
+    # ``full`` visibility (genuinely visible at baseline under the canonical
+    # resolvers, which map an unset ``inherit`` visibility to ``opaque``) and an
+    # ``inherit`` access so the permission resolver is still exercised on the
+    # inherit path (it resolves to baseline ``allow`` with no global policy).
     conn.execute(
         """INSERT INTO messages (chat_id, role, content, created_at, status,
                                  visibility, access)
            VALUES
                (1, 'user', 'Let us discuss the quarterly roadmap and milestones',
-                '2026-01-10T10:00:00', 'listed', 'inherit', 'inherit'),
+                '2026-01-10T10:00:00', 'listed', 'full', 'inherit'),
                (1, 'assistant', 'Sure, here is the plan for the roadmap',
-                '2026-01-10T10:01:00', 'listed', 'inherit', 'inherit')"""
+                '2026-01-10T10:01:00', 'listed', 'full', 'inherit')"""
     )
 
     # -- Visits ----------------------------------------------------------------

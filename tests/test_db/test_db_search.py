@@ -83,6 +83,27 @@ def global_deny(db_conn):
     access_service._global_permission = prior
 
 
+@pytest.fixture
+def global_hidden(db_conn):
+    """Apply a global-hidden visibility policy and hot-load it.
+
+    Sets ``visibility_policies(scope='global', setting='hidden')`` and refreshes
+    the ``access_service`` global cache so ``resolve_inherit_visibility`` maps
+    ``inherit`` to hidden. Restores the prior cache value in teardown so other
+    tests are unaffected by the module-level global.
+    """
+    from footprinter.services import access_service
+
+    prior = access_service._global_visibility
+    db_conn.execute(
+        "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('global', 'hidden')"
+    )
+    db_conn.commit()
+    access_service.load_globals(db_conn)
+    yield db_conn
+    access_service._global_visibility = prior
+
+
 class TestSearchFilesKeyword:
     """Keyword search for files via db/search.py."""
 
@@ -508,7 +529,7 @@ class TestSearchChatsKeyword:
             """INSERT INTO messages (chat_id, role, content, created_at, status,
                                      visibility, access)
                VALUES (5, 'user', ?, '2026-01-14T10:00:00', 'listed',
-                       'inherit', 'inherit')""",
+                       'full', 'inherit')""",
             (huge_body,),
         )
         db_conn.commit()
@@ -540,9 +561,9 @@ class TestSearchChatsKeyword:
         # Each message on its own is small, but combined they exceed the budget
         # many times over. Seed well past the row LIMIT.
         per_msg = "SENTINELMANY filler text repeated here for length and length"
-        rows = [(6, "user", per_msg, "2026-01-14T10:00:00", "listed", "inherit", "inherit")]
+        rows = [(6, "user", per_msg, "2026-01-14T10:00:00", "listed", "full", "inherit")]
         rows.extend(
-            (6, "user", per_msg, "2026-01-14T10:00:00", "listed", "inherit", "inherit")
+            (6, "user", per_msg, "2026-01-14T10:00:00", "listed", "full", "inherit")
             for _ in range((msg_limit + 50))
         )
         db_conn.executemany(
@@ -674,15 +695,126 @@ class TestChatExcerptMessageGating:
                 )
 
     def test_visible_inherit_messages_still_contribute(self, db_conn):
-        """Regression guard: ``inherit``/``inherit`` messages still drive the excerpt.
+        """Regression guard: genuinely-visible messages still drive the excerpt.
 
-        The new predicate must admit the visible+allowed combination and not
-        drop the existing seeded ``inherit`` messages.
+        The seeded "Visible Chat" messages carry ``full`` visibility and
+        ``inherit`` access. Under the canonical resolvers with no global policy,
+        ``inherit`` access resolves to baseline ``allow`` and ``full`` visibility
+        passes, so the gate must admit them and surface the message content.
         """
         results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
         match = [r for r in results if r["title"] == "Visible Chat"][0]
         assert match["excerpt_source"] == "message"
         assert "roadmap" in match["excerpt"]
+
+    def test_inherit_access_under_global_deny_no_content_leak(self, global_deny):
+        """Under global-deny, an ``inherit``-access message contributes no content.
+
+        The seeded "Visible Chat" messages carry ``access='inherit'``. Under the
+        global-deny policy, ``resolve_inherit_permission('inherit')`` resolves to
+        ``deny``, so the gate must drop every message and the excerpt must fall
+        back to the title — leaking no message text.
+        """
+        db_conn = global_deny
+        results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Visible Chat"][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "roadmap" not in value, (
+                    f"inherit-access message content leaked via field '{key}' under global-deny"
+                )
+
+    def test_inherit_visibility_under_global_hidden_no_content_leak(self, global_hidden):
+        """Under global-hidden, an ``inherit``-visibility message contributes no content.
+
+        Seeds a chat whose only message carries ``visibility='inherit'`` and an
+        explicit ``access='allow'``. Under the global-hidden policy,
+        ``resolve_inherit_visibility('inherit')`` resolves to ``hidden``, so the
+        gate must drop the message and the excerpt must fall back to the title —
+        leaking no message text.
+        """
+        db_conn = global_hidden
+        db_conn.execute(
+            """INSERT INTO chats (id, external_id, account, title, message_count,
+                                  created_at, visibility, access, status)
+               VALUES (7, 'conv-inherit-vis', 'claude', 'Inherit Vis Chat', 1,
+                       '2026-01-16', 'full', 'allow', 'listed')"""
+        )
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (7, 'user', 'INHERITVIS roadmap content that must not leak',
+                       '2026-01-16T10:00:00', 'listed', 'inherit', 'allow')"""
+        )
+        db_conn.commit()
+        results = search_chats_keyword(db_conn, terms=["Inherit"], has_query=True, limit=10)
+        match = [r for r in results if r["title"] == "Inherit Vis Chat"][0]
+        assert match["excerpt_source"] == "title"
+        for key, value in match.items():
+            if isinstance(value, str):
+                assert "roadmap" not in value, (
+                    f"inherit-visibility message content leaked via field '{key}' under global-hidden"
+                )
+
+    def test_inherit_visibility_under_global_full_still_contributes(self, db_conn):
+        """Under global-full, an ``inherit``-visibility message surfaces content.
+
+        Mirror of the global-hidden case: with the global visibility policy set
+        to ``full``, ``resolve_inherit_visibility('inherit')`` resolves to
+        ``full``, so an ``inherit``-visibility message is admitted and drives the
+        excerpt. Pins that the resolver — not a hard-coded admit — decides.
+        """
+        from footprinter.services import access_service
+
+        prior_vis = access_service._global_visibility
+        db_conn.execute(
+            """INSERT INTO chats (id, external_id, account, title, message_count,
+                                  created_at, visibility, access, status)
+               VALUES (8, 'conv-inherit-vis-full', 'claude', 'Inherit Full Chat', 1,
+                       '2026-01-16', 'full', 'allow', 'listed')"""
+        )
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (8, 'user', 'INHERITFULL roadmap content surfaces here',
+                       '2026-01-16T10:00:00', 'listed', 'inherit', 'allow')"""
+        )
+        db_conn.execute(
+            "INSERT OR REPLACE INTO visibility_policies (scope, setting) VALUES ('global', 'full')"
+        )
+        db_conn.commit()
+        access_service.load_globals(db_conn)
+        try:
+            results = search_chats_keyword(db_conn, terms=["Inherit"], has_query=True, limit=10)
+            match = [r for r in results if r["title"] == "Inherit Full Chat"][0]
+            assert match["excerpt_source"] == "message"
+            assert "roadmap" in match["excerpt"]
+        finally:
+            access_service._global_visibility = prior_vis
+
+    def test_inherit_under_global_allow_still_contributes(self, db_conn):
+        """Baseline (no global policy): the visible chat's messages still surface.
+
+        Pins the no-regression half of the AC: with no global-deny/hidden policy
+        loaded, ``resolve_inherit_permission('inherit')`` resolves to baseline
+        ``allow`` and the seeded ``full`` visibility passes, so the "Visible
+        Chat" messages drive the excerpt.
+        """
+        from footprinter.services import access_service
+
+        prior_perm = access_service._global_permission
+        prior_vis = access_service._global_visibility
+        access_service._global_permission = None
+        access_service._global_visibility = None
+        try:
+            results = search_chats_keyword(db_conn, terms=["Visible"], has_query=True, limit=10)
+            match = [r for r in results if r["title"] == "Visible Chat"][0]
+            assert match["excerpt_source"] == "message"
+            assert "roadmap" in match["excerpt"]
+        finally:
+            access_service._global_permission = prior_perm
+            access_service._global_visibility = prior_vis
 
 
 class TestSearchBrowserKeyword:
