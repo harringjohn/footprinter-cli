@@ -18,6 +18,7 @@ from footprinter.services import (
     project_service,
     visit_service,
 )
+from footprinter.services.access_service import attach_curated_context
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Client service
@@ -1512,3 +1513,38 @@ class TestCuratedContext:
         block = result["curated_context"]
         assert self._CONTRACT_KEYS <= set(block)
         assert block["excerpt"] == "Full curated body for ADMIN."
+
+    def test_attach_curated_context_defaults_to_fail_closed(self, tmp_path):
+        """Omitting ``role=`` yields a pointer-only block (fail-closed default).
+
+        Calls ``attach_curated_context`` directly with no ``role`` argument on a
+        hand-built result dict whose ``context_path`` points at a Markdown fixture
+        under ``tmp_path`` (the autouse ``_home_is_tmp`` fixture points ``HOME``
+        there, so the file passes confinement). The default must withhold the body:
+        pointer + provenance present, content-bearing keys absent.
+        """
+        md = tmp_path / "default-fail-closed.md"
+        md.write_text("Body that an omitted role must not surface.")
+
+        result = attach_curated_context({"context_path": str(md)}, "project")
+        block = result["curated_context"]
+        assert self._VIEWER_KEPT_KEYS <= set(block)
+        assert self._VIEWER_STRIPPED_KEYS.isdisjoint(set(block))
+        assert block["excerpt_source"] == "context_md"
+        assert block["context_path"] == str(md)
+
+    def test_attach_curated_context_admin_explicit_is_full(self, tmp_path):
+        """Explicit ``role=Role.ADMIN`` still receives the full block.
+
+        Pins that flipping the default does not touch the explicit-ADMIN path.
+        """
+        md = tmp_path / "admin-explicit.md"
+        body = "Full curated body for explicit ADMIN."
+        md.write_text(body)
+
+        result = attach_curated_context(
+            {"context_path": str(md)}, "project", role=Role.ADMIN
+        )
+        block = result["curated_context"]
+        assert self._CONTRACT_KEYS <= set(block)
+        assert block["excerpt"] == body

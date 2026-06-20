@@ -192,7 +192,7 @@ _CURATED_CONTENT_KEYS = ("excerpt", "chars_returned", "has_more")
 
 
 def attach_curated_context(
-    result: Dict[str, Any], entity_type: str, *, role: Role = Role.ADMIN
+    result: Dict[str, Any], entity_type: str, *, role: Role = Role.VIEWER
 ) -> Dict[str, Any]:
     """Resolve curated Markdown context for a nav result and attach it in place.
 
@@ -208,8 +208,9 @@ def attach_curated_context(
     ``has_more``) are stripped, leaving pointer + provenance only (``context_path``
     / ``excerpt_source`` / ``chars_available``) — the agent learns a curated note
     exists, where it lives, and how big it is, without the body being quoted. The
-    ``role`` keyword defaults to ADMIN so callers that don't pass it keep the
-    full-block behavior.
+    ``role`` keyword defaults to the most-restrictive role (``VIEWER``) so the gate
+    fails closed: a caller that omits it gets the pointer-only block, and the body
+    is withheld unless ADMIN is passed explicitly.
 
     Convention root: the client ``context/client-<slug>.md`` convention is resolved
     under ``get_home()`` (``$FOOTPRINTER_HOME``, default ``~/.footprinter/``) — the
