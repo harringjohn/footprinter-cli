@@ -4,6 +4,7 @@ import pytest
 
 from footprinter.db.search import (
     chat_fts5_fallback,
+    chat_message_excerpt,
     enrich_chat_visibility,
     enrich_file_metadata,
     file_fts5_fallback,
@@ -17,6 +18,7 @@ from footprinter.db.sql_utils import (
     build_term_conditions,
     split_query_terms,
 )
+from footprinter.utils.text import EXCERPT_BUDGET
 
 
 class TestQueryHelpers:
@@ -480,6 +482,104 @@ class TestSearchChatsKeyword:
         )
         assert len(results) == 1
         assert results[0]["title"] == "Visible Chat"
+
+    def test_excerpt_fetch_is_bounded_for_huge_chat(self, db_conn):
+        """A chat far longer than the fetch budget is not loaded in full.
+
+        The per-hit message fetch must be bounded so a single enormous
+        conversation cannot balloon memory: ``chars_available`` reflects only
+        the bounded slice actually loaded, never the whole conversation, and the
+        excerpt still respects the shared ``EXCERPT_BUDGET``.
+        """
+        from footprinter.db import search as search_mod
+
+        fetch_budget = search_mod._CHAT_EXCERPT_FETCH_BUDGET
+        # Seed a chat whose leading message content dwarfs the fetch budget. A
+        # unique sentinel near the start keeps the windowed excerpt stable.
+        db_conn.execute(
+            """INSERT INTO chats (id, external_id, account, title, message_count,
+                                  created_at, visibility, access, status)
+               VALUES (5, 'conv-huge', 'claude', 'Huge Chat', 4,
+                       '2026-01-14', 'full', 'allow', 'listed')"""
+        )
+        huge_body = "SENTINELHUGE " + ("lorem ipsum dolor sit amet " * 2000)
+        assert len(huge_body) > fetch_budget * 4
+        db_conn.execute(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (5, 'user', ?, '2026-01-14T10:00:00', 'listed',
+                       'inherit', 'inherit')""",
+            (huge_body,),
+        )
+        db_conn.commit()
+
+        excerpt = chat_message_excerpt(db_conn, 5, "SENTINELHUGE", "Huge Chat")
+        assert excerpt["excerpt_source"] == "message"
+        # The full conversation was NOT loaded — only the bounded slice.
+        assert excerpt["chars_available"] <= fetch_budget
+        # The excerpt still respects the shared budget.
+        assert excerpt["chars_returned"] <= EXCERPT_BUDGET
+        assert excerpt["chars_returned"] == len(excerpt["excerpt"])
+
+    def test_excerpt_fetch_is_bounded_across_many_messages(self, db_conn):
+        """A chat with thousands of short messages caps row transfer.
+
+        The SQL ``LIMIT`` bounds row count even when no single message is large,
+        so ``chars_available`` stays within the fetch budget.
+        """
+        from footprinter.db import search as search_mod
+
+        fetch_budget = search_mod._CHAT_EXCERPT_FETCH_BUDGET
+        msg_limit = search_mod._CHAT_EXCERPT_MSG_LIMIT
+        db_conn.execute(
+            """INSERT INTO chats (id, external_id, account, title, message_count,
+                                  created_at, visibility, access, status)
+               VALUES (6, 'conv-many', 'claude', 'Many Chat', 0,
+                       '2026-01-14', 'full', 'allow', 'listed')"""
+        )
+        # Each message on its own is small, but combined they exceed the budget
+        # many times over. Seed well past the row LIMIT.
+        per_msg = "SENTINELMANY filler text repeated here for length and length"
+        rows = [(6, "user", per_msg, "2026-01-14T10:00:00", "listed", "inherit", "inherit")]
+        rows.extend(
+            (6, "user", per_msg, "2026-01-14T10:00:00", "listed", "inherit", "inherit")
+            for _ in range((msg_limit + 50))
+        )
+        db_conn.executemany(
+            """INSERT INTO messages (chat_id, role, content, created_at, status,
+                                     visibility, access)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
+        db_conn.commit()
+
+        excerpt = chat_message_excerpt(db_conn, 6, "SENTINELMANY", "Many Chat")
+        assert excerpt["excerpt_source"] == "message"
+        assert excerpt["chars_available"] <= fetch_budget
+        assert excerpt["chars_returned"] <= EXCERPT_BUDGET
+
+    def test_excerpt_unchanged_for_normal_chat(self, db_conn):
+        """Regression guard: short chats keep their exact excerpt dict.
+
+        The bound must not alter the excerpt for normal-sized chats — the
+        seeded "Visible Chat" (two short messages) produces a byte-for-byte
+        identical excerpt and coherent contract fields.
+        """
+        excerpt = chat_message_excerpt(db_conn, 1, "Visible", "Visible Chat")
+        assert excerpt == {
+            "excerpt": (
+                "Let us discuss the quarterly roadmap and milestones\n"
+                "Sure, here is the plan for the roadmap"
+            ),
+            "excerpt_source": "message",
+            "chars_returned": 90,
+            "chars_available": 90,
+            "has_more": False,
+        }
+        # Below the fetch budget, so the bound never touches this content.
+        from footprinter.db import search as search_mod
+
+        assert excerpt["chars_available"] < search_mod._CHAT_EXCERPT_FETCH_BUDGET
 
 
 class TestChatExcerptMessageGating:

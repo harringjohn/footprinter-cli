@@ -18,7 +18,7 @@ from footprinter.db.sql_utils import (
     paginated_response,
     split_query_terms,
 )
-from footprinter.utils.text import build_excerpt
+from footprinter.utils.text import EXCERPT_BUDGET, build_excerpt
 
 
 def _status_clause(
@@ -356,6 +356,20 @@ def search_emails_keyword(
     ]
 
 
+# Bounds on the per-hit message fetch in ``chat_message_excerpt``. The excerpt
+# only ever surfaces a ~``EXCERPT_BUDGET``-char window (centered on the first
+# query-term match, or position 0 for title-only hits), so loading the whole
+# conversation is wasted CPU/memory. Two guards cap the fetch:
+# ``_CHAT_EXCERPT_MSG_LIMIT`` caps row transfer for chats with many short
+# messages, and ``_CHAT_EXCERPT_FETCH_BUDGET`` caps total characters for chats
+# with a few enormous messages. The char budget
+# is a comfortable multiple of ``EXCERPT_BUDGET`` so a normal chat's window is
+# byte-for-byte unchanged; the row cap is large enough that no normal chat's
+# leading content is truncated before the char budget is hit.
+_CHAT_EXCERPT_MSG_LIMIT = 64
+_CHAT_EXCERPT_FETCH_BUDGET = EXCERPT_BUDGET * 4
+
+
 def chat_message_excerpt(
     conn: sqlite3.Connection,
     chat_id: int,
@@ -372,6 +386,29 @@ def chat_message_excerpt(
     ``title`` only when the chat has no listed message content. The excerpt
     fields are built via the shared :func:`build_excerpt` so the size budget and
     provenance match every other content-bearing source.
+
+    The message fetch is **bounded** to ``_CHAT_EXCERPT_MSG_LIMIT`` leading rows
+    (SQL ``LIMIT``, kept in ``ORDER BY id`` so the *opening* of the conversation
+    is what's loaded) and to ``_CHAT_EXCERPT_FETCH_BUDGET`` characters of
+    accumulated content. The excerpt only ever surfaces a ~``EXCERPT_BUDGET``
+    window, so a bound several times that budget reproduces the identical window
+    for any normal-sized chat while stopping a single huge conversation from
+    ballooning memory. Because only the bounded slice is loaded,
+    ``chars_available`` / ``has_more`` describe that bounded window, not the
+    entire conversation: for a chat longer than the fetch budget ``has_more``
+    can under-report. This is the documented trade of bounding the fetch; a
+    separate ``COUNT``/``SUM(length)`` query to recover the true total is
+    deliberately avoided because it reintroduces the per-hit DB work this bound
+    removes.
+
+    The lookup stays a single bounded query **per chat hit**
+    (``search_chats_keyword`` calls this once per result row). Batching across
+    hits into one ``WHERE chat_id IN (...)`` query is deferred: it would
+    complicate the per-message visibility/access gating applied here, and
+    bounding each query already addresses the memory/CPU concern. The
+    ``messages.list_messages`` accessor is not reused — it orders newest-first
+    (``ORDER BY message.id DESC``), the wrong order for leading-content
+    windowing, and returns extra columns the excerpt does not need.
     """
     # Imported here to avoid a module-level dependency on the optional
     # semantic package (chromadb/onnx) from the always-loaded db layer.
@@ -391,11 +428,24 @@ def chat_message_excerpt(
         FROM messages
         WHERE {where}
         ORDER BY id
+        LIMIT ?
         """,
-        [chat_id, *status_params],
+        [chat_id, *status_params, _CHAT_EXCERPT_MSG_LIMIT],
     ).fetchall()
 
-    full_content = "\n".join(r["content"] for r in rows if r["content"]).strip()
+    # Accumulate leading message content only until the char budget is reached,
+    # then stop — so even a single enormous message is sliced to the budget.
+    pieces: list[str] = []
+    accumulated = 0
+    for r in rows:
+        content = r["content"]
+        if not content:
+            continue
+        pieces.append(content)
+        accumulated += len(content) + 1  # +1 for the "\n" join separator
+        if accumulated >= _CHAT_EXCERPT_FETCH_BUDGET:
+            break
+    full_content = "\n".join(pieces).strip()[:_CHAT_EXCERPT_FETCH_BUDGET]
     if not full_content:
         return build_excerpt(title or "", source="title")
 
