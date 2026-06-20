@@ -682,6 +682,11 @@ def file_fts5_fallback(
     path, content_type, size_bytes, modified_at, relevance_score, the excerpt
     contract (excerpt, excerpt_source, chars_returned, chars_available,
     has_more), visibility, access.
+
+    Shape divergence: this degraded path carries **no** ``chunks`` key. The
+    per-file ``chunks`` list (top-N matched chunks) is a vector-path-only
+    enrichment attached by ``semantic_service._top_chunks_by_file``; the keyword
+    fallback has no chunk-level matches to surface.
     The ``status`` kwarg defaults to listed-only; pass ``"all"`` or a list to widen.
     """
     terms = split_query_terms(query)

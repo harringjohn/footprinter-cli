@@ -118,6 +118,26 @@ class TestSemanticServiceFiles:
         file_names = [f.get("name") for f in result["files"]]
         assert "readme.md" in file_names
 
+    def test_fts5_fallback_result_has_no_chunks_key(self, service_db):
+        """The degraded FTS5 fallback path omits the ``chunks`` enrichment that
+        the vector path attaches. This pins the documented shape divergence so it
+        cannot silently change."""
+        self._rebuild_fts(service_db)
+        mock_vs_module = MagicMock()
+        mock_vs_module.VectorStore.get_instance.side_effect = RuntimeError(
+            "vector store init failed"
+        )
+        with patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_vs_module}):
+            result = semantic_service.semantic_search(
+                service_db,
+                "readme",
+                role=Role.VIEWER,
+                source="files",
+            )
+        assert result["files"]  # fallback returned at least one row
+        for f in result["files"]:
+            assert "chunks" not in f
+
     def test_fts5_fallback_excerpt_shows_content_when_allowed(self, service_db):
         """FTS5 fallback excerpt is sourced from content_preview when access allows."""
         service_db.execute(
@@ -579,6 +599,146 @@ class TestSemanticMultiChunk:
         assert len(row["chunks"]) == 1
         assert row["chunks"][0]["excerpt"] == row["excerpt"]
         assert row["chunks"][0]["chunk_index"] == row["chunk_index"]
+
+    def test_n_upper_clamped_when_config_too_high(self, service_db):
+        """A misconfigured huge max_chunks_per_file is clamped to the module cap
+        so the per-file chunks payload stays bounded."""
+        cap = semantic_service._MAX_CHUNKS_PER_FILE_CAP
+        # The cap must actually bound the configured value for this to test
+        # anything meaningful.
+        assert cap < 10_000
+        # Supply more chunks than the cap so the clamp (not the supply) governs.
+        files = [
+            self._chunk(1, i, cap + 5, distance=i / 1000.0, text=f"chunk {i}")
+            for i in range(cap + 5)
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 10_000}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        assert len(row["chunks"]) == cap
+
+    def test_get_max_chunks_per_file_returns_cap_when_config_too_high(self):
+        """Direct unit assertion: the resolver returns the cap, not the raw
+        oversized config value."""
+        cap = semantic_service._MAX_CHUNKS_PER_FILE_CAP
+        with patch(
+            "footprinter.source_registry.get_config",
+            return_value={"semantic": {"max_chunks_per_file": 10_000}},
+        ):
+            assert semantic_service._get_max_chunks_per_file() == cap
+
+    def test_tie_break_by_chunk_index_on_equal_relevance(self, service_db):
+        """Chunks sharing a relevance score order by chunk_index ascending, and
+        the representative row is the lower-index chunk of the best tied pair."""
+        # distances 0.4 and 0.4 → identical relevance; 0.8 → lower relevance.
+        # The two best (tied) chunks have indices 7 and 3 → expect 3 first.
+        files = [
+            self._chunk(1, 7, 9, 0.4, "tied chunk high index"),
+            self._chunk(1, 3, 9, 0.4, "tied chunk low index"),
+            self._chunk(1, 5, 9, 0.8, "lower relevance chunk"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        # The tied pair (relevance equal) is ordered by chunk_index ascending.
+        assert row["chunks"][0]["chunk_index"] == 3
+        assert row["chunks"][1]["chunk_index"] == 7
+        # Representative row mirrors chunks[0] — the lower index of the best pair.
+        assert row["chunk_index"] == 3
+        assert row["chunks"][0]["excerpt"] == row["excerpt"]
+
+    def test_rounding_groups_near_equal_distances(self, service_db):
+        """Two chunks whose raw distances differ but round to the same
+        relevance_score (3 decimals) are treated as tied and ordered by
+        chunk_index — ordering is on the rounded score the consumer sees."""
+        # distance 0.200 → relevance round(1 - 0.1, 3) = 0.900
+        # distance 0.2001 → relevance round(1 - 0.10005, 3) = 0.900 (rounds equal)
+        files = [
+            self._chunk(1, 8, 9, 0.2001, "near chunk high index"),
+            self._chunk(1, 2, 9, 0.2000, "near chunk low index"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        row = [f for f in result["files"] if f.get("id") == 1][0]
+        # Both round to the same relevance_score the consumer sees.
+        assert row["chunks"][0]["relevance_score"] == row["chunks"][1]["relevance_score"]
+        # Treated as tied → ordered by chunk_index ascending.
+        assert [c["chunk_index"] for c in row["chunks"]] == [2, 8]
+
+    def test_empty_vector_results_yields_no_file_rows(self, service_db):
+        """Empty vector results yield no file rows (no chunks, no crash) and the
+        summary reflects an empty vector result — not the degraded fallback."""
+        mock_module = self._mock_vs_module(files=[])
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files"
+            )
+        assert result["files"] == []
+        # Empty vector result is still the "ok" path, not the degraded fallback:
+        # the keyword-fallback note must not be present.
+        note = result.get("note", "")
+        assert "keyword-based" not in note
+        assert "semantic search unavailable" not in note
+
+    def test_over_fetch_insufficient_single_file_few_chunks(self, service_db):
+        """When the vector store returns fewer rows than limit*3, the short result
+        set is handled gracefully: one row with all its chunks, and the over-fetch
+        request (n_results=limit*3) is unchanged."""
+        files = [
+            self._chunk(1, 0, 2, 0.2, "chunk a"),
+            self._chunk(1, 1, 2, 0.6, "chunk b"),
+        ]
+        mock_module = self._mock_vs_module(files=files)
+        store = mock_module.VectorStore.get_instance.return_value
+        with (
+            patch.dict("sys.modules", {"footprinter.semantic.vector_store": mock_module}),
+            patch(
+                "footprinter.source_registry.get_config",
+                return_value={"semantic": {"max_chunks_per_file": 3}},
+            ),
+        ):
+            result = semantic_service.semantic_search(
+                service_db, "anything", role=Role.VIEWER, source="files", limit=10
+            )
+        rows = [f for f in result["files"] if f.get("id") == 1]
+        assert len(rows) == 1
+        assert len(rows[0]["chunks"]) == 2
+        # Over-fetch request unchanged: n_results == limit * 3.
+        store.search_files.assert_called_once()
+        assert store.search_files.call_args.kwargs["n_results"] == 30
 
 
 class TestSemanticGovernanceStripped:

@@ -125,6 +125,9 @@ semantic:
   # (return the whole chunk).
   max_chunk_chars: 1000
   # How many matched chunks to return per file, best-relevance first. Default 3.
+  # Clamped to [1, 20] — values above the cap are bounded to keep payloads sane.
+  # The per-result `chunks` list is returned only on the vector (semantic) path;
+  # the FTS5 keyword fallback (used when semantic search is unavailable) omits it.
   max_chunks_per_file: 3
 
 # Vectorization — controls what gets embedded for semantic search
