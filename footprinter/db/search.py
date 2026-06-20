@@ -359,9 +359,10 @@ def search_emails_keyword(
 # Bounds on the per-hit message fetch in ``chat_message_excerpt``. The excerpt
 # only ever surfaces a ~``EXCERPT_BUDGET``-char window (centered on the first
 # query-term match, or position 0 for title-only hits), so loading the whole
-# conversation is wasted CPU/memory. Two guards cap the fetch: ``_MSG_LIMIT``
-# caps row transfer for chats with many short messages, and ``_FETCH_BUDGET``
-# caps total characters for chats with a few enormous messages. The char budget
+# conversation is wasted CPU/memory. Two guards cap the fetch:
+# ``_CHAT_EXCERPT_MSG_LIMIT`` caps row transfer for chats with many short
+# messages, and ``_CHAT_EXCERPT_FETCH_BUDGET`` caps total characters for chats
+# with a few enormous messages. The char budget
 # is a comfortable multiple of ``EXCERPT_BUDGET`` so a normal chat's window is
 # byte-for-byte unchanged; the row cap is large enough that no normal chat's
 # leading content is truncated before the char budget is hit.
