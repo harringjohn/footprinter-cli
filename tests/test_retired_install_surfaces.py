@@ -4,9 +4,10 @@ Every published version of this package has been yanked from the index, so a
 bare ``pip install`` of it no longer resolves.  Two invariants follow, and both
 are easy to break by accident:
 
-1. The architecture docs under ``reference/`` describe the package as it
-   shipped.  They must not carry a live install command, because following one
-   now fails.
+1. The reader-facing docs -- ``README.md`` and the architecture docs under
+   ``reference/`` -- describe the package as it shipped.  They must not carry a
+   live install command, because following one now fails.  The README is the
+   first thing a visitor sees, so it is the costliest place to leave one.
 
 2. The release and QA scripts under ``scripts/`` are frozen historical record.
    Their install commands are deliberately left intact -- but each such script
@@ -23,6 +24,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+README = PROJECT_ROOT / "README.md"
 REFERENCE_DIR = PROJECT_ROOT / "reference"
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
@@ -45,6 +47,16 @@ RETIREMENT_BANNER = re.compile(
 BANNER_EXEMPT = {"verify_install.sh"}
 
 
+def _install_commands_in(paths: list[Path]) -> list[str]:
+    """Located install commands, as ``path:line: text`` for the failure message."""
+    violations = []
+    for path in paths:
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            if INSTALL_COMMAND.search(line):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)}:{i}: {line.strip()}")
+    return violations
+
+
 def _scripts_that_install_the_package() -> list[Path]:
     """Shell scripts that install this package by name, directly or via the helper."""
     matches = []
@@ -58,20 +70,27 @@ def _scripts_that_install_the_package() -> list[Path]:
 
 
 class TestNoLiveInstallInstructionsInDocs:
-    """The reference docs must not tell a reader to install the retired package."""
+    """Reader-facing docs must not tell anyone to install the retired package."""
 
     def test_reference_docs_have_no_install_commands(self):
-        violations = []
-        for path in sorted(REFERENCE_DIR.rglob("*.md")):
-            for i, line in enumerate(path.read_text().splitlines(), 1):
-                if INSTALL_COMMAND.search(line):
-                    rel = path.relative_to(PROJECT_ROOT)
-                    violations.append(f"{rel}:{i}: {line.strip()}")
+        violations = _install_commands_in(sorted(REFERENCE_DIR.rglob("*.md")))
 
         assert violations == [], (
             f"Found {len(violations)} live install instruction(s) in reference/ "
             f"for a package that no longer resolves. Describe the install in the "
             f"past tense, or drop the command:\n" + "\n".join(violations)
+        )
+
+    def test_readme_has_no_install_commands(self):
+        """The README is the landing page -- an install command here is the
+        one a stranger is most likely to actually run."""
+        violations = _install_commands_in([README])
+
+        assert violations == [], (
+            f"Found {len(violations)} live install instruction(s) in README.md "
+            f"for a package that no longer resolves. This repo is a frozen "
+            f"record, not an intake path: drop the install command rather than "
+            f"repointing it at the successor package:\n" + "\n".join(violations)
         )
 
 

@@ -1,111 +1,83 @@
 # Footprinter
 
-[![Tests](https://github.com/harringjohn/footprinter-cli/actions/workflows/test.yml/badge.svg)](https://github.com/harringjohn/footprinter-cli/actions/workflows/test.yml)
-[![PyPI](https://img.shields.io/pypi/v/footprinter-cli)](https://pypi.org/project/footprinter-cli/)
+> ## ⚠️ This repository is frozen — Footprinter is retired
+>
+> **Footprinter is no longer published, maintained, or installable.** Every released
+> version of the `footprinter-cli` package has been yanked from PyPI, so the install
+> commands that used to live in this README no longer resolve. They have been removed
+> rather than repointed: this repository is a historical record, not a way in.
+>
+> **The active product is SWLL — [swll.app](https://swll.app/).**
+>
+> What remains here is the open-source origin record of that work, kept public and
+> MIT-licensed on purpose. Read it, fork it, learn from it. Do not expect it to run.
 
-**A local context layer for your files, browser history, chats, and email — searchable, user-owned, and served to AI agents through [MCP](https://modelcontextprotocol.io/).**
+Footprinter was a local context layer for files, browser history, chats, and email —
+searchable, user-owned, and served to AI agents through
+[MCP](https://modelcontextprotocol.io/).
 
-> ⚠️ **Install with `pipx`, not `pip`.** `pipx` puts the `fp` command on your PATH automatically; bare `pip` often doesn't — which leaves you with `fp: command not found` even though the install succeeded.
+The premise: your work lives scattered across filesystems, browsers, inboxes, chat
+histories, and other tools. Footprinter indexed those sources into a single local
+store, organized them into projects and groupings you defined, and served the result
+to AI agents through a governed access layer. You controlled what the agent could
+see. Everything stayed on your machine.
 
-```bash
-pipx install footprinter-cli
-```
+---
 
-Your work lives across filesystems, browsers, inboxes, chat histories, and other tools. Footprinter indexes those sources into a single local store, organizes them into the projects and groupings you define, and serves the result to AI agents through a governed access layer. You control what the agent can see. Everything stays on your machine.
+## What it became
 
-## Install
+Footprinter became **SWLL**.
 
-Requires **Python 3.11+** and **macOS 13+** or **Linux**. The install script checks your Python version and handles the rest:
+| | Published | Licence |
+|---|---|---|
+| `footprinter-cli` 1.1.1 — the final release, in this repository | 2026-06-21 | MIT |
+| `swll` 1.0.0 — the first release under the new name | 2026-06-25 | separate, non-MIT |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install.sh | bash
-```
+Four days apart, and substantially the same codebase. SWLL is where the work
+continued; this repository is where it started.
 
-Or install with **pipx** directly:
+SWLL is a separate product under its own licence — the MIT grant below covers this
+repository and the `footprinter-cli` releases only. It does not extend to SWLL.
 
-```bash
-pipx install footprinter-cli
-```
+**Current product: [swll.app](https://swll.app/)**
 
-Either method installs three commands: `fp` (the CLI and indexing pipeline), `fp-mcp` (the MCP server for AI agents), and `fp-api` (the HTTP API). Optional extras add more:
+---
 
-| Extra | What it adds |
-|-------|-------------|
-| `[semantic]` | Semantic search via ChromaDB + ONNX embeddings |
-| `[parse]` | PDF, Word, Excel, PowerPoint content extraction |
-| `[full]` | Both of the above |
+## What it indexed
 
-To install with extras: use the [full install script](https://raw.githubusercontent.com/harringjohn/footprinter-cli/main/scripts/release/install-full.sh), or `pipx install 'footprinter-cli[full]'`.
-
-<details>
-<summary>Troubleshooting & alternative install methods</summary>
-
-**Python version:** Stock macOS ships Python 3.9. Install 3.11+ from [python.org](https://www.python.org/downloads/) or `brew install python@3.11`.
-
-**macOS caveats:**
-- zsh treats `[...]` as a glob — quote extras specifiers: `'footprinter-cli[full]'`
-- System/Homebrew Python blocks bare `pip install` (PEP 668) — use pipx or a venv instead
-
-**Inside an existing venv:** `pip install footprinter-cli` works as expected.
-
-**Full Disk Access:** Required for browser history indexing on macOS. `fp setup` will prompt you when needed.
-
-**ChromaDB telemetry:** Footprinter sets `anonymized_telemetry=False`. ChromaDB also removed product telemetry in v1.5.4. See [Chroma OSS overview](https://docs.trychroma.com/docs/overview/oss).
-
-**Apple Silicon (Rosetta):** If `fp doctor` warns about x86_64 Python on arm64 hardware, recreate the venv with a native interpreter: `pipx reinstall footprinter-cli --python /opt/homebrew/bin/python3`. This avoids compatibility issues with native-extension dependencies.
-
-</details>
-
-### Uninstall
-
-```bash
-fp uninstall                        # remove MCP entry + user data
-pipx uninstall footprinter-cli      # remove the package
-```
-
-## Quick Start
-
-```bash
-fp setup     # Configure sources (interactive wizard)
-fp ingest    # Index your files
-fp status    # See what's indexed
-fp search "meeting notes"   # Find things
-```
-
-A few first-run notes:
-
-- The first ingest is implicitly full; subsequent runs are incremental. If you change exclusions or add directories after the first run, re-run with `fp ingest --full` so previously skipped files get picked up.
-- With `[semantic]` or `[full]`, the **first ingest downloads ~80MB** of ONNX embedding model weights. It's a one-time cost — subsequent ingests are fast.
-- Keep the directories you want indexed **outside `~/Downloads`** — the default exclusion list skips it.
-
-## Connect to Claude Desktop
-
-Footprinter includes an MCP server that gives Claude Desktop (or any MCP client) structured access to your indexed data:
-
-```bash
-fp setup mcp --claude    # Configure MCP for Claude Desktop
-```
-
-After running this, **fully quit Claude Desktop (Cmd+Q) and relaunch** before the Footprinter tools appear in the conversation tools list. A simple window close isn't enough — the app keeps running in the menu bar.
-
-Once configured, Claude can search your files, browse projects, and find related conversations — through natural language.
-
-## What It Indexes
-
-| Source | What's captured |
+| Source | What was captured |
 |--------|----------------|
 | **Local files** | Path, type, size, timestamps, content hash |
 | **Browser history** | Safari and Chrome — URLs, titles, visit times |
 | **Chat exports** | Claude and ChatGPT conversation exports |
 | **Email** | Subject, sender, recipients, body, timestamps |
-| **Documents** | PDF, Word, Excel, PowerPoint content (with `[parse]` extra) |
-| **Semantic embeddings** | Conceptual similarity across all sources (with `[semantic]` extra) |
+| **Documents** | PDF, Word, Excel, PowerPoint content (via the `[parse]` extra) |
+| **Semantic embeddings** | Conceptual similarity across all sources (via the `[semantic]` extra) |
 
-What lands in the database — and when — is controlled by the **content storage tier** you opt into. By default, Footprinter only indexes metadata; it does not read your file content until you explicitly enable it. See [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) for the full breakdown.
+What landed in the database — and when — was controlled by a **content storage tier**
+the user opted into. By default Footprinter indexed metadata only; it did not read
+file content until explicitly enabled. See
+[Content Storage](reference/content-storage.md) for the full breakdown.
 
-## CLI Commands
+## Architecture
 
-All commands use the `fp` entry point.
+Single-process CLI with an optional MCP server. SQLite database. No containers, no
+cloud, no accounts.
+
+Sources were scanned into SQLite with bidirectional links connecting local files to
+remote backups via content-hash matching. Embeddings were generated at ingest time
+for semantic search. The MCP server exposed indexed data through two-layer access
+control (visibility + access), so the user decided what agents could see.
+
+The package shipped three entry points: `fp` (the CLI and indexing pipeline),
+`fp-mcp` (the MCP server for AI agents), and `fp-api` (the HTTP API). Optional
+extras added semantic search (`[semantic]`), document parsing (`[parse]`), or both
+(`[full]`).
+
+## The `fp` command surface
+
+Recorded here as part of the design history. These commands ran against a local
+install that is no longer obtainable.
 
 | Command | Purpose |
 |---------|---------|
@@ -122,73 +94,31 @@ All commands use the `fp` entry point.
 | `fp doctor` | Post-install health check (Python version, platform, FDA, MCP wiring) |
 | `fp uninstall` | Remove Footprinter — MCP entry, user data, package |
 
-Run `fp <command> --help` for full usage.
-
-## Architecture
-
-Single-process CLI with optional MCP server. SQLite database. No containers, no cloud, no accounts.
-
-Sources are scanned into SQLite with bidirectional links connecting local files to remote backups via content hash matching. Embeddings are generated at ingest time for semantic search. The MCP server exposes indexed data with two-layer access control (visibility + access) — you decide what agents can see.
+A typical session was `fp setup` to configure sources, `fp ingest` to index, then
+`fp search` to retrieve — with `fp setup mcp --claude` wiring the MCP server into
+Claude Desktop so an agent could search files, browse projects, and find related
+conversations in natural language.
 
 ## Documentation
 
-- [Interfaces](https://github.com/harringjohn/footprinter-cli/blob/main/reference/interfaces.md) — CLI commands, MCP tools, Python API
-- [Data Model](https://github.com/harringjohn/footprinter-cli/blob/main/reference/data-model.md) — database schema
-- [Pipeline](https://github.com/harringjohn/footprinter-cli/blob/main/reference/pipeline.md) — indexing stages and configuration
-- [Content Storage](https://github.com/harringjohn/footprinter-cli/blob/main/reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
-- [Permission Policies and Access Control](https://github.com/harringjohn/footprinter-cli/blob/main/reference/permission-policies-and-access-control.md) — permission policies and access control
+The architecture notes are preserved as written, describing the system as it shipped.
+
+- [Interfaces](reference/interfaces.md) — CLI commands, MCP tools, Python API
+- [Data Model](reference/data-model.md) — database schema
+- [Pipeline](reference/pipeline.md) — indexing stages and configuration
+- [Content Storage](reference/content-storage.md) — metadata vs. snippet vs. full-content tiers
+- [Permission Policies and Access Control](reference/permission-policies-and-access-control.md)
+
+Also in the record: [Code of Conduct](CODE_OF_CONDUCT.md) and
+[Security Policy](SECURITY.md).
 
 ## Contributing
 
-Bug fixes, documentation, and tests welcome. For new features or architectural changes, [open an issue](https://github.com/harringjohn/footprinter-cli/issues) first to discuss the approach.
-
-### Development setup
-
-```bash
-git clone https://github.com/harringjohn/footprinter-cli.git
-cd footprinter-cli
-python3 -m venv venv
-./venv/bin/pip install -e ".[dev]"
-```
-
-### Running tests
-
-```bash
-./venv/bin/pytest tests/ -v --tb=short
-```
-
-### Code style
-
-- PEP 8
-- Type hints on function signatures
-- `logging` over `print()` in library code
-
-### Workflow
-
-1. Fork the repository
-2. Create a feature branch from `main`
-3. Write tests (TDD preferred — tests before implementation)
-4. Run the test suite
-5. Submit a PR targeting `main`
-
-Never commit API keys, tokens, or credentials. Report security vulnerabilities privately — see [SECURITY.md](https://github.com/harringjohn/footprinter-cli/blob/main/SECURITY.md).
-
-### Pull request expectations
-
-- Tests must pass
-- No breaking changes to existing CLI commands
-- Fill out the PR template
-- One logical change per PR
-
-All PRs are reviewed by the maintainer. Expect reviews within one week. CI must pass before review begins.
-
-No Contributor License Agreement required. By submitting a PR, you agree your contribution is licensed under the project's [MIT License](https://github.com/harringjohn/footprinter-cli/blob/main/LICENSE).
-
-## Community
-
-- [Code of Conduct](https://github.com/harringjohn/footprinter-cli/blob/main/CODE_OF_CONDUCT.md)
-- [Security Policy](https://github.com/harringjohn/footprinter-cli/blob/main/SECURITY.md)
+Footprinter is not accepting contributions. The project is frozen and issues and pull
+requests are not monitored. For anything relating to the current product, go to
+[swll.app](https://swll.app/).
 
 ## License
 
-MIT — see [LICENSE](https://github.com/harringjohn/footprinter-cli/blob/main/LICENSE).
+MIT — see [LICENSE](LICENSE). The licence is deliberate and unchanged: this repository
+is the open-source origin record, and what was published under MIT stays under MIT.
