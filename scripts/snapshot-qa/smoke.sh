@@ -1,5 +1,16 @@
 #!/bin/bash
 #
+# ============================================================================
+# RETIRED — DO NOT RUN.
+#
+# footprinter-cli is no longer published: every released version has been
+# yanked from PyPI, so the installed wheel this driver checks can no longer
+# be obtained from the index.
+#
+# This file is retained for historical reference only. Its commands are
+# preserved exactly as they shipped and are NOT current instructions.
+# ============================================================================
+#
 # Public-repo smoke driver: minimal post-install check.
 #
 # Runs against an installed footprinter-cli wheel (pip install -e . or

@@ -2,6 +2,8 @@
 
 How to access Footprinter data. Covers the four entry points, the service layer that connects them, and the role model that controls what each caller can see and do.
 
+> **Retired.** `footprinter-cli` is no longer published on PyPI — every released version has been yanked, so it can no longer be installed by name. This document describes the package as it shipped and is kept as a reference record. The maintained successor is [`swll`](https://swll.app/), which ships its own `swll` CLI.
+
 ---
 
 ## Entry Points
@@ -17,7 +19,7 @@ Footprinter exposes four interfaces. All four converge on the same service layer
 
 ### CLI
 
-The `fp` command is installed by `pipx install footprinter-cli`. All business logic is in the service layer — the CLI handles argument parsing and output formatting.
+The `fp` command was installed from the `footprinter-cli` package. All business logic is in the service layer — the CLI handles argument parsing and output formatting.
 
 | Command | Purpose |
 |---------|---------|

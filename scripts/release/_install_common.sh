@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 #
+# ============================================================================
+# RETIRED — DO NOT RUN.
+#
+# footprinter-cli is no longer published: every released version has been
+# yanked from PyPI, so the bare `pip install footprinter-cli` performed by
+# pip_install_footprinter below can no longer resolve.
+#
+# This file is retained for historical reference only. Its commands are
+# preserved exactly as they shipped and are NOT current instructions — read
+# them as a record of how this package was installed, not as a procedure to
+# follow.
+# ============================================================================
+#
 # Shared helpers for install.sh and install-full.sh.
 #
 # Sourced — not executed directly. Defines:

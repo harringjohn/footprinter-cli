@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 #
+# ============================================================================
+# RETIRED — DO NOT RUN.
+#
+# footprinter-cli is no longer published: every released version has been
+# yanked from PyPI. Unlike the other release scripts, the pinned install
+# below would still resolve — a yank is not a deletion, and an exact-version
+# pin still succeeds — but pip now flags it as yanked, and there are no
+# further releases for this gate to verify.
+#
+# This file is retained for historical reference only. Its commands are
+# preserved exactly as they shipped and are NOT current instructions.
+# ============================================================================
+#
 # Tier 4 release gate: upgrade-path verification.
 #
 # Installs a previous footprinter-cli release from PyPI, populates

@@ -2,6 +2,8 @@
 
 Current database schema for Footprinter. The database is SQLite, stored at `data/footprinter.db`.
 
+> **Retired.** `footprinter-cli` is no longer published on PyPI — every released version has been yanked, so it can no longer be installed by name. This document describes the package as it shipped and is kept as a reference record. The maintained successor is [`swll`](https://swll.app/), which ships its own `swll` CLI.
+
 ---
 
 ## Data Privacy & Storage Model
@@ -187,7 +189,7 @@ The database schema is organized into four layers, each with a distinct owner an
 | **App** | Future extension | No | Additional columns and tables for future features |
 | **Connector** | Individual connectors | No (installed separately) | Connector-specific columns on standard tables |
 
-**Standard** is the foundational schema. A fresh `pip install footprinter-cli && fp setup && fp ingest` produces a working database using only this layer. Initialized by `init_db()` in `schema.py`.
+**Standard** is the foundational schema. A fresh install followed by `fp setup && fp ingest` produced a working database using only this layer. Initialized by `init_db()` in `schema.py`.
 
 **Migration** upgrades databases created under older schema versions to the current standard. Not needed for the initial public release.
 
