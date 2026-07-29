@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 #
+# ============================================================================
+# RETIRED — DO NOT RUN.
+#
+# footprinter-cli is no longer published: every released version has been
+# yanked from PyPI. This script installs a bare `footprinter-cli[full]` spec,
+# which no longer resolves, so a curl-pipe run of it fails partway through.
+#
+# This file is retained for historical reference only. Its commands are
+# preserved exactly as they shipped and are NOT current instructions.
+# ============================================================================
+#
 # Footprinter — full install
 #
 # Installs footprinter-cli[full]: base package plus semantic search
